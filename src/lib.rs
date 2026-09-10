@@ -1,0 +1,25 @@
+pub mod config;
+pub mod engine;
+pub mod policy;
+pub mod proxy;
+pub mod store;
+pub mod usage;
+
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+pub fn hash(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+// serde_json's default map is ordered; arrays and all item fields stay intact.
+pub fn fingerprint(value: &Value) -> String {
+    hash(&serde_json::to_vec(value).expect("JSON Value is serializable"))
+}
+
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}

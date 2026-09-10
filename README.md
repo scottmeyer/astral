@@ -1,0 +1,129 @@
+# ostk-gpt-cache
+
+A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. No `haystack` or other private dependencies.
+
+The projection is the **complete native `/responses/compact` output**. The proxy maintains a mapping from the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. The client continues sending ordinary full-history requests.
+
+## Build and run
+
+Use a current stable Rust toolchain (edition 2024).
+
+```sh
+cargo build --release --locked --bins
+cargo test --locked
+
+# Authentication can be supplied by the client, or inherited from this environment.
+export OPENAI_API_KEY='your-api-key'
+./target/release/ostk-gpt-cache
+
+# In another terminal, run a full-history client:
+python3 examples/chat.py --model gpt-5.5
+```
+
+The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defaults to `https://api.openai.com/v1`. Set `--upstream` to a base URL that already includes the API version or backend path; the proxy appends `/responses` and `/responses/compact`.
+
+`POST /responses`, `/v1/responses`, and `/backend-api/codex/responses` all map to the configured upstream's `/responses`. Corresponding `/compact` routes forward client-initiated compaction unchanged. `GET /healthz` checks the listener. Other routes are intentionally absent; this is a dedicated Responses proxy, not a file-upload proxy or WebSocket gateway.
+
+## Client contract
+
+Send a stable `x-ostk-session-id` header and the **complete original input array**, including replayable output items from earlier responses. The proxy also recognizes `session_id` and `openai-session-id`, in that priority order after the explicit header. A changing request ID is not a session identifier.
+
+```sh
+curl http://127.0.0.1:8088/v1/responses \
+  -H 'Content-Type: application/json' \
+  -H 'x-ostk-session-id: project-a-thread-1' \
+  -d '{"model":"gpt-5.5","store":false,"input":[{"role":"user","content":"Inspect the design."}]}'
+```
+
+The example uses the proxy's environment credential. A client's `Authorization` header takes precedence. Raw credentials are never written into lane files or the ledger. Internal `x-ostk-*` headers are removed before forwarding.
+
+Requests with no session identity, a string input, item references, `previous_response_id`, `conversation`, `context_management`, or `background:true` pass through without projection or cache-parameter mutation. These forms do not give this proxy ownership of a complete explicit conversation. It never expands server-side history or competes with a caller's compactor.
+
+For SDK callers, set the base URL to the proxy and attach `x-ostk-session-id` as a default header for each conversation. Keep your original history on the client; **do not replace it with a proxy-internal projection**. The proxy doesn't alter response IDs, usage, output items, reasoning, or assistant phase.
+
+## What rolls, and when
+
+With no projection, the entire input forwards normally. Once effective input exceeds `--roll-bytes` (160,000 by default), the proxy can compact the older completed turns. It keeps the most recent two user turns and everything after them intact.
+
+Rolls happen only on requests whose final input item is a new user message. All known external tool calls must have corresponding outputs. Mid-tool-cycle requests retain the previous projection and complete active tail. A size trigger never authorizes deleting a pending call or its reasoning.
+
+An accepted roll requires a nonempty canonical output containing an encrypted compaction item and at least `--min-savings` wire-size reduction. If compaction times out, fails, returns malformed output, or does not reduce the prefix enough, the existing projection and full remaining history are used. There are no automatic retries of the main generation request.
+
+`x-ostk-roll: 1` forces an attempt at the next eligible boundary, bypassing size and cooldown checks. It does not bypass tool-pair safety or the output acceptance gate. `--idle-roll-seconds` enables an optional inactivity heuristic; it is disabled by default. Time is never used to assert that an upstream cache has expired.
+
+```sh
+./target/release/ostk-gpt-cache \
+  --roll-bytes 160000 \
+  --keep-recent-turns 2 \
+  --min-compact-bytes 32000 \
+  --min-roll-seconds 60 \
+  --min-savings 0.15
+```
+
+These are **byte budgets**, not tokenizer estimates or model context limits. Select a trigger with enough room for instructions, tool schemas, the active tail, and output. A very large single tool cycle is deliberately not compacted by this implementation. The provider can still return a context-limit error. The proxy does not truncate input to hide that error.
+
+## GPT cache policy
+
+Policy snapshot: 2026-09-10. Model support is deliberately explicit in `src/policy.rs`.
+
+| Model/wire | Proxy behavior when the caller omitted cache controls |
+| --- | --- |
+| Known GPT-5.6 / GPT-6 Astra families on API Platform | Adds `prompt_cache_options: {mode: "implicit", ttl: "30m"}` |
+| Known earlier models on API Platform | Preserves provider/org defaults; `--retention extended` opts into `24h` |
+| GPT-5.5 on API Platform | Rejects an `in-memory` override |
+| Unknown model | Preserves defaults; rejects unverified retention overrides |
+| Compatible backend, including ChatGPT OAuth | Injects no Platform retention fields; autonomous compaction needs `--allow-compatible-compaction` |
+
+Caller-supplied cache controls and keys win. Generated keys are stable per credential/project/session/model and never contain an epoch or timestamp. The proxy leaves explicit breakpoints and tool ordering intact. A retained prefix is an opportunity for a cache hit, not a guarantee.
+
+The official [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) documents the model-generation differences, retention behavior, and cache-write reporting. Verify capabilities when adding another family; do not extend the modern policy to every unknown future model.
+
+For compatible backends, `--allow-compatible-compaction` is an operator assertion that the configured endpoint implements the native compact contract. It does not add authentication or demonstrate that the backend supports that endpoint. A Platform hostname embedded in a different URL never activates Platform policy.
+
+## Persistence and failure behavior
+
+Lanes are isolated by upstream, effective credential, OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected.
+
+Only a successful HTTP response with a completed response object/event and clean EOF commits a candidate. A network failure, truncated SSE stream, incomplete response, or dropped downstream body leaves the previous snapshot in effect. Snapshots use atomic rename after file sync; Unix also syncs the containing directory. A process lock prevents two proxies writing the same directory.
+
+On restart, snapshots load lazily. Matching full history resumes the previous projection. Edited, truncated, or branched history resets to the caller's new history. Changes to instructions, tools, model settings, or other prompt contract fields also reset it. Stream settings and metadata are excluded from this fingerprint. Corrupt snapshots produce an error instead of silently dropping history.
+
+The default directory is `.ostk-gpt/`:
+
+```text
+lanes/<hash>.json    committed projection and original-item hashes
+ledger.jsonl        observed response and compaction accounting
+process.lock        single-writer lock
+```
+
+Projection files can contain provider-retained user text as well as encrypted state. The directory is owner-only on Unix. Keep it private, exclude it from git, and remove it when its data is no longer needed. Lane count defaults to 1,024 with a hard admission limit. There is no automatic disk garbage collection; use another directory or archive expired lanes while the process is stopped. Each snapshot and request is size-limited. Ledger retention is operator-managed.
+
+## Baseline and accounting
+
+```sh
+./target/release/ostk-gpt-cache --mode passthrough --state-dir .ostk-gpt-baseline
+./target/release/stats --ledger .ostk-gpt/ledger.jsonl
+```
+
+Passthrough performs **no request-body rewrite**, including malformed JSON, force-roll headers, reminders, and existing cache controls. Normal HTTP hop-header handling still applies. Streaming response bytes are forwarded as received; a bounded observer reads completion and usage without rebuilding SSE frames.
+
+The stats binary groups generation and compaction calls separately. It reports inclusive input, cache reads, reported writes, output, and measured wire bytes. Cache hit rate is `cached_tokens / input_tokens`. Missing write counts remain unreported. It emits no fixed model prices or hypothetical dollar savings.
+
+A client disconnect can prevent final usage from arriving. Such calls cannot be fully billed from this local ledger; use provider billing for reconciliation. Compaction calls that completed before cancellation remain separately recorded. `first_byte_ms` and generation elapsed time start after internal compaction; compaction latency has its own row. Neither is presented as total user-perceived latency.
+
+See [architecture](docs/architecture.md), [evaluation protocol](docs/evaluation.md), and [validation record](docs/validation.md).
+
+## Development
+
+```sh
+cargo fmt --all --check
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+cargo build --release --locked --bins
+```
+
+Integration tests use real loopback HTTP servers with mocked Responses/compact payloads. They require no OpenAI credential and make no model calls. The CI workflow contains Linux, macOS, and Windows jobs; only Linux was executed during initial development.
+
+## Scope
+
+This version implements native opaque projections. It does not create a human-readable kernel state, inject recall tools, summarize failed tool results into text, or claim lossless semantic compaction. Extending the projection backend should keep the planner, transactional commit rule, full canonical output handling, and active-tail invariants. The official [compaction guide](https://developers.openai.com/api/docs/guides/compaction) describes the native output contract.

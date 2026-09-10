@@ -1,0 +1,27 @@
+[package]
+name = "ostk-gpt-cache"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A Responses proxy with transactional rolling projections and model-aware prompt caching"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+async-stream = "0.3"
+axum = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+fs2 = "0.4"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true

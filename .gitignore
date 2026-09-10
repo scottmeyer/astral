@@ -1,0 +1,4 @@
+/target/
+/.ostk-gpt/
+.env
+*.log
