@@ -7,6 +7,7 @@ cargo fmt --all --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 cargo build --release --locked --bins
+cargo +1.85.0 check --locked --all-targets
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
@@ -15,6 +16,13 @@ placement, compaction controls, completion validation, inventories, and isolated
 incremental state. `tests/native_transport.rs` uses real local HTTP/WS transports
 with synthetic upstream events. Python tests cover native fixture capture and
 independent sandbox-denial evidence. Synthetic passes do not prove provider support.
+
+`tests/model_catalog.rs` exercises all catalog aliases through real local HTTP,
+including exact queries, identity isolation, conditional/error responses, header
+filtering, byte limits, deadlines and interrupted bodies. Catalog tests check
+that no conversation state or inference ledger is created. CI also checks the
+declared Rust 1.85 minimum; see [code health](../../docs/code-health.md) for the
+dated live catalog check and module refactor verification.
 
 `tests/project.rs` covers manifest graphs, bounded reads, confined paths, work-item
 selection, stable fingerprints and CLI errors. Validate the repository's own

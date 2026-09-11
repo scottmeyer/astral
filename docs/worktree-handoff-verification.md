@@ -121,7 +121,8 @@ or successful recovery from every publication/receipt failure.
 Live native launches/saves also logged a nonfatal model-catalog refresh 404 from
 the managed proxy. The explicitly selected supported model still completed the
 controls. Catalog forwarding is tracked as `AST-dj8adv3zgkft`; that endpoint is
-not covered by the current relay.
+not covered by the relay tested in this receipt. The subsequent
+[catalog forwarding pass](code-health.md) records its fix and separate checks.
 
 Publication requires its private Git staging directory and target checkout to
 share a filesystem. Failed/incomplete state and prior bundles are retained.

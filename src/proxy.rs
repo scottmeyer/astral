@@ -10,7 +10,7 @@ use axum::{
     Router,
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, OriginalUri, State},
-    http::{HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -25,7 +25,10 @@ use std::{
 };
 use tokio::sync::OwnedMutexGuard;
 
-const HOP: &str = "x-ostk-gpt-hop";
+mod http;
+use http::{bounded_body, request, response_builder};
+pub(crate) use http::{effective_headers, strip_header};
+
 type Pending = (
     String,
     OwnedMutexGuard<Option<Lane>>,
@@ -92,6 +95,9 @@ pub fn router(app: App) -> Router {
                     "requests_received":app.requests_received.load(Ordering::Relaxed)}))
             }),
         )
+        .route("/models", get(http::models))
+        .route("/v1/models", get(http::models))
+        .route("/backend-api/codex/models", get(http::models))
         .route("/v1/responses", post(handle))
         .route("/responses", post(handle))
         .route("/backend-api/codex/responses", post(handle))
@@ -117,101 +123,6 @@ pub(crate) fn error(status: StatusCode, message: &str) -> Response {
         axum::Json(json!({"error":{"type":"ostk_proxy_error", "message":message}})),
     )
         .into_response()
-}
-
-pub(crate) fn effective_headers(
-    mut headers: HeaderMap,
-) -> Result<HeaderMap, (StatusCode, &'static str)> {
-    if headers.contains_key(HOP) {
-        return Err((StatusCode::LOOP_DETECTED, "proxy loop detected"));
-    }
-    for name in [
-        "authorization",
-        "api-key",
-        "x-api-key",
-        "chatgpt-account-id",
-        "openai-organization",
-        "openai-project",
-        "x-ostk-session-id",
-        "session_id",
-        "openai-session-id",
-        "x-ostk-roll-estimate",
-    ] {
-        if headers.get_all(name).iter().count() > 1 {
-            return Err((StatusCode::BAD_REQUEST, "duplicate identity header"));
-        }
-    }
-    if !["authorization", "api-key", "x-api-key"]
-        .iter()
-        .any(|name| headers.contains_key(*name))
-    {
-        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-            let value = HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "invalid configured authorization",
-                )
-            })?;
-            headers.insert("authorization", value);
-        }
-    }
-    Ok(headers)
-}
-
-pub(crate) fn strip_header(name: &str, headers: &HeaderMap) -> bool {
-    matches!(
-        name,
-        "host"
-            | "connection"
-            | "keep-alive"
-            | "proxy-authenticate"
-            | "proxy-authorization"
-            | "te"
-            | "trailer"
-            | "transfer-encoding"
-            | "upgrade"
-            | "content-length"
-            | "accept-encoding"
-    ) || name.starts_with("x-ostk-")
-        || headers
-            .get_all("connection")
-            .iter()
-            .filter_map(|v| v.to_str().ok())
-            .flat_map(|v| v.split(','))
-            .any(|v| v.trim().eq_ignore_ascii_case(name))
-}
-
-fn request(
-    app: &App,
-    headers: &HeaderMap,
-    suffix: &str,
-    body: Vec<u8>,
-    compact: bool,
-) -> reqwest::RequestBuilder {
-    let url = format!("{}{suffix}", app.config.upstream.trim_end_matches('/'));
-    let mut r = app.client.post(url);
-    for (k, v) in headers {
-        if !(strip_header(k.as_str(), headers)
-            || compact
-                && matches!(
-                    k.as_str(),
-                    "idempotency-key"
-                        | "content-type"
-                        | "content-encoding"
-                        | "accept"
-                        | "x-client-request-id"
-                ))
-        {
-            r = r.header(k, v);
-        }
-    }
-    r = r.header(HOP, "1").header("accept-encoding", "identity");
-    if compact {
-        r = r
-            .header("content-type", "application/json")
-            .header("accept", "application/json");
-    }
-    r.body(body)
 }
 
 fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
@@ -536,16 +447,7 @@ async fn compact(app: &App, headers: &HeaderMap, body: &Value) -> anyhow::Result
     .send()
     .await?;
     let status = r.status().as_u16();
-    let mut stream = r.bytes_stream();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        anyhow::ensure!(
-            bytes.len().saturating_add(chunk.len()) <= app.config.max_observation_bytes,
-            "compact output too large"
-        );
-        bytes.extend_from_slice(&chunk);
-    }
+    let bytes = bounded_body(r, app.config.max_observation_bytes).await?;
     Ok((status, serde_json::from_slice(&bytes)?))
 }
 
@@ -596,12 +498,7 @@ async fn forward(
                     .is_some_and(|v| v.to_str().is_ok_and(|v| v.contains("text/event-stream")))
         }
     };
-    let mut builder = Response::builder().status(status.as_u16());
-    for (k, v) in response.headers() {
-        if !strip_header(k.as_str(), response.headers()) {
-            builder = builder.header(k, v);
-        }
-    }
+    let builder = response_builder(&response);
     let mut chunks = response.bytes_stream();
     let inline_bytes = pending.as_ref().and_then(|p| p.3);
     let stream = async_stream::stream! {

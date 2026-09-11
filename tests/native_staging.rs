@@ -1,6 +1,6 @@
 #![cfg(unix)]
 use ostk_gpt_cache::{
-    codex::{StagingOptions, stage_native, stage_worker},
+    codex::{StagingOptions, stage_fresh, stage_native, stage_worker},
     native_bundle::NativeBundle,
 };
 use serde_json::{Value, json};
@@ -33,6 +33,8 @@ for line in sys.stdin:
         result={'config':config}
     elif method in ('thread/start','thread/resume'):
         result={'thread':{'id':'01a10000-1234-7000-8000-000000000001','ephemeral':False},'cwd':str(root),'model':'gpt-6-astra','modelProvider':'openai'}
+        if mode=='missing-runtime':
+            result.pop('model'); result.pop('modelProvider')
         if mode=='model': result['model']='different'
         if mode=='provider': result['modelProvider']='different'
         if mode=='cwd': result['cwd']=str(root.parent)
@@ -248,6 +250,124 @@ async fn native_import_preserves_raw_items_and_appends_current_context_without_e
     let argv: Value = serde_json::from_slice(&fs::read(f.root.join("argv.json")).unwrap()).unwrap();
     assert_eq!(argv[4], format!("openai_base_url={URL:?}"));
     assert_eq!(argv[6], "features.enable_request_compression=false");
+}
+
+#[tokio::test]
+async fn only_native_import_has_the_larger_request_budget() {
+    // Within the document bound before escaping, but over the ordinary RPC
+    // request bound after escaping. Native staging has its own larger budget.
+    let context = "\0".repeat(750_000);
+    let f = Fixture::new("ok");
+    let b = bundle(PAYLOAD);
+    stage_native(
+        f.exe.as_os_str(),
+        &f.root,
+        StagingOptions::from_args(&f.root, &[]).unwrap(),
+        &b,
+        &context,
+        URL,
+        None,
+    )
+    .await
+    .unwrap();
+    let requests = f.requests();
+    let injected = requests.last().unwrap();
+    assert_eq!(injected["method"], "thread/inject_items");
+    assert_eq!(
+        injected["params"]["items"][2]["content"][0]["text"],
+        context
+    );
+    let log = fs::read_to_string(f.root.join("requests.jsonl")).unwrap();
+    for item in b.raw_items() {
+        assert!(log.contains(item.get()));
+    }
+    assert!(f.root.join("closed").exists());
+
+    for worker in [false, true] {
+        let f = Fixture::new("ok");
+        let options = StagingOptions::from_args(&f.root, &[]).unwrap();
+        let err = if worker {
+            stage_worker(
+                f.exe.as_os_str(),
+                &f.root,
+                options,
+                Some(URL),
+                Some(ID),
+                Some(&context),
+                Some(("gpt-6-astra", "openai")),
+            )
+            .await
+            .unwrap_err()
+        } else {
+            stage_fresh(f.exe.as_os_str(), &f.root, options, &context)
+                .await
+                .unwrap_err()
+        };
+        assert_eq!(err.code, "LIMIT_EXCEEDED", "worker={worker}");
+        assert!(
+            !f.requests()
+                .iter()
+                .any(|r| r["method"] == "thread/inject_items")
+        );
+        assert!(f.root.join("closed").exists());
+    }
+}
+
+#[tokio::test]
+async fn staging_paths_keep_their_distinct_runtime_identity_requirements() {
+    let f = Fixture::new("missing-runtime");
+    let id = stage_fresh(
+        f.exe.as_os_str(),
+        &f.root,
+        StagingOptions::from_args(&f.root, &[]).unwrap(),
+        "docs",
+    )
+    .await
+    .unwrap();
+    assert_eq!(id, ID);
+
+    for native in [false, true] {
+        let f = Fixture::new("missing-runtime");
+        let options = StagingOptions::from_args(&f.root, &[]).unwrap();
+        let result = if native {
+            stage_native(
+                f.exe.as_os_str(),
+                &f.root,
+                options,
+                &bundle(PAYLOAD),
+                "docs",
+                URL,
+                None,
+            )
+            .await
+        } else {
+            stage_worker(
+                f.exe.as_os_str(),
+                &f.root,
+                options,
+                None,
+                None,
+                Some("docs"),
+                None,
+            )
+            .await
+        };
+        assert_eq!(
+            result.unwrap_err().code,
+            if native {
+                "NATIVE_RUNTIME_MISMATCH"
+            } else {
+                "CODEX_PROTOCOL"
+            },
+            "native={native}"
+        );
+        assert!(
+            !f.requests()
+                .iter()
+                .any(|r| r["method"] == "thread/inject_items")
+        );
+        assert!(f.root.join("closed").exists());
+    }
 }
 
 #[tokio::test]

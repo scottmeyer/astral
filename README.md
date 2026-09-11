@@ -58,6 +58,13 @@ python3 examples/chat.py --model gpt-5.5
 
 The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defaults to `https://api.openai.com/v1`. Set `--upstream` to a base URL that already includes the API version or backend path; the proxy appends `/responses` and, by default, `/responses/compact`. `--compact-path` overrides only the latter path for both autonomous and caller-initiated compaction. Changing the path opens new state lanes. An alternate route must still return the native compact contract; an ordinary generation, even with encrypted reasoning, cannot replace history.
 
+Model discovery uses `GET /models`, `/v1/models`, or `/backend-api/codex/models`.
+Each forwards to the configured upstream's `/models` with the original query,
+authentication, and conditional headers. Catalog responses preserve provider
+status, metadata and bytes, bounded by `--max-body-bytes` and the configured
+request timeout. They do not create projection state or a local model cache.
+See [catalog forwarding and code health](docs/code-health.md).
+
 For a managed upstream with a private CA, the proxy adds certificates from `SSL_CERT_FILE` or the explicit `--upstream-ca-bundle /path/to/ca.pem` option to its trusted roots. Certificate verification stays enabled; an unreadable, empty, or invalid configured bundle fails startup.
 
 `POST /responses`, `/v1/responses`, and `/backend-api/codex/responses` all map to the configured upstream's `/responses`. Corresponding `/responses/compact` routes and the `/compact` alias forward caller compaction bodies unchanged. `GET /healthz` checks the listener and reports `requests_received`: entries into generation and caller-compaction handlers since process startup, including requests rejected by identity checks. Health probes and internal upstream compaction do not increment it. This counter distinguishes absent client traffic from traffic without a completed ledger entry. The opt-in native tool binding mode also handles websocket GET on the generation routes. Other routes, including file upload, are intentionally absent.

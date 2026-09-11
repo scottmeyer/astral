@@ -23,5 +23,7 @@ implemented; see [bound workers and handoff](../../../docs/worktree-handoff.md).
 Git preserves divergent opaque artifacts; native histories are never implicitly merged.
 Fresh document launch and embedded-prompt initialization are now implemented;
 see [fresh launch](../../../docs/fresh-launch.md) for usage and limits.
+The [code-health record](../../../docs/code-health.md) describes adapter/resolver
+module boundaries, catalog forwarding and package checks.
 See [the interface decision](decisions/0003-launcher-interface.md) for direct
 Codex by default, explicit proxy routing, and argument forwarding requirements.

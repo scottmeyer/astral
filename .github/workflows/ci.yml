@@ -1,6 +1,12 @@
 name: ci
 on: [push, pull_request]
 jobs:
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - run: cargo check --locked --all-targets
   test:
     strategy:
       matrix:
