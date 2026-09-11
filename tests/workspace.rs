@@ -763,6 +763,14 @@ fn git_output_and_lingering_pipe_writers_are_bounded() {
             "WORKSPACE_GIT_LIMIT",
         ),
         (
+            "#!/bin/sh\nexec 1>&-\nwhile :; do printf 'oversized-git-error\\n' >&2; done\n",
+            "WORKSPACE_GIT_LIMIT",
+        ),
+        (
+            "#!/bin/sh\nexec 1>&- 2>&-\n/bin/sleep 0.1\nexit 1\n",
+            "WORKSPACE_GIT_FAILED",
+        ),
+        (
             "#!/bin/sh\n/bin/sleep 60 &\nexit 0\n",
             "WORKSPACE_GIT_TIMEOUT",
         ),

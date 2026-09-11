@@ -901,7 +901,28 @@ mod unix {
                     "Git command exceeded 30 seconds; incomplete artifacts were retained",
                 ));
             }
-            std::thread::sleep(Duration::from_millis(5));
+            // Wake as soon as either pipe changes instead of adding a fixed
+            // sleep to every short Git probe. Ignore completed pipes so their
+            // hangup cannot spin the loop while a child or descendant is alive.
+            let mut pipes = [
+                libc::pollfd {
+                    fd: if out_done { -1 } else { stdout.as_raw_fd() },
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: if err_done { -1 } else { stderr.as_raw_fd() },
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+            ];
+            // SAFETY: both pipe owners are live; poll borrows this two-element
+            // array only for the call. Its wait remains bounded to 5 ms.
+            if unsafe { libc::poll(pipes.as_mut_ptr(), 2, 5) } < 0
+                && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+            {
+                return Err(fail("WORKSPACE_GIT_IO", "cannot poll Git output"));
+            }
         }
     }
 
