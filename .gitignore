@@ -1,4 +1,7 @@
 /target/
 /.ostk-gpt/
+/.astral-trials/
+__pycache__/
+*.pyc
 .env
 *.log

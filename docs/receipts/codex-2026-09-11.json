@@ -1,0 +1,65 @@
+{
+  "model": "gpt-6-astra",
+  "auth": "chatgpt",
+  "seed": 731,
+  "order": [
+    "rolling",
+    "passthrough"
+  ],
+  "prepare_only": false,
+  "arms": [
+    {
+      "arm": "rolling",
+      "status": "blocked",
+      "turns": [
+        {
+          "turn": 1,
+          "seconds": 20.004,
+          "exit_code": -15,
+          "timed_out": true,
+          "response": null,
+          "completed": false,
+          "tool_items": 0
+        }
+      ],
+      "passed": false,
+      "base_url": "http://127.0.0.1:39469",
+      "error": "client_timeout",
+      "seconds": 20.061,
+      "proxy_exit_codes": [
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    }
+  ],
+  "passed": false,
+  "interpretation": "A single synthetic correctness trial; no cost or quality generalization.",
+  "observed_date": "2026-09-11",
+  "codex_cli_version": "0.154.0-alpha.3",
+  "upstream_kind": "compatible Codex OAuth backend configured by this runtime"
+}

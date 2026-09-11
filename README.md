@@ -1,6 +1,8 @@
-# ostk-gpt-cache
+# Astral
 
 A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. No `haystack` or other private dependencies.
+
+The crate and proxy executable are named `ostk-gpt-cache`. For fresh Codex sessions through the proxy, see [the trial runner](docs/codex-trials.md). The current [validation receipt](docs/validation.md) separates passing local checks from the blocked live trial and GitHub publication.
 
 The projection is the **complete native `/responses/compact` output**. The proxy maintains a mapping from the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. The client continues sending ordinary full-history requests.
 
@@ -35,7 +37,7 @@ curl http://127.0.0.1:8088/v1/responses \
   -d '{"model":"gpt-5.5","store":false,"input":[{"role":"user","content":"Inspect the design."}]}'
 ```
 
-The example uses the proxy's environment credential. A client's `Authorization` header takes precedence. Raw credentials are never written into lane files or the ledger. Internal `x-ostk-*` headers are removed before forwarding.
+The example uses the proxy's environment credential. A client's `Authorization`, `api-key`, or `x-api-key` header takes precedence. Raw credentials are never written into lane files or the ledger. Internal `x-ostk-*` headers are removed before forwarding.
 
 Requests with no session identity, a string input, item references, `previous_response_id`, `conversation`, `context_management`, or `background:true` pass through without projection or cache-parameter mutation. These forms do not give this proxy ownership of a complete explicit conversation. It never expands server-side history or competes with a caller's compactor.
 
@@ -82,7 +84,7 @@ For compatible backends, `--allow-compatible-compaction` is an operator assertio
 
 ## Persistence and failure behavior
 
-Lanes are isolated by upstream, effective credential, OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected.
+Lanes are isolated by upstream, effective credentials (`Authorization`, `api-key`, and `x-api-key`), ChatGPT account (`chatgpt-account-id`), OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected. Backends with additional account-selection headers need those headers added to the identity contract before sharing state across accounts.
 
 Only a successful HTTP response with a completed response object/event and clean EOF commits a candidate. A network failure, truncated SSE stream, incomplete response, or dropped downstream body leaves the previous snapshot in effect. Snapshots use atomic rename after file sync; Unix also syncs the containing directory. A process lock prevents two proxies writing the same directory.
 

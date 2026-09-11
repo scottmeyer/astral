@@ -29,6 +29,7 @@ struct Record {
 #[derive(Default)]
 struct Mock {
     records: Mutex<Vec<Record>>,
+    compact_reply: Mutex<Option<Value>>,
     mode: AtomicUsize,
     compact_fail: AtomicUsize,
     delay: AtomicUsize,
@@ -43,6 +44,9 @@ async fn mock_compact(State(m): State<Arc<Mock>>, headers: HeaderMap, body: Byte
     });
     if m.compact_fail.load(Ordering::SeqCst) > 0 {
         return (StatusCode::SERVICE_UNAVAILABLE, "compact down").into_response();
+    }
+    if let Some(reply) = m.compact_reply.lock().unwrap().clone() {
+        return axum::Json(reply).into_response();
     }
     axum::Json(json!({"object":"response.compaction", "output":[
         {"role":"user","content":"retained by provider"},
@@ -90,6 +94,7 @@ struct Fixture {
     mock: Arc<Mock>,
     proxy: JoinHandle<()>,
     upstream: JoinHandle<()>,
+    config: Config,
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -99,6 +104,9 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new(mode: Mode) -> Self {
+        Self::configured(mode, |_| {}).await
+    }
+    async fn configured(mode: Mode, configure: impl FnOnce(&mut Config)) -> Self {
         let root = tempfile::tempdir().unwrap();
         let mock = Arc::new(Mock::default());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -125,7 +133,8 @@ impl Fixture {
         cfg.upstream = upstream_url;
         cfg.allow_compatible_compaction = true;
         cfg.mode = mode;
-        let app = App::new(cfg).await.unwrap();
+        configure(&mut cfg);
+        let app = App::new(cfg.clone()).await.unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/v1/responses", listener.local_addr().unwrap());
         let proxy = tokio::spawn(async move {
@@ -137,7 +146,18 @@ impl Fixture {
             mock,
             proxy,
             upstream,
+            config: cfg,
         }
+    }
+    async fn restart(&mut self) {
+        self.proxy.abort();
+        let _ = (&mut self.proxy).await;
+        let app = App::new(self.config.clone()).await.unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        self.url = format!("http://{}/v1/responses", listener.local_addr().unwrap());
+        self.proxy = tokio::spawn(async move {
+            axum::serve(listener, router(app)).await.unwrap();
+        });
     }
     fn request(&self, session: &str) -> reqwest::RequestBuilder {
         reqwest::Client::new()
@@ -492,4 +512,222 @@ async fn ambiguous_authentication_is_rejected_before_upstream() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
     assert!(f.records(false).is_empty());
+}
+
+#[tokio::test]
+async fn recursive_projection_survives_a_proxy_restart_with_complete_tool_history() {
+    let mut f = Fixture::new(Mode::Rolling).await;
+    let mut r = input();
+    f.request("recursive")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let first: Value = serde_json::from_slice(&f.records(false)[0].body).unwrap();
+    let active = vec![
+        json!({"type":"reasoning","id":"r1","encrypted_content":"untouched-reasoning","summary":[]}),
+        json!({"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"Reading both files","annotations":[]}]}),
+        json!({"type":"function_call","call_id":"call-a","name":"read","arguments":"{\"path\":\"a\"}"}),
+        json!({"type":"function_call","call_id":"call-b","name":"read","arguments":"{\"path\":\"b\"}"}),
+        json!({"type":"function_call_output","call_id":"call-b","output":"B".repeat(1500)}),
+        json!({"type":"function_call_output","call_id":"call-a","output":"A".repeat(1500)}),
+    ];
+    r["input"].as_array_mut().unwrap().extend(active.clone());
+    f.request("recursive")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(
+        f.records(true).len(),
+        1,
+        "a tool continuation must not roll"
+    );
+    let tool_request: Value = serde_json::from_slice(&f.records(false)[1].body).unwrap();
+    assert!(tool_request["input"].as_array().unwrap().ends_with(&active));
+
+    r["input"].as_array_mut().unwrap().extend([
+        json!({"type":"message","role":"assistant","phase":"final_answer","content":"Both read"}),
+        json!({"role":"user","content":"Next turn"}),
+    ]);
+    f.request("recursive")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(f.records(true).len(), 2);
+    let compact: Value = serde_json::from_slice(&f.records(true)[1].body).unwrap();
+    assert!(
+        compact["input"]
+            .as_array()
+            .unwrap()
+            .starts_with(first["input"].as_array().unwrap())
+    );
+    assert_eq!(
+        &compact["input"].as_array().unwrap()[3..9],
+        active.as_slice()
+    );
+    assert_eq!(f.snapshots().await[0]["epoch"], 2);
+    let before_restart: Value = serde_json::from_slice(&f.records(false)[2].body).unwrap();
+    f.config.roll_bytes = 1_000_000;
+    f.restart().await;
+    r["input"].as_array_mut().unwrap().extend([
+        json!({"role":"assistant","content":"ok"}),
+        json!({"role":"user","content":"After restart"}),
+    ]);
+    f.request("recursive")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let resumed: Value = serde_json::from_slice(&f.records(false)[3].body).unwrap();
+    assert!(
+        resumed["input"]
+            .as_array()
+            .unwrap()
+            .starts_with(before_restart["input"].as_array().unwrap())
+    );
+    assert_eq!(
+        resumed["prompt_cache_key"],
+        before_restart["prompt_cache_key"]
+    );
+    assert_eq!(f.records(true).len(), 2);
+    assert_eq!(f.snapshots().await[0]["epoch"], 2);
+}
+
+#[tokio::test]
+async fn history_edit_after_roll_forwards_the_authoritative_branch() {
+    let f = Fixture::new(Mode::Rolling).await;
+    let mut r = input();
+    f.request("branch")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    r["input"][0]["content"] = json!("B".repeat(1000));
+    f.request("branch")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[1].body).unwrap();
+    assert_eq!(sent["input"], r["input"]);
+    assert_eq!(f.records(true).len(), 1, "do not compact a reset request");
+    assert_eq!(f.snapshots().await[0]["cut"], 0);
+    assert_eq!(f.snapshots().await[0]["projection"], json!([]));
+}
+
+#[tokio::test]
+async fn unusable_compaction_outputs_never_replace_history() {
+    let f = Fixture::new(Mode::Rolling).await;
+    let r = input();
+    for (i, output) in [
+        json!([]),
+        json!([{"role":"assistant","content":"a prose summary is not native state"}]),
+        json!([{"type":"compaction","encrypted_content":""}]),
+        json!([{"type":"compaction","encrypted_content":"X".repeat(5000)}]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        *f.mock.compact_reply.lock().unwrap() = Some(json!({"output":output}));
+        f.request(&format!("invalid-{i}"))
+            .json(&r)
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        let sent: Value = serde_json::from_slice(&f.records(false)[i].body).unwrap();
+        assert_eq!(sent["input"], r["input"]);
+    }
+    for state in f.snapshots().await {
+        assert_eq!(state["cut"], 0);
+        assert_eq!(state["epoch"], 0);
+    }
+}
+
+#[tokio::test]
+async fn observation_overflow_forwards_bytes_without_committing() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.max_observation_bytes = 64;
+        cfg.roll_bytes = 100_000;
+    })
+    .await;
+    f.mock.mode.store(1, Ordering::SeqCst);
+    let mut r = input();
+    r["stream"] = json!(true);
+    let bytes = f
+        .request("overflow")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), SSE);
+    assert!(f.snapshots().await.is_empty());
+    let ledger = tokio::fs::read_to_string(f.root.path().join("state/ledger.jsonl"))
+        .await
+        .unwrap();
+    let event: Value = serde_json::from_str(ledger.lines().last().unwrap()).unwrap();
+    assert_eq!(event["observation_overflow"], true);
+    assert_eq!(event["committed"], false);
+}
+
+#[tokio::test]
+async fn oauth_accounts_and_compatible_api_keys_have_independent_lanes() {
+    let f = Fixture::new(Mode::Rolling).await;
+    for header in ["chatgpt-account-id", "api-key", "x-api-key"] {
+        for value in ["scope-a", "scope-b"] {
+            f.request("shared-session")
+                .header(header, value)
+                .json(&input())
+                .send()
+                .await
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap();
+        }
+    }
+    assert_eq!(f.snapshots().await.len(), 6);
+    let keys: std::collections::HashSet<Value> = f
+        .records(false)
+        .iter()
+        .map(|r| serde_json::from_slice::<Value>(&r.body).unwrap()["prompt_cache_key"].clone())
+        .collect();
+    assert_eq!(keys.len(), 6);
+    for header in ["chatgpt-account-id", "api-key", "x-api-key"] {
+        let response = f
+            .request("ambiguous")
+            .header(header, "scope-a")
+            .header(header, "scope-b")
+            .json(&input())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    assert_eq!(f.records(false).len(), 6);
 }

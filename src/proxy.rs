@@ -88,6 +88,9 @@ fn effective_headers(mut headers: HeaderMap) -> Result<HeaderMap, (StatusCode, &
     }
     for name in [
         "authorization",
+        "api-key",
+        "x-api-key",
+        "chatgpt-account-id",
         "openai-organization",
         "openai-project",
         "x-ostk-session-id",
@@ -98,7 +101,10 @@ fn effective_headers(mut headers: HeaderMap) -> Result<HeaderMap, (StatusCode, &
             return Err((StatusCode::BAD_REQUEST, "duplicate identity header"));
         }
     }
-    if !headers.contains_key("authorization") {
+    if !["authorization", "api-key", "x-api-key"]
+        .iter()
+        .any(|name| headers.contains_key(*name))
+    {
         if let Ok(key) = std::env::var("OPENAI_API_KEY") {
             let value = HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| {
                 (
@@ -182,6 +188,18 @@ fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
         app.config.upstream,
         headers
             .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or(""),
+        headers
+            .get("api-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or(""),
+        headers
+            .get("x-api-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or(""),
+        headers
+            .get("chatgpt-account-id")
             .and_then(|v| v.to_str().ok())
             .unwrap_or(""),
         headers

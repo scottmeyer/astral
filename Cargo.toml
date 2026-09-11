@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 description = "A Responses proxy with transactional rolling projections and model-aware prompt caching"
 license = "MIT"
+repository = "https://github.com/scottmeyer/astral"
 
 [dependencies]
 anyhow = "1"
