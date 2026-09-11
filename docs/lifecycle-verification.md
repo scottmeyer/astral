@@ -102,3 +102,43 @@ directory outside tracked source. No transcript, credential or checkpoint payloa
 is included in this receipt. Concurrent noncooperating configuration edits during
 installation, strict policy enforcement and broader runtime/platform support
 remain outside this first integration pass.
+
+## Terminal setup confirmation — 2026-09-11
+
+The follow-up on `feat/hook-install-confirmation`, based on
+`579089a31c3e7a55a6377901df8c551d99fbe9f0`, adds a same-command plan and confirmation
+for hook installation/removal. The installer and its exact-plan checks are shared
+with `--yes` and the retained `--apply HASH` interface; `--dry-run` always previews.
+
+The complete locked Rust suite passed **440 tests**, including **12 new tests**
+using real Unix pseudo-terminals on macOS. They cover Git/Codex install and removal,
+affirmative input, negative/blank/unknown input, EOF and unterminated answers,
+no writes before approval, changes after the prompt, foreign-hook blockers,
+nonterminal previews, redirected stderr, flag conflicts and legacy hash application.
+Changed files during review produced `HOOK_PLAN_CHANGED` and preserved their bytes.
+
+Formatting, strict all-target Clippy, the Rust **1.85.0** all-target check, locked
+release builds of all binaries and all **18 Python tests** passed. The first Python
+attempt had five missing-helper errors because the shared Cargo target directory
+was outside the worktree. Copying the freshly built helper into the harness's
+expected `target/release` location resolved that setup failure; the complete suite
+then passed. The release CLI also validated the checked-in project context.
+No dependency or lockfile changes were needed. No live provider or additional
+Codex trust/dispatch qualification was performed in this follow-up.
+
+The staged UBS static scan completed all modules across **3 Rust files** and
+exited 1 with **4 critical, 164 warning and 33 informational matches**. This is not
+a clean scanner result. Source review identified the critical matches as two
+intentional test failure `panic!` calls and two pseudo-terminal `finish()` calls
+misidentified as noncryptographic token generation. The latter wait for a child
+and collect its output; they generate no token. Other matches concern fixture
+assertions, checked descriptor ownership, bounded reads, literal fixture paths,
+and existing CLI output/JSON operations. No detector suppressions were added.
+Cargo checks ran separately; UBS used `--no-cargo`. Private logs remain outside Git.
+
+The verified release was archived and copied to the stable installed path using
+an atomic replacement, with the previous release retained. The installed binary's
+SHA-256 is `d2e2e77f1b9f90d99180445785bd69661984e99b9ed4f81c3f3e5c92fc34016e`.
+The installed command validated the project and returned blocker-free Git/Codex
+`--dry-run` plans. Existing Git registration and Codex hook configuration bytes
+were unchanged; status still reported Git enabled and Codex configured.

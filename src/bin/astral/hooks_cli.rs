@@ -1,0 +1,166 @@
+//! Hook setup's interactive presentation; mutation and stale-plan checks stay in
+//! the installer shared by interactive and scripted invocations.
+use clap::{Args, Subcommand};
+use ostk_gpt_cache::{
+    hooks::install::{self, Action, Plan, Target},
+    project::{Error, Result},
+};
+use serde_json::{Value, json};
+use std::{
+    io::{BufRead, IsTerminal, Read, Write},
+    path::Path,
+};
+
+#[derive(Subcommand)]
+pub(super) enum HooksCommand {
+    /// Show a plan and ask to install it in a terminal; otherwise preview only.
+    Install(Change),
+    /// Show a plan and ask to remove owned configuration; retain prior bytes.
+    Uninstall(Change),
+    Status,
+}
+
+#[derive(Args)]
+#[command(
+    after_help = "A terminal invocation shows the plan and asks for confirmation. Without terminal input and stderr, the default is a JSON preview. Use --yes for unattended application, --dry-run for a JSON preview, or --apply HASH for a previously reviewed plan. All application modes retain the same stale-plan and ownership checks."
+)]
+pub(super) struct Change {
+    #[arg(value_parser = ["git", "codex"])]
+    target: String,
+    /// Apply the exact previously reviewed plan (compatible with existing scripts).
+    #[arg(long, conflicts_with_all = ["yes", "dry_run"])]
+    apply: Option<String>,
+    /// Apply the current plan without prompting; conflicts still block changes.
+    #[arg(long, conflicts_with = "dry_run")]
+    yes: bool,
+    /// Print a formatted JSON plan and make no changes.
+    #[arg(long)]
+    dry_run: bool,
+}
+
+fn io_error(_: std::io::Error) -> Error {
+    Error {
+        code: "HOOK_CONFIRMATION_IO",
+        message: "hook setup terminal input/output failed; inspect hooks status before retrying"
+            .into(),
+    }
+}
+
+fn label(target: Target) -> &'static str {
+    match target {
+        Target::Git => "Git",
+        Target::Codex => "Codex",
+    }
+}
+
+fn show_plan(plan: &Plan, output: &mut impl Write) -> std::io::Result<()> {
+    let action = match plan.action {
+        Action::Install => "Install",
+        Action::Uninstall => "Uninstall",
+    };
+    writeln!(output, "{action} {} hooks", label(plan.target))?;
+    // JSON strings escape control characters in paths/commands before rendering.
+    writeln!(output, "Repository: {}", json!(plan.root))?;
+    writeln!(output, "Command: {}", json!(plan.command))?;
+    writeln!(output, "Scope: {}", plan.scope)?;
+    writeln!(output, "Planned changes:")?;
+    if plan.changes.is_empty() {
+        writeln!(output, "  No file changes planned.")?;
+    }
+    for change in &plan.changes {
+        writeln!(output, "  - {change}")?;
+    }
+    if !plan.blockers.is_empty() {
+        writeln!(output, "Blocked:")?;
+        for blocker in &plan.blockers {
+            writeln!(output, "  - {blocker}")?;
+        }
+    }
+    output.flush()
+}
+
+fn confirm(input: &mut impl BufRead, output: &mut impl Write) -> Result<bool> {
+    write!(output, "Apply this hook setup? [y/N] ").map_err(io_error)?;
+    output.flush().map_err(io_error)?;
+    let mut answer = String::new();
+    input.take(64).read_line(&mut answer).map_err(io_error)?;
+    // An unterminated/oversized answer and EOF never imply acceptance.
+    Ok(
+        answer.ends_with('\n')
+            && matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes"),
+    )
+}
+
+pub(super) fn run(root: &Path, command: HooksCommand) -> Result<Option<Value>> {
+    let (change, action) = match command {
+        HooksCommand::Status => return super::print_workflow(&install::status(root)?),
+        HooksCommand::Install(change) => (change, Action::Install),
+        HooksCommand::Uninstall(change) => (change, Action::Uninstall),
+    };
+    let target = if change.target == "git" {
+        Target::Git
+    } else {
+        Target::Codex
+    };
+    let executable = std::env::current_exe().map_err(|_| Error {
+        code: "HOOK_EXECUTABLE",
+        message: "current executable unavailable".into(),
+    })?;
+    if let Some(expected) = change.apply {
+        return super::print_workflow(&install::apply(
+            root,
+            &executable,
+            target,
+            action,
+            &expected,
+        )?);
+    }
+    let plan = install::plan(root, &executable, target, action)?;
+    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    if change.dry_run || (!change.yes && !interactive) {
+        super::print_workflow(&json!(plan))?;
+        if !change.dry_run {
+            writeln!(std::io::stderr().lock(), "Preview only: run in a terminal to review and confirm, or use --yes to apply this setup without prompting.").map_err(io_error)?;
+        }
+        return Ok(None);
+    }
+    if change.yes {
+        return super::print_workflow(&install::apply(
+            root,
+            &executable,
+            target,
+            action,
+            &plan.plan_sha256,
+        )?);
+    }
+    let mut output = std::io::stderr().lock();
+    show_plan(&plan, &mut output).map_err(io_error)?;
+    if !plan.blockers.is_empty() {
+        return Err(Error {
+            code: "HOOK_INSTALL_BLOCKED",
+            message: "hook setup conflicts require review; no changes were applied".into(),
+        });
+    }
+    if !confirm(&mut std::io::stdin().lock(), &mut output)? {
+        writeln!(output, "Cancelled; no hook changes.").map_err(io_error)?;
+        return Ok(None);
+    }
+    // Never replan and silently apply a different operation after confirmation.
+    let result = install::apply(root, &executable, target, action, &plan.plan_sha256)?;
+    let message = if result.get("changed") == Some(&Value::Bool(false)) {
+        "No changes were needed."
+    } else {
+        match (target, action) {
+            (Target::Git, Action::Install) => "Git hooks installed.",
+            (Target::Git, Action::Uninstall) => "Git hooks disabled; hook files retained.",
+            (Target::Codex, Action::Install) => {
+                "Codex hook configuration installed. Runtime trust is managed in Codex."
+            }
+            (Target::Codex, Action::Uninstall) => {
+                "Unchanged Astral-owned Codex groups removed; modified and unowned groups retained."
+            }
+        }
+    };
+    writeln!(output, "{message}").map_err(io_error)?;
+    Ok(None)
+}

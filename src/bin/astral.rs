@@ -7,6 +7,9 @@ use ostk_gpt_cache::project::{Error, Project};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+#[path = "astral/hooks_cli.rs"]
+mod hooks_cli;
+
 #[derive(Parser)]
 #[command(
     name = "astral",
@@ -28,10 +31,10 @@ enum Command {
         #[command(subcommand)]
         command: LifecycleCommand,
     },
-    /// Preview or explicitly apply opt-in lifecycle hook installation.
+    /// Review and confirm opt-in lifecycle hook setup.
     Hooks {
         #[command(subcommand)]
-        command: HooksCommand,
+        command: hooks_cli::HooksCommand,
     },
     /// Advisory hook entry points; installers normally invoke these.
     Hook {
@@ -173,22 +176,6 @@ enum LifecycleCommand {
     },
 }
 #[derive(Subcommand)]
-enum HooksCommand {
-    Install {
-        #[arg(value_parser = ["git", "codex"])]
-        target: String,
-        #[arg(long)]
-        apply: Option<String>,
-    },
-    Uninstall {
-        #[arg(value_parser = ["git", "codex"])]
-        target: String,
-        #[arg(long)]
-        apply: Option<String>,
-    },
-    Status,
-}
-#[derive(Subcommand)]
 enum HookCommand {
     Git {
         event: String,
@@ -257,30 +244,7 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             lifecycle_scope(&scope),
             work.as_deref()
         )?)),
-        Command::Hooks { command } => {
-            use ostk_gpt_cache::hooks::install::{self, Action, Target};
-            let (target, action, apply) = match command {
-                HooksCommand::Status => return print_workflow(&install::status(&cli.root)?),
-                HooksCommand::Install { target, apply } => (target, Action::Install, apply),
-                HooksCommand::Uninstall { target, apply } => (target, Action::Uninstall, apply),
-            };
-            let target = if target == "git" {
-                Target::Git
-            } else {
-                Target::Codex
-            };
-            let executable = std::env::current_exe().map_err(|_| Error {
-                code: "HOOK_EXECUTABLE",
-                message: "current executable unavailable".into(),
-            })?;
-            let value = match apply {
-                Some(expected) => {
-                    install::apply(&cli.root, &executable, target, action, &expected)?
-                }
-                None => json!(install::plan(&cli.root, &executable, target, action)?),
-            };
-            print_workflow(&value)
-        }
+        Command::Hooks { command } => hooks_cli::run(&cli.root, command),
         Command::Hook { command } => {
             match command {
                 HookCommand::Git {

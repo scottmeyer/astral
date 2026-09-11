@@ -50,9 +50,11 @@ merges remain supported. See [branch completion](../../docs/branch-completion.md
 
 `astral lifecycle check --scope index` validates the exact staged context;
 the default scope is `worktree`, with committed/staged/working comparisons in
-every report. `astral hooks install git` and `astral hooks install codex` preview
-independent opt-ins; `--apply PLAN_SHA256` applies the reviewed installation.
-`hooks uninstall TARGET` also previews first. Git shims are retained but disabled;
+every report. `astral hooks install git` and `astral hooks install codex` show a
+plan and ask for confirmation in a terminal. Use `--yes` for unattended application
+or `--dry-run` for a JSON preview. `--apply PLAN_SHA256` remains available for an
+explicitly separate review; interactive setup retains and checks that hash itself.
+`hooks uninstall TARGET` uses the same choices. Git shims are retained but disabled;
 Codex removal preserves other groups and previous bytes. `astral commit -- -am
 'Update context'` forwards to real Git. See [lifecycle integration](../../docs/lifecycle-integration.md)
 for hook-manager composition, Codex trust, deadlines and reconciliation.

@@ -11,21 +11,45 @@ astral lifecycle check
 astral lifecycle check --scope index --work WORK_ID
 astral hooks status
 astral hooks install git
-astral hooks install git --apply PLAN_SHA256
 astral hooks install codex
-astral hooks install codex --apply PLAN_SHA256
 astral commit -- -am 'Update code and context'
 astral hooks uninstall git
-astral hooks uninstall git --apply PLAN_SHA256
 astral hooks uninstall codex
-astral hooks uninstall codex --apply PLAN_SHA256
 ```
 
-Install and uninstall without `--apply` print formatted JSON previews. Review the
-reported paths, blockers, shared-worktree scope and `plan_sha256`; use that exact
-hash for the corresponding apply. Each opt-in has its own plan. Use an installed,
-stable Astral path for Git shims. Rebuilding at that path is supported; moving the
-executable requires reviewing the retained shims and registration.
+In a terminal, install and uninstall show the repository, command, scope and
+planned changes, then ask `Apply this hook setup? [y/N]`. Enter `y` or `yes` to
+apply that plan immediately. Enter, `no`, EOF or an incomplete answer makes no
+changes. Conflicting hooks are reported before any confirmation prompt. These
+are setup commands; commits and sessions do not require repeating them.
+
+For scripts or captured shell commands:
+
+```sh
+astral hooks install git --yes              # apply without prompting
+astral hooks install codex --yes
+astral hooks install git --dry-run          # formatted JSON preview only
+astral hooks uninstall codex --dry-run
+astral hooks install git --apply PLAN_SHA256 # retain an explicitly reviewed plan
+```
+
+Without terminal stdin and stderr, the default command remains a JSON preview
+and prints a hint to use `--yes`; piped input does not count as confirmation.
+`--dry-run` always previews. `--yes` and `--apply` return formatted JSON results;
+normal terminal confirmation uses a concise human summary. These three flags are
+mutually exclusive. `--yes` skips the prompt, while all existing hook ownership,
+conflict and stale-plan checks still run. Codex runtime trust remains separate.
+
+The plan hash identifies its exact repository, target, executable path and
+observed hook/configuration state. Astral retains it internally while you review
+the prompt and checks it again before writing. If files change during review,
+the operation fails with `HOOK_PLAN_CHANGED`; it does not silently apply a new
+plan. You only need to handle `plan_sha256` yourself when deliberately separating
+preview and apply across processes. Each Git/Codex opt-in has its own plan.
+
+Use an installed, stable Astral path for Git shims. Build development versions
+elsewhere, then promote a verified copy atomically between active worker sessions.
+Moving the installed executable requires reviewing the retained shims and registration.
 Stop other configuration editors during apply: Astral serializes its own writes,
 rechecks file identity and bytes, and publishes atomically, but cannot reserve a
 file against a noncooperating editor between that check and publication.
@@ -110,7 +134,7 @@ not treated as proof that the model retained it.
 
 ## Installation, coexistence and removal
 
-Installation is explicit and previewed before applying the exact plan hash. Git
+Installation is explicit and previewed before applying the exact retained plan. Git
 and Codex are independent opt-ins. Installing support does not enable a proxy,
 alter permissions, change Codex trust or replace another integration.
 

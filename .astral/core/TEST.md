@@ -78,6 +78,8 @@ indexes, native bytes, unsafe entries and no-write behavior. `lifecycle.rs`,
 checks, worker ownership, hook coexistence, callback budgets and literal Git
 forwarding. The separate [lifecycle receipt](../../docs/lifecycle-verification.md)
 distinguishes local fixtures from actual installed Codex dispatch and UI gaps.
+`tests/hook_confirmation.rs` exercises terminal confirmation, cancelled or
+unterminated input, changes during review, conflict handling and scripted flags.
 
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside

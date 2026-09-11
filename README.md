@@ -34,7 +34,8 @@ both require an explicit reviewed plan hash before applying a change. See
 
 `astral lifecycle check` compares committed, staged and working context. Opt in
 separately with `astral hooks install git` or `astral hooks install codex`; each
-prints a reviewable plan before `--apply PLAN_SHA256`. Hooks give bounded offline
+shows a plan and asks for confirmation in a terminal. Use `--yes` for scripts or
+`--dry-run` for a JSON preview; the exact-plan check runs internally. Hooks give bounded offline
 advice and preserve existing integrations. `astral commit -- GIT_ARGS` forwards
 to real Git with its ordinary hooks and signing. See [lifecycle integration](docs/lifecycle-integration.md)
 for event ownership, coexistence and out-of-order work.
