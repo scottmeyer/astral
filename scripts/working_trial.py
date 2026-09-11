@@ -163,7 +163,7 @@ def main():
     p.add_argument("--upstream", required=True)
     p.add_argument("--auth", choices=("gateway", "api-key"), required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--binary", type=Path, default=common.ROOT / "target/release/ostk-gpt-cache")
+    p.add_argument("--binary", type=Path, default=common.ROOT / "target/release/astral")
     p.add_argument("--seeds", default="731,947")
     p.add_argument("--arms", default="native,native-adapted,astral")
     p.add_argument("--threshold", type=int, default=8192)

@@ -6,6 +6,8 @@ repository carries the shared context; runtime credentials, native payloads and
 thread bindings remain private. The native proxy experiment is a separate layer.
 See [the current integration receipt](project-context-verification.md) for tests
 rerun on the merged implementation and the remaining launch boundary.
+The subsequent [unified CLI receipt](cli-verification.md) records the binary
+rename, default context and repaired development scanner.
 
 ## Scope of the first implementation
 
@@ -19,6 +21,7 @@ The implemented read-only interface is:
 ```sh
 astral --root /path/to/repository context validate
 astral --root /path/to/repository context list
+astral --root /path/to/repository project --inspect
 astral --root /path/to/repository project project-context --inspect --work AST-001
 astral --root /path/to/repository project git-native-context-bootstrap --inspect
 ```
@@ -26,6 +29,11 @@ astral --root /path/to/repository project git-native-context-bootstrap --inspect
 These commands return JSON. Omitting `--inspect` from `project` must fail rather
 than imply that an agent was launched. The root defaults to the current directory;
 it is not an instruction to search other projects or the user's session archive.
+Without an explicit context, `astral project` selects `project-context`. An explicit
+name must be the first argument after `project`; after options or `--` begin,
+positional arguments belong to Codex. For example, `astral project --inspect --
+"Continue the work"` previews a prompt for the default context. A missing default
+context is reported as unavailable, never silently replaced with another context.
 
 ## Launcher argument contract
 

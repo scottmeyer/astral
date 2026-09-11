@@ -162,7 +162,7 @@ def main():
     parser.add_argument('--upstream',required=True)
     parser.add_argument('--auth',choices=('gateway','api-key'),required=True)
     parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--binary',type=Path,default=common.ROOT/'target/release/ostk-gpt-cache')
+    parser.add_argument('--binary',type=Path,default=common.ROOT/'target/release/astral')
     parser.add_argument('--seeds',default='731,947')
     parser.add_argument('--arms',default='full,provider,astral')
     parser.add_argument('--threshold',type=int,default=8192)

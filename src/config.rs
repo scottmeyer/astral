@@ -33,7 +33,7 @@ pub enum Retention {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(version, about)]
+#[command(name = "astral", version, about)]
 pub struct Config {
     #[arg(long, default_value = "127.0.0.1:8088")]
     pub listen: SocketAddr,

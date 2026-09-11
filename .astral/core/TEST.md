@@ -33,3 +33,9 @@ entire readable parent history before calling it opaque-only. Check encrypted
 content hashes and stable native-window structure separately. Record every
 failure; mark unavailable live cases NOT_TESTED. Request bytes and provider usage
 are separate observations, neither an invoice-saving claim.
+
+UBS is a supplemental local pre-commit scanner, not a runtime or CI dependency.
+Use `ubs --staged --ci --no-cargo --format=json` for static staged-file checks;
+run Cargo in the complete checkout as above. A staged snapshot can omit required
+unchanged Rust modules. See [development checks](../../docs/development-checks.md)
+for the repaired scanner and honest interpretation of findings.

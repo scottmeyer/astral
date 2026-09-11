@@ -6,6 +6,20 @@ rust-version = "1.85"
 description = "A Responses proxy with transactional rolling projections and model-aware prompt caching"
 license = "MIT"
 repository = "https://github.com/scottmeyer/astral"
+autobins = false
+default-run = "astral"
+
+[[bin]]
+name = "astral"
+path = "src/bin/astral.rs"
+
+[[bin]]
+name = "astral-state"
+path = "src/bin/astral-state.rs"
+
+[[bin]]
+name = "stats"
+path = "src/bin/stats.rs"
 
 [dependencies]
 anyhow = "1"

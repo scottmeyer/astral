@@ -9,7 +9,11 @@ in the work register and historical evidence. Native checkpoint handling is
 `--native-tool-binding` proxy option. A hidden legacy alias preserves existing
 experiment invocations.
 
-`astral project NAME` should launch Codex directly by default. `--proxy` explicitly
+The unified executable is `astral`. `astral proxy` runs the proxy; `astral project`
+uses `project-context` when NAME is omitted. An explicit NAME is the first token
+after `project`; after options or `--` begin, remaining positionals belong to Codex.
+
+`astral project [NAME]` should launch Codex directly by default. `--proxy` explicitly
 selects Astral routing. A selected native checkpoint that requires tool rebinding
 must report that requirement when the direct route cannot support it. Never
 silently expand the checkpoint into a readable handoff or enable a proxy.

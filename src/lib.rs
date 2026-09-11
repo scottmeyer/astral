@@ -7,6 +7,7 @@ mod native_transport;
 pub mod policy;
 pub mod project;
 pub mod proxy;
+pub mod server;
 pub mod store;
 pub mod usage;
 pub mod working;

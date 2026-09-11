@@ -2,14 +2,15 @@
 
 A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. An optional host layer adds compact tool observations, exact artifact retrieval, versioned workspace verification, and durable action replay. No `haystack` or other private dependencies.
 
-The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. The default backend uses standalone native compaction; the opt-in [inline backend](docs/inline-backend.md) lets Astral schedule and persist checkpoints through the normal Responses route. The [validation receipt](docs/validation.md) distinguishes these paths and records the remaining environment limitations.
+The unified executable is `astral`: use `astral proxy` for the server and `astral project` for project context. The internal Rust crate remains `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. The default backend uses standalone native compaction; the opt-in [inline backend](docs/inline-backend.md) lets Astral schedule and persist checkpoints through the normal Responses route. The [validation receipt](docs/validation.md) distinguishes these paths and records the remaining environment limitations.
 
 The opt-in [native lifecycle experiment](docs/native-recovery-lifecycle.md) adds a
 Codex Responses Lite websocket relay and checkpoint tool rebinding. It requires
 pass-through mode with Astral rolling disabled. The [project-context inspector](docs/project-context.md)
 validates the committed `.astral/` manifests and JSONL work register, then resolves
 named subsystems or projections to source handles and hashes. Run
-`astral context list` or `astral project project-context --inspect --work AST-001`.
+`astral context list` or `astral project --inspect --work AST-001`; the omitted
+context defaults to `project-context`.
 The native `astral project` launcher remains pending.
 
 Use [the working-state integration](docs/working-state.md) to run the new agent host: `astral-state` manages configured files, checks and immutable artifacts; `examples/agent.py` connects them to Responses tools. It records immediate state changes while freezing model-visible snapshots between native checkpoints. The supplied coding trial compares native compaction, native compaction with the same adapter, and Astral with the adapter and state layer.
@@ -34,7 +35,7 @@ cargo test --locked
 
 # Authentication can be supplied by the client, or inherited from this environment.
 export OPENAI_API_KEY='your-api-key'
-./target/release/ostk-gpt-cache
+./target/release/astral proxy
 
 # In another terminal, run a full-history client:
 python3 examples/chat.py --model gpt-5.5
@@ -74,7 +75,7 @@ An accepted roll requires a nonempty canonical output containing an encrypted co
 `x-ostk-roll: 1` forces an attempt at the next eligible boundary, bypassing size and cooldown checks. It does not bypass tool-pair safety, an enabled economic gate or the output acceptance gate. `--idle-roll-seconds` enables an optional inactivity heuristic; it is disabled by default. Time is never used to assert that an upstream cache has expired. The optional [economic decision hook](docs/working-state.md#roll-only-when-the-boundary-and-estimate-allow-it) accounts for caller-estimated checkpoint, cache and recovery costs.
 
 ```sh
-./target/release/ostk-gpt-cache \
+./target/release/astral proxy \
   --roll-bytes 160000 \
   --keep-recent-turns 2 \
   --min-compact-bytes 32000 \
@@ -123,7 +124,7 @@ Projection files can contain provider-retained user text as well as encrypted st
 ## Baseline and accounting
 
 ```sh
-./target/release/ostk-gpt-cache --mode passthrough --state-dir .ostk-gpt-baseline
+./target/release/astral proxy --mode passthrough --state-dir .ostk-gpt-baseline
 ./target/release/stats --ledger .ostk-gpt/ledger.jsonl
 ```
 

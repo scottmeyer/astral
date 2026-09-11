@@ -6,11 +6,15 @@ Inspect the checked-in project context without a proxy:
 ```sh
 ./target/release/astral context validate
 ./target/release/astral context list
-./target/release/astral project project-context --inspect --work AST-001
+./target/release/astral project --inspect --work AST-001
 ./target/release/astral project git-native-context-bootstrap --inspect
 ```
 
 These commands return JSON and leave Git and runtime state untouched. `project`
+defaults to the `project-context` selection when no name is supplied. An explicit
+name goes immediately after `project`; use `--` to forward a prompt without a name.
+`astral proxy` runs the server. Bare `astral` and direct proxy flags also start it
+for compatibility with existing runners. The `project` command
 without `--inspect` reports `LAUNCH_NOT_IMPLEMENTED`.
 The full launcher is not implemented. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
 for the opt-in Codex route and tested resume procedure.

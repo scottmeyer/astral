@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 
 pub const MAX_ARGUMENTS: usize = 1_024;
+pub const DEFAULT_CONTEXT: &str = "project-context";
 pub const MAX_ARGUMENT_BYTES: usize = 65_536;
 pub const MAX_TOTAL_ARGUMENT_BYTES: usize = 262_144;
 
@@ -83,15 +84,24 @@ pub struct ProjectArguments {
 impl ProjectArguments {
     pub fn parse(root: PathBuf, args: Vec<OsString>) -> Result<Self> {
         check_arguments(&args)?;
-        let mut args = args.into_iter();
-        let name = utf8(
-            args.next()
-                .ok_or_else(|| error("CLI_USAGE", "project requires NAME"))?,
-            "project name must be UTF-8",
-        )?;
-        if name.is_empty() || name.starts_with('-') {
-            return Err(error("CLI_USAGE", "project requires NAME before options"));
-        }
+        let mut args = args.into_iter().peekable();
+        // Only the first token can name a context. Once options (or `--`) begin,
+        // their values and any prompt remain Codex arguments, never context names.
+        let name = if args
+            .peek()
+            .is_some_and(|arg| !arg.as_encoded_bytes().starts_with(b"-"))
+        {
+            let name = utf8(
+                args.next().expect("peeked name"),
+                "project name must be UTF-8",
+            )?;
+            if name.is_empty() {
+                return Err(error("CLI_USAGE", "project name must not be empty"));
+            }
+            name
+        } else {
+            DEFAULT_CONTEXT.to_owned()
+        };
         let mut parsed = Self {
             root,
             name,

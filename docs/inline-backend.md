@@ -3,7 +3,7 @@
 `--compaction-backend inline` lets Astral schedule native compaction within a normal generation response. It is an opt-in alternative to the default standalone compact endpoint.
 
 ```sh
-./target/release/ostk-gpt-cache \
+./target/release/astral proxy \
   --upstream https://chatgpt.com:18080/backend-api/codex \
   --allow-compatible-compaction \
   --compaction-backend inline \

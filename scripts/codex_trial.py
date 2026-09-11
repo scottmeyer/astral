@@ -333,7 +333,7 @@ def main():
     parser.add_argument("--auth", choices=("chatgpt", "api-key"), required=True)
     parser.add_argument("--allow-compatible-compaction", action="store_true")
     parser.add_argument("--compact-path", default="/responses/compact")
-    parser.add_argument("--binary", type=Path, default=ROOT / "target/release/ostk-gpt-cache")
+    parser.add_argument("--binary", type=Path, default=ROOT / "target/release/astral")
     parser.add_argument("--codex", type=Path, default=Path(shutil.which("codex") or "/opt/codex/bin/codex"))
     parser.add_argument("--catalog", type=Path, help="Optional Codex model catalog JSON (offline discovery)")
     parser.add_argument("--sandbox", choices=("read-only", "workspace-write"), default="read-only")

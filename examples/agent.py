@@ -35,7 +35,7 @@ def main():
     if args.auth == "api-key" and not os.environ.get("OPENAI_API_KEY"):
         p.error("OPENAI_API_KEY is required")
     args.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    args.binary = ROOT / "target/release/ostk-gpt-cache"
+    args.binary = ROOT / "target/release/astral"
     args.compaction_backend = "inline"
     args.inline_tool_boundaries = True
     args.allow_compatible_compaction = True

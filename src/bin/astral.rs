@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand, error::ErrorKind};
-use ostk_gpt_cache::launcher::{ProjectArguments, project_request};
+use ostk_gpt_cache::config::Config;
+use ostk_gpt_cache::launcher::{DEFAULT_CONTEXT, ProjectArguments, project_request};
 use ostk_gpt_cache::project::{Error, Project};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -8,7 +9,8 @@ use std::path::PathBuf;
 #[command(
     name = "astral",
     version,
-    about = "Inspect Git-native Astral project context; no runtime launch"
+    about = "Responses proxy and Git-native project context",
+    after_help = "Run astral proxy for the proxy server. With no arguments, or direct proxy options such as --listen, astral also starts the proxy. Project inspection does not start a proxy or Codex."
 )]
 struct Cli {
     #[arg(long, global = true, default_value = ".")]
@@ -19,14 +21,20 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run the Responses proxy.
+    Proxy {
+        #[command(flatten)]
+        config: Box<Config>,
+    },
     Context {
         #[command(subcommand)]
         command: ContextCommand,
     },
     #[command(
-        after_help = "Astral recognizes --root, --work, --inspect and --proxy before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. Direct Codex is the requested default; --proxy explicitly requests local proxy routing. Native launch is not implemented yet."
+        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect and --proxy before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. Direct Codex is the requested default; --proxy explicitly requests local proxy routing. Native launch is not implemented yet."
     )]
     Project {
+        #[arg(default_value = DEFAULT_CONTEXT)]
         name: String,
         #[arg(long)]
         inspect: bool,
@@ -43,17 +51,18 @@ enum ContextCommand {
     List,
 }
 
-fn run(cli: Cli) -> Result<Value, Error> {
+async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     if matches!(cli.command, Command::Project { inspect: false, .. }) {
         return Err(Error { code: "LAUNCH_NOT_IMPLEMENTED", message: "Native launch is not implemented; use project NAME --inspect for read-only context inspection".into() });
     }
     match cli.command {
+        Command::Proxy { config } => run_proxy(*config).await,
         Command::Context {
             command: ContextCommand::Validate,
-        } => Project::load(&cli.root)?.validate(),
+        } => Project::load(&cli.root)?.validate().map(Some),
         Command::Context {
             command: ContextCommand::List,
-        } => Project::load(&cli.root)?.list(),
+        } => Project::load(&cli.root)?.list().map(Some),
         Command::Project {
             name,
             work,
@@ -70,7 +79,8 @@ fn run(cli: Cli) -> Result<Value, Error> {
                 ostk_gpt_cache::launcher::Route::Direct
             },
             codex_args: Vec::new(),
-        }),
+        })
+        .map(Some),
     }
 }
 
@@ -93,9 +103,20 @@ fn inspect_project(request: ProjectArguments) -> Result<Value, Error> {
     Ok(output)
 }
 
-fn finish(result: Result<Value, Error>) {
+async fn run_proxy(config: Config) -> Result<Option<Value>, Error> {
+    ostk_gpt_cache::server::run(config)
+        .await
+        .map(|()| None)
+        .map_err(|error| Error {
+            code: "PROXY_FAILED",
+            message: error.to_string(),
+        })
+}
+
+fn finish(result: Result<Option<Value>, Error>) {
     match result {
-        Ok(output) => println!("{output}"),
+        Ok(Some(output)) => println!("{output}"),
+        Ok(None) => {}
         Err(error) => {
             eprintln!("{}", json!({"error": error}));
             std::process::exit(2);
@@ -103,11 +124,12 @@ fn finish(result: Result<Value, Error>) {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match project_request(&args) {
         Ok(Some(request)) => {
-            finish(inspect_project(request));
+            finish(inspect_project(request).map(Some));
             return;
         }
         Err(error) => {
@@ -116,7 +138,26 @@ fn main() {
         }
         Ok(None) => {}
     }
-    let cli = match Cli::try_parse() {
+    // Preserve the former proxy CLI's direct option form under its new name.
+    let direct_proxy = args.is_empty()
+        || args.first().is_some_and(|arg| {
+            arg.as_encoded_bytes().starts_with(b"-")
+                && !["--help", "-h", "--version", "-V", "--root", "--"]
+                    .iter()
+                    .any(|reserved| arg == reserved)
+                && !arg.as_encoded_bytes().starts_with(b"--root=")
+        });
+    let cli = if direct_proxy {
+        Config::try_parse().map(|config| Cli {
+            root: PathBuf::from("."),
+            command: Command::Proxy {
+                config: Box::new(config),
+            },
+        })
+    } else {
+        Cli::try_parse()
+    };
+    let cli = match cli {
         Ok(cli) => cli,
         Err(e) => {
             if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
@@ -130,5 +171,5 @@ fn main() {
             std::process::exit(2);
         }
     };
-    finish(run(cli));
+    finish(run(cli).await);
 }

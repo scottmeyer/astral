@@ -12,7 +12,7 @@ An unchanged installed Codex client imported native checkpoints through its app-
 The [official advanced configuration documentation](https://learn.chatgpt.com/docs/config-file/config-advanced) documents `openai_base_url` as an override for the built-in OpenAI provider. The installed CLI accepts process-scoped `-c` overrides. No `BASE_URL` environment variable or custom provider was assumed.
 
 ```sh
-ostk-gpt-cache --mode passthrough --native-tool-binding rebind \
+astral proxy --mode passthrough --native-tool-binding rebind \
   --listen 127.0.0.1:18933 \
   --upstream https://chatgpt.com/backend-api/codex \
   --state-dir /private/tmp/<private-experiment>/proxy-state

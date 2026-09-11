@@ -1,5 +1,6 @@
 use ostk_gpt_cache::launcher::{
-    MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, ProjectArguments, ProxyBinding, Route, project_request,
+    DEFAULT_CONTEXT, MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, ProjectArguments, ProxyBinding, Route,
+    project_request,
 };
 #[cfg(unix)]
 use serde_json::Value;
@@ -31,6 +32,73 @@ fn direct_default_adds_no_flags_or_environment_overrides() {
     assert_eq!(command.get_envs().count(), 0);
     assert_eq!(command.get_program(), "codex");
     assert_eq!(req.preview().unwrap()["requested_route"], "direct");
+}
+
+#[test]
+fn omitted_context_defaults_without_consuming_codex_values_or_prompt() {
+    let bare = project_request(&os(&["project"])).unwrap().unwrap();
+    assert_eq!(bare.name, DEFAULT_CONTEXT);
+    assert_eq!(bare.route, Route::Direct);
+    assert!(!bare.inspect);
+    assert!(bare.codex_args.is_empty());
+
+    let options = request(&[
+        "--inspect",
+        "--proxy",
+        "--model",
+        "gpt-6-astra",
+        "--sandbox=read-only",
+        "prompt with spaces",
+    ]);
+    assert_eq!(options.name, DEFAULT_CONTEXT);
+    assert!(options.inspect);
+    assert_eq!(options.route, Route::Proxy);
+    assert_eq!(
+        options.codex_args,
+        os(&[
+            "--model",
+            "gpt-6-astra",
+            "--sandbox=read-only",
+            "prompt with spaces"
+        ])
+    );
+
+    let separated = request(&[
+        "--",
+        "prompt with spaces",
+        "--proxy",
+        "--inspect",
+        "--dangerously-bypass-approvals-and-sandbox",
+    ]);
+    assert_eq!(separated.name, DEFAULT_CONTEXT);
+    assert_eq!(separated.route, Route::Direct);
+    assert!(!separated.inspect);
+    assert_eq!(
+        separated.codex_args,
+        os(&[
+            "prompt with spaces",
+            "--proxy",
+            "--inspect",
+            "--dangerously-bypass-approvals-and-sandbox"
+        ])
+    );
+
+    let explicit = request(&[
+        "projection:saved",
+        "--inspect",
+        "--",
+        "a positional prompt",
+        "--root",
+        "literal value",
+    ]);
+    assert_eq!(explicit.name, "projection:saved");
+    assert_eq!(
+        explicit.codex_args,
+        os(&["a positional prompt", "--root", "literal value"])
+    );
+    let option_value = request(&["--model", "web", "--inspect"]);
+    assert_eq!(option_value.name, DEFAULT_CONTEXT);
+    assert_eq!(option_value.codex_args, os(&["--model", "web"]));
 }
 
 #[test]
@@ -155,8 +223,7 @@ fn literal_separator_is_never_consumed_as_a_root_value() {
 #[test]
 fn malformed_options_and_argument_bounds_fail_without_echoing_values() {
     for args in [
-        vec![],
-        vec!["--proxy"],
+        vec![""],
         vec!["web", "--work"],
         vec!["web", "--work="],
         vec!["web", "--root="],
@@ -393,7 +460,7 @@ fn project_fixture(root: &Path) {
     put(
         root,
         ".astral/project.toml",
-        "schema_version=1\nid='test'\nname='Test'\ndescription='Fixture'\ncore='core'\nprojections='projections'\nwork_items='work/items.jsonl'\n[identity]\nscope='local'\nruntime_bindings='external'\n[subsystems]\nweb='core/web'\n",
+        "schema_version=1\nid='test'\nname='Test'\ndescription='Fixture'\ncore='core'\nprojections='projections'\nwork_items='work/items.jsonl'\n[identity]\nscope='local'\nruntime_bindings='external'\n[subsystems]\nweb='core/web'\nproject-context='core/project-context'\n",
     );
     for file in ["ARCHITECTURE.md", "RUN.md", "TEST.md"] {
         put(
@@ -411,6 +478,16 @@ fn project_fixture(root: &Path) {
         root,
         ".astral/core/web/README.md",
         "Do not execute this document.",
+    );
+    put(
+        root,
+        ".astral/core/project-context/subsystem.toml",
+        "schema_version=1\nid='project-context'\npurpose='Default context fixture'\nreadme='README.md'\nrules=[]\ndecisions=[]\nwork_items=[]\nprojection='saved'\n",
+    );
+    put(
+        root,
+        ".astral/core/project-context/README.md",
+        "The user-defined default subsystem.",
     );
     put(
         root,
@@ -479,6 +556,63 @@ fn cli_inspection_previews_requested_route_but_never_claims_launch() {
             "--future",
             "value",
         ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
+        "LAUNCH_NOT_IMPLEMENTED"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
+    let root = tempfile::tempdir().unwrap();
+    project_fixture(root.path());
+    for options in [vec!["--inspect"], vec!["--proxy", "--inspect"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+            .arg("--root")
+            .arg(root.path())
+            .arg("project")
+            .args(&options)
+            .args([
+                "--",
+                "prompt with spaces",
+                "--proxy",
+                "--dangerously-bypass-approvals-and-sandbox",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["selection"]["id"], DEFAULT_CONTEXT);
+        assert_eq!(
+            result["launch_request"]["requested_route"],
+            if options.contains(&"--proxy") {
+                "proxy"
+            } else {
+                "direct"
+            }
+        );
+        assert_eq!(
+            result["launch_request"]["codex_args"],
+            json!([
+                "prompt with spaces",
+                "--proxy",
+                "--dangerously-bypass-approvals-and-sandbox"
+            ])
+        );
+        assert_eq!(result["launch_request"]["executed"], false);
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--root")
+        .arg(root.path())
+        .arg("project")
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));

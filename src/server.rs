@@ -1,17 +1,14 @@
-use clap::Parser;
-use ostk_gpt_cache::{
+use crate::{
     config::Config,
     proxy::{App, router},
 };
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = Config::parse();
+pub async fn run(config: Config) -> anyhow::Result<()> {
     let address = config.listen;
     let app = App::new(config).await?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     eprintln!(
-        "ostk-gpt-cache {} listening on {}",
+        "astral {} listening on {}",
         env!("CARGO_PKG_VERSION"),
         listener.local_addr()?
     );

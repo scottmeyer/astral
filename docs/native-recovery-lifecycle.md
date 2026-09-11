@@ -146,7 +146,7 @@ From the experimental checkout, build the binary and choose a private directory:
 cargo build --release --locked --bins
 ASTRAL_DIAGNOSTICS=$(mktemp -d "${TMPDIR:-/tmp}/astral-dogfood.XXXXXX")
 chmod 700 "$ASTRAL_DIAGNOSTICS"
-./target/release/ostk-gpt-cache \
+./target/release/astral proxy \
   --mode passthrough --native-tool-binding rebind \
   --listen 127.0.0.1:18941 \
   --upstream https://chatgpt.com/backend-api/codex \

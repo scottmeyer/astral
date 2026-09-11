@@ -14,7 +14,9 @@ recovery. Historical commands require a current instruction before execution.
 
 ## Verified current structure
 
-The Rust crate and proxy binary are `ostk-gpt-cache`. `src/proxy.rs` owns HTTP
+The unified binary is `astral`; `astral proxy` starts the server, while `project`
+and `context` inspect project context. The internal Rust crate remains
+`ostk-gpt-cache`. `src/server.rs` owns startup and shutdown; `src/proxy.rs` owns HTTP
 routing; `engine.rs`, `store.rs`, and `policy.rs` implement the existing projection,
 persistence, and cache policies. `working.rs` supports the optional explicit host.
 These are distinct from the experimental Codex compatibility path.
