@@ -35,6 +35,13 @@ These synthetic bundle tests establish local structural behavior, not provider
 decryptability, exporter completeness or successful destination import.
 See the dated [bundle verification receipt](../../docs/native-bundle-verification.md).
 
+Native staging, private launch receipts, managed proxy teardown and headless
+worker launch now have focused process/transport coverage. The dated
+[native launch receipt](../../docs/native-launch-verification.md) records current
+local checks and disposable live execution, opaque recall, cold resume,
+read-only denial and Astral worker dogfood. Those results do not qualify arbitrary
+metadata, cross-account transfer or automatic worktree/save behavior.
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

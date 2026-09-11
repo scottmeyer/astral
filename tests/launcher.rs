@@ -32,6 +32,71 @@ fn direct_default_adds_no_flags_or_environment_overrides() {
     assert_eq!(command.get_envs().count(), 0);
     assert_eq!(command.get_program(), "codex");
     assert_eq!(req.preview().unwrap()["requested_route"], "direct");
+    assert_eq!(req.preview().unwrap()["non_interactive"], false);
+    assert!(req.preview().unwrap()["resume"].is_null());
+}
+
+#[test]
+fn headless_and_owned_resume_options_stop_at_the_literal_separator() {
+    use ostk_gpt_cache::launcher::initialization_request;
+    let id = "0123456789abcdef0123456789abcdef";
+    let req = request(&[
+        "web",
+        "--non-interactive",
+        "--resume",
+        id,
+        "--",
+        "--resume",
+        "caller-value",
+        "--non-interactive",
+        "prompt",
+    ]);
+    assert!(req.non_interactive);
+    assert_eq!(req.resume.as_deref(), Some(id));
+    assert_eq!(
+        req.codex_args,
+        os(&["--resume", "caller-value", "--non-interactive", "prompt"])
+    );
+    assert_eq!(req.preview().unwrap()["resume"], id);
+    assert_eq!(req.preview().unwrap()["non_interactive"], true);
+    assert_eq!(request(&["--resume=abc"]).resume.as_deref(), Some("abc"));
+    let raw = request(&["--", "--non-interactive", "--resume", id]);
+    assert!(!raw.non_interactive);
+    assert!(raw.resume.is_none());
+    for args in [
+        vec!["--resume"],
+        vec!["--resume", "--", "id"],
+        vec!["--resume="],
+        vec!["--resume=x", "--resume=y"],
+        vec!["--non-interactive", "--non-interactive"],
+    ] {
+        assert_eq!(
+            ProjectArguments::parse(PathBuf::from("."), os(&args))
+                .unwrap_err()
+                .code,
+            "CLI_USAGE"
+        );
+    }
+    assert_eq!(
+        initialization_request(&os(&["init", "--resume", id]))
+            .unwrap_err()
+            .code,
+        "CLI_USAGE"
+    );
+    let (init, non_interactive) = initialization_request(&os(&[
+        "init",
+        "--non-interactive",
+        "--",
+        "--resume",
+        id,
+        "--non-interactive",
+    ]))
+    .unwrap()
+    .unwrap();
+    assert!(non_interactive);
+    assert!(init.non_interactive);
+    assert!(init.resume.is_none());
+    assert_eq!(init.codex_args, os(&["--resume", id, "--non-interactive"]));
 }
 
 #[test]
@@ -561,7 +626,7 @@ fn cli_inspection_previews_requested_route_but_never_claims_launch() {
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
-        "PROXY_LAUNCH_NOT_IMPLEMENTED"
+        "INVALID_ROOT"
     );
 }
 
@@ -622,7 +687,7 @@ fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
-        "PROXY_LAUNCH_NOT_IMPLEMENTED"
+        "PROXY_REQUIRES_NATIVE"
     );
 }
 

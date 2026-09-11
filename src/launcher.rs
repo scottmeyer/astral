@@ -1,6 +1,7 @@
 //! Argument plumbing for a future native launcher, independent of session staging.
 //!
-//! Astral owns `--root`, `--work`, `--inspect`, and `--proxy` before the first
+//! Astral owns `--root`, `--work`, `--inspect`, `--proxy`, `--non-interactive`,
+//! and `--resume` before the first
 //! literal `--`. Unknown Codex options have unknown arity: if an option's value
 //! equals an Astral option, put the whole Codex argument sequence after `--`.
 //! The separator itself is consumed; subsequent tokens, including another `--`,
@@ -76,6 +77,9 @@ pub struct ProjectArguments {
     pub name: String,
     pub work: Option<String>,
     pub inspect: bool,
+    pub non_interactive: bool,
+    /// Astral's private launch receipt ID, never an arbitrary Codex thread ID.
+    pub resume: Option<String>,
     pub route: Route,
     /// Raw user arguments. Never round-trip these through a shell or JSON preview.
     pub codex_args: Vec<OsString>,
@@ -107,6 +111,8 @@ impl ProjectArguments {
             name,
             work: None,
             inspect: false,
+            non_interactive: false,
+            resume: None,
             route: Route::Direct,
             codex_args: Vec::new(),
         };
@@ -126,6 +132,23 @@ impl ProjectArguments {
                     return Err(error("CLI_USAGE", "duplicate --inspect"));
                 }
                 parsed.inspect = true;
+            } else if arg == "--non-interactive" {
+                if parsed.non_interactive {
+                    return Err(error("CLI_USAGE", "duplicate --non-interactive"));
+                }
+                parsed.non_interactive = true;
+            } else if arg == "--resume" || option_value(&arg, "--resume=").is_some() {
+                if parsed.resume.is_some() {
+                    return Err(error("CLI_USAGE", "duplicate --resume"));
+                }
+                let value = option_value(&arg, "--resume=")
+                    .or_else(|| args.next())
+                    .ok_or_else(|| error("CLI_USAGE", "--resume requires a launch ID"))?;
+                let value = utf8(value, "launch ID must be UTF-8")?;
+                if value.is_empty() || value.starts_with('-') {
+                    return Err(error("CLI_USAGE", "--resume requires a launch ID"));
+                }
+                parsed.resume = Some(value);
             } else if arg == "--proxy" {
                 if parsed.route == Route::Proxy {
                     return Err(error("CLI_USAGE", "duplicate --proxy"));
@@ -167,6 +190,8 @@ impl ProjectArguments {
         let args: Vec<_> = self.codex_args.iter().map(|arg| arg.to_str().ok_or_else(|| error("NON_UTF8_ARGUMENT", "JSON inspection requires UTF-8 arguments; execution plumbing retains original OsString values"))).collect::<Result<_>>()?;
         Ok(json!({
             "requested_route": self.route,
+            "non_interactive": self.non_interactive,
+            "resume": self.resume,
             "codex_args": args,
             "argument_boundary": "Astral options are recognized before the first --; place all Codex arguments after -- to protect option values that resemble Astral options",
             "executed": false
@@ -326,26 +351,16 @@ pub fn initialization_request(args: &[OsString]) -> Result<Option<(ProjectArgume
             }
             let mut project_args = args[..index].to_vec();
             project_args.extend(["project".into(), DEFAULT_CONTEXT.into()]);
-            let mut non_interactive = false;
-            let mut after_separator = false;
-            for arg in &args[index + 1..] {
-                if !after_separator && arg == "--non-interactive" {
-                    if non_interactive {
-                        return Err(error("CLI_USAGE", "duplicate --non-interactive"));
-                    }
-                    non_interactive = true;
-                } else {
-                    if arg == "--" {
-                        after_separator = true;
-                    }
-                    project_args.push(arg.clone());
-                }
-            }
+            project_args.extend_from_slice(&args[index + 1..]);
             let request = project_request(&project_args)?
                 .ok_or_else(|| error("CLI_USAGE", "invalid initialization arguments"))?;
-            if request.work.is_some() || request.route == Route::Proxy {
-                return Err(error("CLI_USAGE", "init does not accept --work or --proxy"));
+            if request.work.is_some() || request.route == Route::Proxy || request.resume.is_some() {
+                return Err(error(
+                    "CLI_USAGE",
+                    "init does not accept --work, --proxy, or --resume",
+                ));
             }
+            let non_interactive = request.non_interactive;
             return Ok(Some((request, non_interactive)));
         }
         if arg == "--root" {

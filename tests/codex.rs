@@ -11,6 +11,44 @@ use tempfile::TempDir;
 
 const THREAD_ID: &str = "01a10000-1234-7000-8000-000000000001";
 
+#[tokio::test]
+async fn cancelling_the_owned_child_wait_terminates_its_process() {
+    use std::time::Duration;
+    let directory = TempDir::new().unwrap();
+    let marker = directory.path().join("pid");
+    let mut command = tokio::process::Command::new("/bin/sh");
+    command
+        .args([
+            "-c",
+            "printf '%s' \"$$\" > \"$1\"; exec sleep 60",
+            "fixture",
+        ])
+        .arg(&marker);
+    let task = tokio::spawn(ostk_gpt_cache::codex::wait_interactive(command));
+    let pid: i32 = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(value) = fs::read_to_string(&marker) {
+                if let Ok(pid) = value.parse() {
+                    break pid;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    tokio::time::timeout(Duration::from_secs(5), async {
+        // SAFETY: signal zero only tests this fixture's recorded process ID.
+        while unsafe { libc::kill(pid, 0) } == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("cancelled owned child remained alive");
+}
+
 // This executable implements only the three staging requests. In particular,
 // it records and fails any attempt to start a model turn or execute a tool.
 const SERVER: &str = r#"#!/usr/bin/env python3

@@ -248,6 +248,14 @@ pub struct FreshContext {
     pub work_item: Option<FreshWorkItem>,
 }
 
+/// Current selected documents and, when required, a separate immutable native
+/// window. Documents never stand in for the required native state.
+#[derive(Debug, Clone)]
+pub struct ProjectLaunchContext {
+    pub current_context: FreshContext,
+    pub native: Option<NativeBundle>,
+}
+
 struct Subsystem {
     manifest: SubsystemManifest,
     directory: String,
@@ -1265,7 +1273,26 @@ impl Project {
     /// Provenance descriptions remain inert. This is neither a native restore nor
     /// an atomic workspace snapshot, and the usual serialized output limit applies.
     pub fn fresh_context(&self, selector: &str, work_id: Option<&str>) -> Result<FreshContext> {
+        self.build_launch_context(selector, work_id, false)
+            .map(|context| context.current_context)
+    }
+
+    pub fn launch_context(
+        &self,
+        selector: &str,
+        work_id: Option<&str>,
+    ) -> Result<ProjectLaunchContext> {
+        self.build_launch_context(selector, work_id, true)
+    }
+
+    fn build_launch_context(
+        &self,
+        selector: &str,
+        work_id: Option<&str>,
+        allow_native: bool,
+    ) -> Result<ProjectLaunchContext> {
         let resolved = self.resolve(selector, work_id)?;
+        let mut native_bundles = BTreeMap::new();
         let mut fresh_sources: BTreeMap<_, _> = resolved
             .sources
             .iter()
@@ -1283,16 +1310,21 @@ impl Project {
                 .iter()
                 .map(|id| &self.projections[&self.subsystems[id].manifest.projection]),
         ) {
-            if projection.native.is_some() {
-                return Err(error(
-                    "NATIVE_LAUNCH_NOT_IMPLEMENTED",
-                    format!(
-                        "projection {} has a validated native bundle; destination staging and native launch are not implemented",
-                        projection.manifest.id
-                    ),
-                ));
-            }
-            if !matches!(
+            if let Some(native) = &projection.native {
+                if !allow_native {
+                    return Err(error(
+                        "NATIVE_CONTEXT_REQUIRES_STAGING",
+                        format!(
+                            "projection {} requires native staging; it cannot launch as fresh document context",
+                            projection.manifest.id
+                        ),
+                    ));
+                }
+                native_bundles.insert(
+                    native.bundle.summary().manifest_sha256.clone(),
+                    &native.bundle,
+                );
+            } else if !matches!(
                 projection.manifest.kind.as_str(),
                 "reviewable-design-context" | "reviewable" | "fresh-context"
             ) {
@@ -1306,6 +1338,12 @@ impl Project {
             }
             let path = join(&projection.directory, "projection.toml")?;
             fresh_sources.insert((path.clone(), None), self.sources[&path].clone());
+        }
+        if native_bundles.len() > 1 {
+            return Err(error(
+                "MULTIPLE_NATIVE_CONTEXTS",
+                "selection contains distinct native histories; choose one projection instead of implicitly merging them",
+            ));
         }
         let mut text_bytes = resolved.work.map_or(0, |work| work.text.len());
         let mut documents = Vec::new();
@@ -1347,7 +1385,10 @@ impl Project {
         {
             return Err(error("LIMIT_EXCEEDED", "fresh context output byte limit"));
         }
-        Ok(context)
+        Ok(ProjectLaunchContext {
+            current_context: context,
+            native: native_bundles.into_values().next().cloned(),
+        })
     }
 
     fn closure(&self, id: &str, selected: &mut BTreeSet<String>) {
@@ -1361,5 +1402,5 @@ impl Project {
 
 fn native_binding() -> Value {
     json!({"state": "UNBOUND", "launch": false, "plaintext_substitution": false,
-        "reason": "Native checkpoint binding is not implemented. Readable handoffs are documentation, not native checkpoints."})
+        "reason": "Inspection does not bind a destination runtime. Native launch requires explicit proxy routing on the supported Codex route."})
 }

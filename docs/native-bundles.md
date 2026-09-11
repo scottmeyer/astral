@@ -2,9 +2,9 @@
 
 Astral can validate a Git-trackable native bundle and inspect its metadata. A
 bundle preserves a complete native item window and its continuation as data.
-This milestone does not capture a session, import the bundle, bind a destination
-runtime, or launch native context. Those remain explicit later milestones.
-Current checks and limitations are recorded in the
+Capture remains a later milestone. The separate [native launcher](native-launch.md)
+now stages compatible bundles and binds a destination runtime through an owned
+proxy. Bundle-reader checks and limitations are recorded in the
 [verification receipt](native-bundle-verification.md).
 
 ## Layout and identity
@@ -119,11 +119,13 @@ Version 1 deliberately qualifies only the listed Codex 0.154.0 / OpenAI Response
 Lite / `gpt-6-astra` metadata combination. Other combinations are explicit errors.
 `same-account` records the limited portability claim; it contains no account ID
 or credential and does not establish that the current destination is that
-account. Actual identity/model/route binding and live continuity checks belong to
-the native launcher milestone. Artifact validation never implies import readiness.
+account. The native launcher checks effective model/route/workspace compatibility;
+same-account provenance remains an operator responsibility and cross-account
+portability is unproven. Artifact validation never implies import readiness.
 In particular, the Codex importer can enrich or intentionally ignore host-owned
 metadata. Exact preservation in this bundle reader does not establish an exact
-round trip through that importer; the launch milestone must check that boundary.
+round trip through that importer. The launch gate rejects fields that the
+supported importer discards and numeric values that typed import would round.
 
 ## Structural validation and trust
 
@@ -182,7 +184,7 @@ with `availability="validated"` and `runtime_binding="unbound"`. Raw native item
 and encrypted content are never printed. Empty arrays describe readable-only
 selections. Selected artifact hashes contribute to the selection fingerprint.
 
-Actual native launch returns `NATIVE_LAUNCH_NOT_IMPLEMENTED`. Missing references
+Native launch requires explicit `--proxy` on the supported Codex route. Missing references
 and unavailable files have separate errors; none triggers fresh-context fallback.
 The current readable bootstrap remains a fresh context and contains no native
 bundle. This feature introduces no proxy requirement for existing fresh launches.

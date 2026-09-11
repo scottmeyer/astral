@@ -19,9 +19,11 @@ session from selected documents in the current checkout. `astral init` starts
 best-effort repository indexing; `astral init --non-interactive` uses `codex exec`.
 See [fresh launch](../../docs/fresh-launch.md) for argument and platform limits.
 Explicit [native bundles](../../docs/native-bundles.md) can be validated with
-`context validate` and inspected with `project NAME --inspect`. Native restoration
-and managed proxy launch remain pending. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
-for the opt-in Codex route and tested resume procedure.
+`context validate` and inspected with `project NAME --inspect`.
+`astral project NAME --proxy` stages a native bundle; `--resume LAUNCH_ID` cold-resumes
+its local thread with a new owned proxy. `--non-interactive -- ...` starts a worker
+with selected context and an explicit task. See [native launch](../../docs/native-launch.md)
+for supported versions, receipt storage, argument examples and remaining limits.
 
 For this experiment, start the proxy on loopback with `--mode passthrough
 --native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private

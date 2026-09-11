@@ -3,7 +3,9 @@
 //! No inference or tool request is sent here. The interactive Codex process owns
 //! execution, authentication, approvals and sandbox enforcement.
 
+use crate::native_bundle::NativeBundle;
 use crate::project::{Error, Result};
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
@@ -135,6 +137,9 @@ impl StagingOptions {
                         | "--profile"
                         | "-p"
                         | "--add-dir"
+                        | "--ephemeral"
+                        | "--ignore-user-config"
+                        | "--ignore-rules"
                 ) || (text.starts_with("-p") && !text.starts_with("--") && text.len() > 2)))
             {
                 return Err(error(
@@ -315,6 +320,7 @@ struct Rpc {
     input: Option<ChildStdin>,
     output: BufReader<ChildStdout>,
     id: u64,
+    request_limit: usize,
 }
 
 impl Rpc {
@@ -338,13 +344,14 @@ impl Rpc {
             input,
             output: BufReader::new(output),
             id: 0,
+            request_limit: RPC_BYTES,
         })
     }
 
-    async fn send(&mut self, value: Value) -> Result<()> {
+    async fn send(&mut self, value: impl Serialize) -> Result<()> {
         let mut bytes = serde_json::to_vec(&value)
             .map_err(|_| error("CODEX_PROTOCOL", "could not encode app-server request"))?;
-        if bytes.len() >= RPC_BYTES {
+        if bytes.len() >= self.request_limit {
             return Err(error("LIMIT_EXCEEDED", "app-server request byte limit"));
         }
         bytes.push(b'\n');
@@ -356,17 +363,22 @@ impl Rpc {
             .map_err(|_| error("CODEX_PROTOCOL", "could not write app-server request"))
     }
 
-    async fn request(&mut self, method: &str, params: Value) -> Result<Value> {
+    async fn request(&mut self, method: &str, params: impl Serialize) -> Result<Value> {
         tokio::time::timeout(RPC_TIMEOUT, self.request_inner(method, params))
             .await
             .map_err(|_| error("CODEX_TIMEOUT", format!("Codex {method} timed out")))?
     }
 
-    async fn request_inner(&mut self, method: &str, params: Value) -> Result<Value> {
+    async fn request_inner(&mut self, method: &str, params: impl Serialize) -> Result<Value> {
         self.id += 1;
         let id = self.id;
-        self.send(json!({"id": id, "method": method, "params": params}))
-            .await?;
+        #[derive(Serialize)]
+        struct Request<'a, T> {
+            id: u64,
+            method: &'a str,
+            params: T,
+        }
+        self.send(Request { id, method, params }).await?;
         let mut total = 0usize;
         for _ in 0..RPC_MESSAGES {
             let mut line = Vec::new();
@@ -470,10 +482,149 @@ pub async fn stage_fresh(
     Ok(id)
 }
 
+#[derive(Debug)]
+pub struct StagedNative {
+    pub thread_id: String,
+    pub model: String,
+    pub model_provider: String,
+}
+
+async fn verify_native_version(executable: &OsStr, root: &Path, expected: &str) -> Result<()> {
+    let mut child = Command::new(executable)
+        .arg("--version")
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|_| error("CODEX_UNAVAILABLE", "could not check Codex version"))?;
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut output = Vec::new();
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| error("CODEX_PROTOCOL", "version output unavailable"))?
+            .take(4097)
+            .read_to_end(&mut output)
+            .await
+            .map_err(|_| error("CODEX_PROTOCOL", "could not read Codex version"))?;
+        if output.len() > 4096 {
+            return Err(error("LIMIT_EXCEEDED", "Codex version output limit"));
+        }
+        let status = child
+            .wait()
+            .await
+            .map_err(|_| error("CODEX_UNAVAILABLE", "could not check Codex version"))?;
+        let version = String::from_utf8_lossy(&output);
+        if !status.success() || version.trim() != format!("codex-cli {expected}") {
+            return Err(error(
+                "NATIVE_RUNTIME_MISMATCH",
+                format!("native launch requires Codex {expected}"),
+            ));
+        }
+        Ok(())
+    })
+    .await;
+    match result {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            Err(error("CODEX_TIMEOUT", "Codex version check timed out"))
+        }
+    }
+}
+
+/// Import one complete native window, or reopen a receipt-bound destination.
+/// Only current runtime options supply capabilities and permissions. No turn
+/// is started here. Raw items are serialized directly, without a Value roundtrip.
+pub async fn stage_native(
+    executable: &OsStr,
+    root: &Path,
+    mut options: StagingOptions,
+    bundle: &NativeBundle,
+    context: &str,
+    proxy_url: &str,
+    resume_thread: Option<&str>,
+) -> Result<StagedNative> {
+    crate::native_import::validate(bundle)?;
+    let compatibility = &bundle.manifest().compatibility;
+    verify_native_version(executable, root, &compatibility.runtime_version).await?;
+    if resume_thread.is_some_and(|id| !valid_thread_id(id)) {
+        return Err(error("CODEX_PROTOCOL", "invalid receipt thread ID"));
+    }
+    // Same order as the child command: owned routing precedes current caller
+    // overrides. Effective configuration is checked before native items leave
+    // this process, so an override cannot silently route a checkpoint elsewhere.
+    crate::launcher::ProxyBinding::loopback(proxy_url)?;
+    let mut args: Vec<OsString> = vec!["app-server".into(), "--listen".into(), "stdio://".into()];
+    args.extend([
+        "-c".into(),
+        format!("openai_base_url={proxy_url:?}").into(),
+        "-c".into(),
+        "features.enable_request_compression=false".into(),
+    ]);
+    args.extend(options.server_args.into_iter().skip(3));
+    let mut rpc = Rpc::spawn(executable, root, &args)?;
+    // Native payload is at most 8 MiB; the current document prompt is at most
+    // 2 MiB before JSON escaping. Responses retain their independent 4 MiB cap.
+    rpc.request_limit = 24 * 1024 * 1024;
+    let result = async {
+        rpc.request("initialize", json!({"clientInfo":{"name":"astral","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
+        rpc.send(json!({"method":"initialized","params":{}})).await?;
+        let config = rpc.request("config/read", json!({"cwd":root,"includeLayers":false})).await?;
+        let config = config.get("config").ok_or_else(|| error("CODEX_PROTOCOL", "missing effective configuration"))?;
+        if config.get("openai_base_url").and_then(Value::as_str) != Some(proxy_url)
+            || config.pointer("/features/enable_request_compression").and_then(Value::as_bool) != Some(false)
+            || config.pointer("/model_providers/openai").is_some_and(|v| !v.is_null())
+            || config.get("model_provider").and_then(Value::as_str).is_some_and(|p| p != compatibility.provider)
+        {
+            return Err(error("NATIVE_ROUTE_CONFLICT", "effective Codex configuration differs from the owned native proxy route"));
+        }
+        let method = if let Some(id) = resume_thread {
+            options.thread_params["threadId"] = json!(id);
+            options.thread_params["excludeTurns"] = json!(true);
+            "thread/resume"
+        } else { "thread/start" };
+        let started = rpc.request(method, options.thread_params).await?;
+        let id = started.pointer("/thread/id").and_then(Value::as_str).filter(|id| valid_thread_id(id))
+            .ok_or_else(|| error("CODEX_PROTOCOL", "invalid staged thread ID"))?.to_owned();
+        if resume_thread.is_some_and(|expected| expected != id)
+            || started.pointer("/thread/ephemeral").and_then(Value::as_bool) != Some(false)
+        { return Err(error("CODEX_PROTOCOL", "native thread identity or durable storage differs from requested binding")); }
+        let cwd = started.get("cwd").and_then(Value::as_str).ok_or_else(|| error("CODEX_PROTOCOL", "native thread did not report its workspace"))?;
+        if Path::new(cwd).canonicalize().ok().as_deref() != Some(root) {
+            return Err(error("WORKSPACE_CONFLICT", "native thread workspace differs from selected context"));
+        }
+        let model = started.get("model").and_then(Value::as_str);
+        let provider = started.get("modelProvider").and_then(Value::as_str);
+        if model != Some(compatibility.model.as_str()) || provider != Some(compatibility.provider.as_str()) {
+            return Err(error("NATIVE_RUNTIME_MISMATCH", "effective model/provider differs from the native bundle"));
+        }
+        if resume_thread.is_none() {
+            #[derive(Serialize)]
+            #[serde(rename_all="camelCase")]
+            struct Injection<'a> { thread_id: &'a str, items: Vec<&'a serde_json::value::RawValue> }
+            let current = serde_json::value::to_raw_value(&json!({"type":"message","role":"user","content":[{"type":"input_text","text":context}]}))
+                .map_err(|_| error("CODEX_PROTOCOL", "could not encode current project context"))?;
+            let mut items: Vec<_> = bundle.raw_items().iter().map(AsRef::as_ref).collect();
+            items.push(current.as_ref());
+            rpc.request("thread/inject_items", Injection { thread_id:&id, items }).await?;
+        }
+        Ok(StagedNative { thread_id:id, model:compatibility.model.clone(), model_provider:compatibility.provider.clone() })
+    }.await;
+    let closed = rpc.close().await;
+    let staged = result?;
+    closed?;
+    Ok(staged)
+}
+
 pub async fn wait_interactive(mut command: Command) -> Result<i32> {
     let status = command
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
+        .kill_on_drop(true)
         .status()
         .await
         .map_err(|_| {

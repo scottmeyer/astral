@@ -163,6 +163,9 @@ fn unified_help_describes_commands_and_default_project_context() {
     assert!(global.contains("astral"));
     assert!(!global.contains("ostk-gpt-cache"));
     let project = help(&["project", "--help"]);
+    assert!(project.contains("--non-interactive"));
+    assert!(project.contains("--resume"));
+    assert!(project.contains("codex exec resume"));
     assert!(project.contains("project-context"));
     assert!(project.contains("--proxy"));
     assert!(project.contains("NAME is omitted"));

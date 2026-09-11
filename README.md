@@ -14,8 +14,11 @@ context defaults to `project-context`.
 `astral project` now launches fresh document contexts in Codex; `astral init`
 asks Codex to build a best-effort index in an uninitialized repository. See
 [fresh launch](docs/fresh-launch.md) for commands and current runtime limits.
-Explicit [native bundles](docs/native-bundles.md) can now be validated and inspected
-as Git-trackable data. Native capture and restoration remain pending.
+Explicit [native bundles](docs/native-bundles.md) can be validated, inspected and
+launched with `astral project NAME --proxy`. Local receipts support cold resume.
+`--non-interactive` runs a Codex worker with selected context and an explicit
+task; see [native launch and delegated workers](docs/native-launch.md). Native
+capture and automatic branch/worktree integration remain later milestones.
 
 Inspection prints formatted JSON. `astral work id` proposes a short random work
 ID for new JSONL records, avoiding per-branch counters. See the

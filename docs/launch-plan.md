@@ -3,8 +3,9 @@
 Launch is implemented in bounded milestones. The current executable validates
 context, inspects selected inputs, allocates work ID proposals, initializes new
 indexes and launches fresh document contexts in Codex. It also validates typed
-native bundles and reports their local availability. Native restoration and
-managed proxy processes remain pending.
+native bundles and reports their local availability. Native launch with an owned
+proxy, local receipt-based cold resume and headless worker launch are implemented;
+see [native launch](native-launch.md) for the supported runtime and limits.
 The earlier successful native lifecycle tests establish a feasible route, with
 the version and protocol limits in [the lifecycle receipt](native-recovery-lifecycle.md).
 
@@ -53,8 +54,10 @@ The first milestone is complete with the runtime limits documented in
 [verification receipt](fresh-launch-verification.md). The second milestone is
 complete: the [native bundle contract](native-bundles.md) and its
 [verification receipt](native-bundle-verification.md) keep artifact integrity
-separate from destination runtime binding. The next milestone adds usable native restoration in
-the existing checkout. Milestone four introduces automatic worktree creation.
+separate from destination runtime binding. The third milestone adds usable native
+restoration in the existing checkout and `--non-interactive` workers, with
+[current verification](native-launch-verification.md). Milestone
+four introduces automatic worktree creation.
 Existing broad work items
 retain their IDs and close only when their acceptance criteria are actually met.
 
@@ -70,16 +73,18 @@ astral project web --inspect --work AST-3k9v4n6x2m7q
 astral init
 astral init --inspect
 astral work id
+astral project my-checkpoint --proxy
+astral project my-checkpoint --proxy --resume LAUNCH_ID
+astral project web --non-interactive --work AST-3k9v4n6x2m7q -- --json 'Review the selected task.'
 ```
 
 Later milestones extend the established interface:
 
 ```sh
-astral project that-really-hard-problem --proxy
 astral project web --work AST-3k9v4n6x2m7q -- --model gpt-6-astra
 ```
 
-`--work` currently adds the selected record to fresh context; milestone four adds
+`--work` currently adds the selected record to the current project context; milestone four adds
 automatic branch/worktree binding to that same command.
 
 The sample work ID is illustrative. `astral work id` proposes a random ID but

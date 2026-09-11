@@ -7,26 +7,37 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 const FAKE: &str = r#"#!/usr/bin/env python3
-import json, os, pathlib, re, sys
+import json, os, pathlib, re, sys, tomllib
 root = pathlib.Path.cwd()
 log = pathlib.Path(os.environ['ASTRAL_TEST_LOG'])
 def record(kind, **values):
     with log.open('a') as f: f.write(json.dumps(dict(kind=kind, **values)) + '\n')
 record('argv', args=sys.argv[1:], cwd=str(root))
 mode = os.environ.get('ASTRAL_TEST_MODE', '')
-if sys.argv[1] == 'app-server':
+if sys.argv[1] == '--version':
+    print('codex-cli 0.154.0')
+elif sys.argv[1] == 'app-server':
+    config = {}
+    for i, arg in enumerate(sys.argv):
+        if arg == '-c': config.update(tomllib.loads(sys.argv[i+1]))
     for line in sys.stdin:
         request = json.loads(line)
         record('rpc', request=request)
         if 'id' not in request: continue
         result = {}
-        if request['method'] == 'thread/start':
-            result = dict(thread=dict(id='01234567-89ab-cdef-0123-456789abcdef', ephemeral=False), cwd=str(root))
+        if request['method'] == 'config/read':
+            result = dict(config=config)
+        if request['method'] in ['thread/start', 'thread/resume']:
+            result = dict(thread=dict(id='01234567-89ab-cdef-0123-456789abcdef', ephemeral=False), cwd=str(root), model='gpt-6-astra', modelProvider='openai')
+        if mode == 'native-stage-fail' and request['method'] == 'thread/inject_items':
+            print(json.dumps(dict(id=request['id'], error=dict(code=-1,message='fixture rejection'))), flush=True)
+            continue
         print(json.dumps(dict(id=request['id'], result=result)), flush=True)
     record('closed')
-elif sys.argv[1] == 'resume':
+elif sys.argv[1] == 'resume' or sys.argv[1:3] == ['exec', 'resume']:
     assert any(json.loads(row)['kind'] == 'closed' for row in log.read_text().splitlines())
     record('resumed')
+    if sys.argv[1] == 'exec': record('headless_stdin', value=sys.stdin.read())
     sys.exit(23 if mode == 'fail' else 0)
 else:
     prompt = sys.argv[2] if sys.argv[1] == 'exec' else sys.argv[1]
@@ -167,6 +178,80 @@ fn cli_initializes_validates_stages_and_resumes_with_literal_arguments() {
 }
 
 #[test]
+fn headless_project_executes_resume_with_null_stdin_and_exact_raw_suffix() {
+    use std::io::Write;
+    use std::process::Stdio;
+    let root = tempfile::tempdir().unwrap();
+    let (bin, log) = fixture(root.path());
+    assert!(
+        invoke(root.path(), &bin, &log, &["init", "--non-interactive"], "")
+            .status
+            .success()
+    );
+    let raw = [
+        "-c",
+        "sandbox_mode=\"read-only\"",
+        "-c",
+        "approval_policy=\"never\"",
+        "--json",
+        "literal prompt $() `quoted` ; spaces",
+    ];
+    let mut child = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--root")
+        .arg(root.path())
+        .args(["project", "--non-interactive", "--"])
+        .args(raw)
+        .env("ASTRAL_CODEX_BIN", &bin)
+        .env("ASTRAL_TEST_LOG", &log)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"not a Codex prompt\n")
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let rows: Vec<Value> = fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let argv = rows.iter().rfind(|r| r["kind"] == "argv").unwrap()["args"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        &argv[..3],
+        &[
+            Value::from("exec"),
+            Value::from("resume"),
+            Value::from("01234567-89ab-cdef-0123-456789abcdef")
+        ]
+    );
+    assert_eq!(&argv[3..], raw.map(Value::from));
+    assert_eq!(
+        rows.iter().find(|r| r["kind"] == "headless_stdin").unwrap()["value"],
+        ""
+    );
+    let failed = invoke(
+        root.path(),
+        &bin,
+        &log,
+        &["project", "--non-interactive"],
+        "fail",
+    );
+    assert_eq!(failed.status.code(), Some(23));
+}
+
+#[test]
 fn cli_initialization_failures_keep_generated_files_and_propagate_exit_status() {
     for (mode, status, expected_error) in [
         ("fail", 23, None),
@@ -266,4 +351,217 @@ fn invalid_native_reference_and_conflicting_session_selector_do_not_launch() {
     let out = invoke(root.path(), &bin, &log, &["project"], "");
     assert_eq!(error(&out), "INVALID_NATIVE_REFERENCE");
     assert_eq!(fs::read(&log).unwrap(), before);
+}
+
+fn native_fixture(root: &Path, bin: &Path, log: &Path) {
+    assert!(
+        invoke(root, bin, log, &["init", "--non-interactive"], "")
+            .status
+            .success()
+    );
+    let projection = root.join(".astral/projections/initial-project-context");
+    let bundle = projection.join("bundles/demo");
+    fs::create_dir_all(&bundle).unwrap();
+    let payload = br#"[{"type":"compaction","encrypted_content":"SYNTHETIC_NATIVE_OPAQUE"},{"type":"message","role":"user","content":[{"type":"input_text","text":"HISTORICAL_NATIVE_TAIL"}]}]"#;
+    let manifest = serde_json::to_vec(&serde_json::json!({
+        "schema_version":1,"format":"astral-codex-native",
+        "payload":{"file":"window.json","sha256":ostk_gpt_cache::hash(payload),"bytes":payload.len(),"item_count":2},
+        "compatibility":{"runtime":"codex","runtime_version":"0.154.0","protocol":"openai-responses-lite","provider":"openai","model":"gpt-6-astra","requires_tool_rebinding":true,"identity_scope":"same-account"},
+        "source":{"project_id":"project","revision":null,"dirty":false,"selection_sha256":"a".repeat(64),"history_sha256":"b".repeat(64)},
+        "capture":{"boundary":"completed-turn","history_complete":true,"last_checkpoint_index":0},"parents":[]
+    })).unwrap();
+    fs::write(bundle.join("manifest.json"), &manifest).unwrap();
+    fs::write(bundle.join("window.json"), payload).unwrap();
+    fs::write(projection.join("projection.toml"), format!("schema_version=1\nid='initial-project-context'\nkind='native-checkpoint'\nsubsystems=['project-context']\nhandoff='handoff.md'\nnative_payload_in_repository=true\nsources=[]\n[native_bundle]\nmanifest='bundles/demo/manifest.json'\nsha256='{}'\n", ostk_gpt_cache::hash(&manifest))).unwrap();
+}
+
+fn invoke_native(
+    root: &Path,
+    bin: &Path,
+    log: &Path,
+    state: &Path,
+    args: &[&str],
+    mode: &str,
+) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--root")
+        .arg(root)
+        .args(args)
+        .env("ASTRAL_CODEX_BIN", bin)
+        .env("ASTRAL_TEST_LOG", log)
+        .env("ASTRAL_TEST_MODE", mode)
+        .env("ASTRAL_LAUNCH_STATE_DIR", state)
+        .output()
+        .unwrap()
+}
+
+fn receipt(state: &Path) -> (String, Value) {
+    let entries: Vec<_> = fs::read_dir(state).unwrap().map(|e| e.unwrap()).collect();
+    assert_eq!(entries.len(), 1);
+    let directory = entries[0].path();
+    let id = entries[0].file_name().into_string().unwrap();
+    let receipt: Value =
+        serde_json::from_slice(&fs::read(directory.join("receipt.json")).unwrap()).unwrap();
+    (id, receipt)
+}
+
+fn native_rows(log: &Path) -> Vec<Value> {
+    fs::read_to_string(log)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+fn assert_owned_proxy_closed(rows: &[Value]) {
+    let argv = rows
+        .iter()
+        .rfind(|r| r["kind"] == "argv" && r["args"][0] == "app-server")
+        .unwrap()["args"]
+        .as_array()
+        .unwrap();
+    let value = argv
+        .iter()
+        .filter_map(Value::as_str)
+        .find_map(|arg| arg.strip_prefix("openai_base_url="))
+        .unwrap();
+    let url: String = serde_json::from_str(value).unwrap();
+    let url = reqwest::Url::parse(&url).unwrap();
+    let address = format!("127.0.0.1:{}", url.port().unwrap());
+    assert!(std::net::TcpStream::connect(address).is_err());
+}
+
+#[test]
+fn native_cli_stages_once_resumes_same_receipt_and_closes_owned_proxy() {
+    let temp = tempfile::tempdir().unwrap();
+    let parent = temp.path().canonicalize().unwrap();
+    let root = parent.join("workspace");
+    fs::create_dir(&root).unwrap();
+    let (bin, log) = fixture(&root);
+    native_fixture(&root, &bin, &log);
+    let state = parent.join("private-launches");
+    let before = fs::read(&log).unwrap();
+    let direct = invoke_native(
+        &root,
+        &bin,
+        &log,
+        &state,
+        &["project", "--non-interactive"],
+        "",
+    );
+    assert_eq!(error(&direct), "NATIVE_PROXY_REQUIRED");
+    assert_eq!(fs::read(&log).unwrap(), before);
+    assert!(!state.exists());
+    let raw = [
+        "-c",
+        "sandbox_mode=\"read-only\"",
+        "-c",
+        "approval_policy=\"never\"",
+        "literal $() ; prompt",
+    ];
+    let mut args = vec!["project", "--proxy", "--non-interactive", "--"];
+    args.extend(raw);
+    let out = invoke_native(&root, &bin, &log, &state, &args, "");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let (id, first) = receipt(&state);
+    assert_eq!(first["status"], "finished");
+    assert_eq!(first["exit_code"], 0);
+    let first_rows = native_rows(&log);
+    let injected: Vec<_> = first_rows
+        .iter()
+        .filter(|r| r["request"]["method"] == "thread/inject_items")
+        .collect();
+    assert_eq!(injected.len(), 1);
+    let items = injected[0]["request"]["params"]["items"]
+        .as_array()
+        .unwrap();
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[0]["encrypted_content"], "SYNTHETIC_NATIVE_OPAQUE");
+    let context = items[2]["content"][0]["text"].as_str().unwrap();
+    assert!(context.contains("SYNTHETIC_DOC"));
+    assert!(!context.contains("SYNTHETIC_NATIVE_OPAQUE"));
+    let argv = first_rows.iter().rfind(|r| r["kind"] == "argv").unwrap()["args"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        &argv[..3],
+        &[
+            Value::from("exec"),
+            Value::from("resume"),
+            first["thread_id"].clone()
+        ]
+    );
+    assert_eq!(&argv[7..], raw.map(Value::from));
+    assert_owned_proxy_closed(&first_rows);
+    let resumed = invoke_native(
+        &root,
+        &bin,
+        &log,
+        &state,
+        &[
+            "project",
+            "--proxy",
+            "--non-interactive",
+            "--resume",
+            &id,
+            "--",
+            "-c",
+            "sandbox_mode=\"read-only\"",
+            "next prompt",
+        ],
+        "fail",
+    );
+    assert_eq!(
+        resumed.status.code(),
+        Some(23),
+        "{}",
+        String::from_utf8_lossy(&resumed.stderr)
+    );
+    let (_, second) = receipt(&state);
+    assert_eq!(second["thread_id"], first["thread_id"]);
+    assert_eq!(second["exit_code"], 23);
+    let rows = native_rows(&log);
+    assert_eq!(
+        rows.iter()
+            .filter(|r| r["request"]["method"] == "thread/inject_items")
+            .count(),
+        1
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|r| r["request"]["method"] == "thread/resume")
+            .count(),
+        1
+    );
+    assert_owned_proxy_closed(&rows);
+}
+
+#[test]
+fn native_staging_failure_records_receipt_and_stops_proxy_without_child_launch() {
+    let temp = tempfile::tempdir().unwrap();
+    let parent = temp.path().canonicalize().unwrap();
+    let root = parent.join("workspace");
+    fs::create_dir(&root).unwrap();
+    let (bin, log) = fixture(&root);
+    native_fixture(&root, &bin, &log);
+    let state = parent.join("private-launches");
+    let out = invoke_native(
+        &root,
+        &bin,
+        &log,
+        &state,
+        &["project", "--proxy", "--non-interactive"],
+        "native-stage-fail",
+    );
+    assert!(!out.status.success());
+    let (_, recorded) = receipt(&state);
+    assert_eq!(recorded["status"], "failed");
+    assert!(recorded["thread_id"].is_null());
+    let rows = native_rows(&log);
+    assert!(!rows.iter().any(|r| r["kind"] == "resumed"));
+    assert_owned_proxy_closed(&rows);
 }

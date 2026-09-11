@@ -621,7 +621,7 @@ verification = "Historical only"
         assert!(output.stdout.is_empty());
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
-            "PROXY_LAUNCH_NOT_IMPLEMENTED"
+            "INVALID_ROOT"
         );
         for args in [["context", "validate"], ["context", "list"]] {
             let output = Command::new(binary)

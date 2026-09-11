@@ -272,7 +272,7 @@ fn valid_native_selection_is_never_substituted_with_readable_launch_context() {
     for selector in ["web", "projection:web-native", "authentication"] {
         assert_eq!(
             project.fresh_context(selector, None).unwrap_err().code,
-            "NATIVE_LAUNCH_NOT_IMPLEMENTED"
+            "NATIVE_CONTEXT_REQUIRES_STAGING"
         );
         let output = Command::new(env!("CARGO_BIN_EXE_astral"))
             .arg("--root")
@@ -285,9 +285,52 @@ fn valid_native_selection_is_never_substituted_with_readable_launch_context() {
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
         let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(diagnostic["error"]["code"], "NATIVE_LAUNCH_NOT_IMPLEMENTED");
+        assert_eq!(diagnostic["error"]["code"], "NATIVE_PROXY_REQUIRED");
         assert!(!marker.exists());
     }
+}
+
+#[test]
+fn launch_context_keeps_native_window_separate_and_deduplicates_identical_bundles() {
+    let root = fixture();
+    let project = Project::load(root.path()).unwrap();
+    let context = project.launch_context("web", None).unwrap();
+    let documents = serde_json::to_string(&context.current_context).unwrap();
+    assert!(!documents.contains(OPAQUE_MARKER));
+    assert!(!documents.contains(TAIL_MARKER));
+    assert!(context.native.is_some());
+    // These fixture projections pin byte-identical bundles. Different paths
+    // do not create a second native history.
+    assert_eq!(context.native.unwrap().manifest().payload.item_count, 2);
+    write_bundle(
+        root.path(),
+        "auth-native",
+        "authentication",
+        PROJECT_ID,
+        "distinct opaque history",
+    );
+    let project = Project::load(root.path()).unwrap();
+    assert_eq!(
+        project.launch_context("web", None).unwrap_err().code,
+        "MULTIPLE_NATIVE_CONTEXTS"
+    );
+    assert!(
+        project
+            .launch_context("authentication", None)
+            .unwrap()
+            .native
+            .is_some()
+    );
+    make_readable(root.path(), "web-native");
+    make_readable(root.path(), "auth-native");
+    let project = Project::load(root.path()).unwrap();
+    assert!(
+        project
+            .launch_context("web", None)
+            .unwrap()
+            .native
+            .is_none()
+    );
 }
 
 #[test]

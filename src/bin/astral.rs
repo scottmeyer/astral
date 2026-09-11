@@ -48,7 +48,7 @@ enum Command {
         command: WorkCommand,
     },
     #[command(
-        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect and --proxy before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. Fresh document contexts launch directly in Codex. Native restoration and managed --proxy launch remain pending."
+        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect, --proxy, --non-interactive, and --resume before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. --non-interactive runs codex exec resume; use exec-supported Codex options, including -c sandbox_mode and -c approval_policy. --resume names a private Astral launch receipt."
     )]
     Project {
         #[arg(default_value = DEFAULT_CONTEXT)]
@@ -59,6 +59,10 @@ enum Command {
         work: Option<String>,
         #[arg(long)]
         proxy: bool,
+        #[arg(long)]
+        non_interactive: bool,
+        #[arg(long)]
+        resume: Option<String>,
     },
 }
 
@@ -86,6 +90,8 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
                     name: DEFAULT_CONTEXT.into(),
                     work: None,
                     inspect,
+                    non_interactive,
+                    resume: None,
                     route: ostk_gpt_cache::launcher::Route::Direct,
                     codex_args: Vec::new(),
                 },
@@ -117,12 +123,16 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             work,
             proxy,
             inspect,
+            non_interactive,
+            resume,
         } => {
             run_project(ProjectArguments {
                 root: cli.root,
                 name,
                 work,
                 inspect,
+                non_interactive,
+                resume,
                 route: if proxy {
                     ostk_gpt_cache::launcher::Route::Proxy
                 } else {

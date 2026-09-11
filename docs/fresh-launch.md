@@ -61,8 +61,8 @@ They are not reread after resolution, and this is not an atomic repository
 snapshot. Fresh selection fingerprints also include linked projection manifests
 used to reject native or unknown kinds. Allowed readable kinds are
 `fresh-context`, `reviewable-design-context`, and `reviewable`. Explicit native
-bundles can be [validated and inspected](native-bundles.md), but selecting one for
-launch reports native launch as unimplemented. Unknown native references and
+bundles can be [validated and inspected](native-bundles.md), then launched through
+the separate [native launch path](native-launch.md) with explicit `--proxy`. Unknown native references and
 missing declared files fail; there is no plaintext fallback for a native checkpoint.
 
 Codex owns authentication, execution and permission enforcement. Explicit model,
@@ -79,9 +79,10 @@ settings yet. Matching `--cd` is accepted; choose a different checkout through
 Astral's `--root`. Direct initialization can forward profiles, OSS selection and
 extra writable directories because it does not stage a thread.
 
-Native bundles, managed `--proxy` launch, automatic branch/worktree binding and
-save/handoff remain the subsequent [milestones](launch-plan.md). Missing native
-support is an explicit error, not a successful launch claim.
+`astral project --non-interactive -- ...` now runs a headless Codex worker with
+selected context and the caller's task. Native bundles and their managed proxy
+launch are available on the documented route. Automatic branch/worktree binding
+and save/handoff remain subsequent [milestones](launch-plan.md).
 
 See the dated [verification receipt](fresh-launch-verification.md) for local and
 live-runtime results, scanner findings and untested boundaries.
