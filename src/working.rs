@@ -192,8 +192,13 @@ impl Runtime {
         // A torn final append is uncommitted. Complete malformed records fail closed.
         let end = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |n| n + 1);
         if end != bytes.len() {
-            journal.set_len(end as u64)?;
-            journal.sync_all()?;
+            // Windows append-only handles cannot truncate. The runtime's
+            // exclusive writer lock also covers this separate repair handle.
+            let repair = OpenOptions::new()
+                .write(true)
+                .open(dir.join("events.jsonl"))?;
+            repair.set_len(end as u64)?;
+            repair.sync_all()?;
             bytes.truncate(end);
         }
         let mut state = State::default();

@@ -11,6 +11,11 @@ cargo +1.85.0 check --locked --all-targets
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
+CI independently checks Linux, both macOS architectures and Windows; source
+platform exclusions still apply. Release tags rerun the complete matrix before
+publishing archives. Follow the [release guide](../../docs/releases/README.md).
+The Python host honors `CARGO_TARGET_DIR` when finding the built release helper.
+
 For authored context/documentation changes, validate the actual project and
 inspect every declared selection. Confirm that the default is readable, explicit
 native selections retain their bundle, and saved bundle hashes do not change.

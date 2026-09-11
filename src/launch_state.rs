@@ -67,7 +67,7 @@ pub struct LaunchState {
     #[cfg(unix)]
     directory: std::fs::File,
     #[cfg(unix)]
-    _lock: std::fs::File,
+    _lock: unix::Ownership,
 }
 
 fn fail(code: &'static str, message: &'static str) -> Error {
@@ -685,7 +685,17 @@ mod unix {
         Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
     }
 
-    fn lock(directory: &File, create: bool) -> Result<File> {
+    pub(super) struct Ownership(File);
+
+    impl Drop for Ownership {
+        fn drop(&mut self) {
+            // Forked children can retain a CLOEXEC descriptor until exec. End
+            // ownership now, rather than waiting for the final descriptor close.
+            let _ = fs2::FileExt::unlock(&self.0);
+        }
+    }
+
+    fn lock(directory: &File, create: bool) -> Result<Ownership> {
         let file = open_at(directory, OsStr::new("owner.lock"), false, create)?;
         secure(
             &file
@@ -700,7 +710,7 @@ mod unix {
                 fail("LAUNCH_STATE_LOCK", "cannot acquire launch ownership")
             }
         })?;
-        Ok(file)
+        Ok(Ownership(file))
     }
 
     pub(super) fn create(path: &Path, mut receipt: Receipt) -> Result<LaunchState> {
@@ -845,5 +855,48 @@ mod unix {
             }
         }
         result
+    }
+
+    #[test]
+    fn release_does_not_leave_ownership_in_an_inherited_descriptor() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let store = temp.path().canonicalize().unwrap().join("state");
+        let mut state = LaunchState::create_in(
+            &store,
+            &root,
+            "fixture",
+            "projection:saved",
+            None,
+            &"a".repeat(64),
+            &"b".repeat(64),
+        )
+        .unwrap();
+        state
+            .staged(
+                "01a10000-1234-7000-8000-000000000001",
+                "gpt-6-astra",
+                "openai",
+            )
+            .unwrap();
+        let id = state.id().to_owned();
+        // A duplicate shares the open-file description, like a forked child
+        // before exec closes its CLOEXEC descriptors.
+        let inherited = state._lock.0.try_clone().unwrap();
+        drop(state);
+        let resumed = LaunchState::resume_in(
+            &store,
+            &id,
+            &root,
+            "fixture",
+            "projection:saved",
+            None,
+            &"a".repeat(64),
+            &"b".repeat(64),
+        )
+        .unwrap();
+        drop(inherited);
+        drop(resumed);
     }
 }

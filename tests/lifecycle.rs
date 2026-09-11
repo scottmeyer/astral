@@ -10,10 +10,15 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
+    sync::{Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 const WORK: &str = "AST-example";
 const THREAD: &str = "01a10000-1234-7000-8000-000000000001";
+// Each functional fixture spawns many Git probes under the real three-second
+// callback budget. Avoid competing fixtures exhausting a small hosted runner;
+// concurrency and deadline enforcement have their own explicit controls.
+static CALLBACK_FIXTURE: Mutex<()> = Mutex::new(());
 fn put(root: &Path, path: &str, bytes: impl AsRef<[u8]>) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -28,9 +33,13 @@ fn environment(command: &mut Command) -> &mut Command {
     command
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_COUNT", "3")
         .env("GIT_CONFIG_KEY_0", "commit.gpgsign")
         .env("GIT_CONFIG_VALUE_0", "false")
+        .env("GIT_CONFIG_KEY_1", "maintenance.auto")
+        .env("GIT_CONFIG_VALUE_1", "false")
+        .env("GIT_CONFIG_KEY_2", "gc.auto")
+        .env("GIT_CONFIG_VALUE_2", "0")
         .env("GIT_AUTHOR_NAME", "Lifecycle Test")
         .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
         .env("GIT_COMMITTER_NAME", "Lifecycle Test")
@@ -54,9 +63,11 @@ fn git(root: &Path, args: &[&str]) -> Output {
 struct Fixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
+    _serial: MutexGuard<'static, ()>,
 }
 impl Fixture {
     fn new() -> Self {
+        let serial = CALLBACK_FIXTURE.lock().unwrap_or_else(|e| e.into_inner());
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap().join("repo");
         fs::create_dir(&root).unwrap();
@@ -95,7 +106,11 @@ impl Fixture {
         git(&root, &["init", "--initial-branch=main"]);
         git(&root, &["add", "."]);
         git(&root, &["commit", "-m", "fixture"]);
-        Self { _temp: temp, root }
+        Self {
+            _temp: temp,
+            root,
+            _serial: serial,
+        }
     }
     fn command(&self) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_astral"));
