@@ -15,13 +15,17 @@ Git commands mean or make native histories automatically mergeable.
 | Branch completion | `AST-675y0gng8eb5` | Review code, work records and decisions; preserve divergent bundles; explicitly select or reconcile context before integration |
 | Git/Codex integration | `AST-cfqs5ngqcyg2` | Opt-in lifecycle checks shared by hooks and any Astral wrappers, with ordinary Git behavior preserved |
 
-Status and diagnosis are the first implementation slice. Recovery mutations,
-branch completion, hook installation and a potential `astral commit` command
-remain planned. A status observation cannot establish that a remote model is
+Status, diagnosis and [explicit worker recovery](worker-recovery.md) are implemented.
+[Branch completion](branch-completion.md) previews the results and supports an
+explicit, checked fast-forward, while recognizing ordinary Git integration.
+Hook installation and a potential `astral commit` command remain planned.
+The [recovery/completion verification receipt](recovery-completion-verification.md)
+records this implementation's current local checks and remaining limits.
+A status observation cannot establish that a remote model is
 available, a recorded thread still exists, a checkpoint is decryptable, or a
 runtime command will execute. Launch retains its current preflights and locks.
-The [status verification receipt](status-verification.md) records local tests and
-the live owned-worker observation; it does not qualify later workflow stages.
+The [status verification receipt](status-verification.md) retains its dated local
+tests and live owned-worker observation; it does not qualify later workflow stages.
 
 ## Current status and doctor commands
 
@@ -99,6 +103,12 @@ preserve both branches' immutable native artifacts, but a user or reconciliation
 worker must choose the next starting context and reconcile readable decisions.
 An interrupted completion must be inspectable and resumable without repeating
 commits, overwriting code, or manufacturing combined opaque memory.
+
+The implemented completion command leaves save, editing, checks and commits
+explicit. It observes their current Git results on every preview; it does not
+replay a list of historical commands after an interruption. Divergent integration
+uses ordinary reviewed Git merging, then another completion preview. A reviewed
+plan hash is required before Astral applies any fast-forward.
 
 ## Broader work register
 

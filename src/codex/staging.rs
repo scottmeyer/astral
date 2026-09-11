@@ -10,11 +10,17 @@ use serde_json::{Value, json};
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StagedThread {
     pub thread_id: String,
     pub model: String,
     pub model_provider: String,
+}
+
+pub(crate) enum StagingProgress {
+    Starting,
+    Injecting,
+    Injected(StagedThread),
 }
 
 fn valid_thread_id(id: &str) -> bool {
@@ -59,18 +65,18 @@ async fn inject_context(rpc: &mut Rpc, thread: &str, context: &str) -> Result<()
 
 /// Call only after all no-thread preflights. The hook stays immediately before
 /// the first start request so an unknown outcome retains destination ownership.
-async fn start_or_resume<F: FnOnce() -> Result<()>>(
+async fn start_or_resume<F: FnMut(StagingProgress) -> Result<()>>(
     rpc: &mut Rpc,
     mut params: Value,
     resume: Option<&str>,
-    before_start: F,
+    progress: &mut F,
 ) -> Result<Value> {
     let method = if let Some(id) = resume {
         params["threadId"] = json!(id);
         params["excludeTurns"] = json!(true);
         "thread/resume"
     } else {
-        before_start()?;
+        progress(StagingProgress::Starting)?;
         "thread/start"
     };
     rpc.request(method, params).await
@@ -187,7 +193,7 @@ pub async fn stage_native(
     proxy_url: &str,
     resume_thread: Option<&str>,
 ) -> Result<StagedThread> {
-    stage_native_before_start(
+    stage_native_with_progress(
         executable,
         root,
         options,
@@ -195,16 +201,16 @@ pub async fn stage_native(
         context,
         proxy_url,
         resume_thread,
-        || Ok(()),
+        |_| Ok(()),
     )
     .await
 }
 
-/// Install destination ownership only after no-thread preflights pass. The hook
-/// precedes the first thread/start request; after it succeeds, any interrupted
-/// request may have created a thread and must retain uncertain staging state.
+/// Record progress after preflights, immediately before thread/start, and after
+/// acknowledged injection but before app-server shutdown. A missing final
+/// acknowledgement preserves uncertainty instead of authorizing duplicate work.
 #[allow(clippy::too_many_arguments)] // The hook supplements the compatible public staging API.
-pub(crate) async fn stage_native_before_start<F: FnOnce() -> Result<()>>(
+pub(crate) async fn stage_native_with_progress<F: FnMut(StagingProgress) -> Result<()>>(
     executable: &OsStr,
     root: &Path,
     options: StagingOptions,
@@ -212,7 +218,7 @@ pub(crate) async fn stage_native_before_start<F: FnOnce() -> Result<()>>(
     context: &str,
     proxy_url: &str,
     resume_thread: Option<&str>,
-    before_start: F,
+    mut progress: F,
 ) -> Result<StagedThread> {
     crate::native_import::validate(bundle)?;
     let compatibility = &bundle.manifest().compatibility;
@@ -233,8 +239,13 @@ pub(crate) async fn stage_native_before_start<F: FnOnce() -> Result<()>>(
                 "effective Codex configuration differs from the owned native proxy route",
             ));
         }
-        let started =
-            start_or_resume(&mut rpc, options.thread_params, resume_thread, before_start).await?;
+        let started = start_or_resume(
+            &mut rpc,
+            options.thread_params,
+            resume_thread,
+            &mut progress,
+        )
+        .await?;
         let id = thread_id(&started)
             .ok_or_else(|| error("CODEX_PROTOCOL", "invalid staged thread ID"))?;
         if !durable_thread_matches(&started, id, resume_thread) {
@@ -285,11 +296,13 @@ pub(crate) async fn stage_native_before_start<F: FnOnce() -> Result<()>>(
             )
             .await?;
         }
-        Ok(StagedThread {
+        let staged = StagedThread {
             thread_id: id.to_owned(),
             model: compatibility.model.clone(),
             model_provider: compatibility.provider.clone(),
-        })
+        };
+        progress(StagingProgress::Injected(staged.clone()))?;
+        Ok(staged)
     }
     .await;
     rpc.finish(result).await
@@ -345,7 +358,7 @@ pub async fn stage_worker(
     context_update: Option<&str>,
     native_runtime: Option<(&str, &str)>,
 ) -> Result<StagedThread> {
-    stage_worker_before_start(
+    stage_worker_with_progress(
         executable,
         root,
         options,
@@ -353,13 +366,13 @@ pub async fn stage_worker(
         resume,
         context_update,
         native_runtime,
-        || Ok(()),
+        |_| Ok(()),
     )
     .await
 }
 
 #[allow(clippy::too_many_arguments)] // The hook supplements the compatible public staging API.
-pub(crate) async fn stage_worker_before_start<F: FnOnce() -> Result<()>>(
+pub(crate) async fn stage_worker_with_progress<F: FnMut(StagingProgress) -> Result<()>>(
     executable: &OsStr,
     root: &Path,
     options: StagingOptions,
@@ -367,7 +380,7 @@ pub(crate) async fn stage_worker_before_start<F: FnOnce() -> Result<()>>(
     resume: Option<&str>,
     context_update: Option<&str>,
     native_runtime: Option<(&str, &str)>,
-    before_start: F,
+    mut progress: F,
 ) -> Result<StagedThread> {
     verify_native_version(executable, root, "0.154.0").await?;
     if resume.is_some_and(|id| !valid_thread_id(id)) {
@@ -385,7 +398,7 @@ pub(crate) async fn stage_worker_before_start<F: FnOnce() -> Result<()>>(
         initialize_rpc(&mut rpc).await?;
         verify_proxy(&mut rpc, root, proxy).await?;
         let started =
-            start_or_resume(&mut rpc, options.thread_params, resume, before_start).await?;
+            start_or_resume(&mut rpc, options.thread_params, resume, &mut progress).await?;
         let staged = staged_identity(&started, root, resume)?;
         if native_runtime.is_some_and(|(model, provider)| {
             staged.model != model || staged.model_provider != provider
@@ -396,8 +409,12 @@ pub(crate) async fn stage_worker_before_start<F: FnOnce() -> Result<()>>(
             ));
         }
         if let Some(context) = context_update {
+            if resume.is_some() {
+                progress(StagingProgress::Injecting)?;
+            }
             inject_context(&mut rpc, &staged.thread_id, context).await?;
         }
+        progress(StagingProgress::Injected(staged.clone()))?;
         Ok(staged)
     }
     .await;

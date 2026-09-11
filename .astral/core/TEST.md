@@ -63,6 +63,15 @@ active owners versus abandoned staging, confined receipt/lock validation, contex
 drift, explicit blockers, pagination, terminal-safe rendering and no-write CLI
 behavior. These tests do not establish remote thread availability or native recall.
 
+Recovery and completion tests exercise interrupted creation/staging/publication,
+retained uncertainty, stale preview hashes, ownership exclusion, private-state
+inventory and explicit branch integration. Synthetic app-server shutdown failures
+check that acknowledged staging can be recovered without another thread/start
+or context injection. Git fixtures check ordinary commit/merge recognition and
+artifact preservation. These checks do not establish live-provider recovery,
+semantic reconciliation quality or cross-account portability.
+See the dated [recovery/completion receipt](../../docs/recovery-completion-verification.md).
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

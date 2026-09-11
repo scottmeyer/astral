@@ -38,6 +38,15 @@ pub async fn save(request: SaveArguments) -> Result<Value> {
         WorktreeBinding::open_existing(&source, &project_id, &request.context, &request.work)?;
     let root = binding.root().to_owned();
     let mut metadata = binding.worker_metadata().clone();
+    if metadata.pending_save.is_some()
+        || metadata.staged_worker.is_some()
+        || metadata.staging_in_progress
+    {
+        return Err(error(
+            "WORKSPACE_RECOVERY_REQUIRED",
+            "an interrupted operation must be inspected with astral recover before another save",
+        ));
+    }
     let thread = metadata
         .thread_id
         .clone()
@@ -84,7 +93,14 @@ pub async fn save(request: SaveArguments) -> Result<Value> {
                 return Err(error("NATIVE_RUNTIME_MISMATCH", "save runtime differs from the bound worker"));
             }
             if metadata.selection_digest.as_deref() != Some(context.selection_digest.as_str()) {
+                // A lost injection response is uncertain even when the thread
+                // already exists; a later save must not silently inject again.
+                metadata.staging_in_progress = true;
+                binding.update_worker_metadata(metadata.clone())?;
                 rpc.request("thread/inject_items", json!({"threadId":thread,"items":[{"type":"message","role":"user","content":[{"type":"input_text","text":text}]}]})).await?;
+                metadata.staging_in_progress = false;
+                metadata.selection_digest = Some(context.selection_digest.clone());
+                binding.update_worker_metadata(metadata.clone())?;
             }
             let read = rpc.request("thread/read", json!({"threadId":thread,"includeTurns":false})).await?;
             let path = rollout_path(&read, &thread)?;
@@ -122,8 +138,13 @@ pub async fn save(request: SaveArguments) -> Result<Value> {
         let bytes = serde_json::to_vec_pretty(&manifest).map_err(|_| error("CAPTURE_ENCODING", "could not encode bundle manifest"))?;
         let bundle = NativeBundle::validate(&bytes, &capture.payload_bytes)?;
         crate::native_import::validate(&bundle)?;
-        let publication = crate::projection_save::publish(&root, &request.name, &context.selection.subsystems, &bundle, None)?;
         let saved_hash = bundle.summary().manifest_sha256;
+        metadata.pending_save = Some(crate::recovery::PendingSave {
+            projection:request.name.clone(), bundle_sha256:saved_hash.clone(),
+            selection_digest:context.selection_digest.clone(), selected_bundle_sha256:selected_hash.clone(),
+        });
+        binding.update_worker_metadata(metadata.clone())?;
+        let publication = crate::projection_save::publish(&root, &request.name, &context.selection.subsystems, &bundle, None)?;
         metadata.saved_bundle_sha256 = Some(saved_hash.clone());
         metadata.selection_digest = Some(context.selection_digest);
         // Saving under a different name must not replace the selected projection's
@@ -136,6 +157,7 @@ pub async fn save(request: SaveArguments) -> Result<Value> {
             }
             metadata.selected_bundle_sha256 = after_hash;
             metadata.selected_bundle_recorded = true;
+            metadata.pending_save = None;
             binding.update_worker_metadata(metadata)
         })();
         if recorded.is_err() {

@@ -13,7 +13,8 @@ pub use staging::{StagedThread, stage_fresh, stage_native, stage_worker};
 
 pub(crate) use rpc::{Rpc, initialize_rpc, verify_native_version};
 pub(crate) use staging::{
-    proxy_args, stage_native_before_start, stage_worker_before_start, staged_identity, verify_proxy,
+    StagingProgress, proxy_args, stage_native_with_progress, stage_worker_with_progress,
+    staged_identity, verify_proxy,
 };
 
 pub(crate) fn error(code: &'static str, message: impl Into<String>) -> crate::project::Error {

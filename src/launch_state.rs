@@ -7,6 +7,12 @@ use crate::project::{Error, Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
 
+mod observation;
+pub use observation::{
+    LaunchContinuation, LaunchInventory, LaunchObservation, LaunchOwnership, LaunchReceiptSummary,
+    MAX_INVENTORY_ENTRIES, MAX_INVENTORY_PAGE,
+};
+
 pub const MAX_RECEIPT_BYTES: usize = 16_384;
 const MAX_ATTEMPTS: usize = 16;
 
@@ -216,6 +222,26 @@ fn validate_receipt(receipt: &Receipt, id: &str, expected: &Receipt) -> Result<(
             "launch receipt differs from the selected workspace or context",
         ));
     }
+    validate_receipt_metadata(receipt)
+}
+
+fn validate_receipt_metadata(receipt: &Receipt) -> Result<()> {
+    if receipt.schema_version != 1
+        || !hex(&receipt.id, 32)
+        || receipt.workspace.len() > 4096
+        || !Path::new(&receipt.workspace).is_absolute()
+        || receipt.workspace.contains('\0')
+        || !logical(&receipt.project_id)
+        || !selector_valid(&receipt.selector)
+        || receipt.work_id.as_deref().is_some_and(|v| !logical(v))
+        || !hex(&receipt.selection_digest, 64)
+        || !hex(&receipt.bundle_manifest_sha256, 64)
+    {
+        return Err(fail(
+            "LAUNCH_STATE_INVALID",
+            "launch receipt contains invalid identity metadata",
+        ));
+    }
     let staged = match (&receipt.thread_id, &receipt.model, &receipt.provider) {
         (Some(thread), Some(model), Some(provider)) => {
             if !thread_uuid(thread) || !runtime_name(model) || !runtime_name(provider) {
@@ -371,6 +397,21 @@ impl LaunchState {
     pub fn id(&self) -> &str {
         &self.receipt.id
     }
+    pub fn selector(&self) -> &str {
+        &self.receipt.selector
+    }
+    pub fn work_id(&self) -> Option<&str> {
+        self.receipt.work_id.as_deref()
+    }
+    pub fn selection_digest(&self) -> &str {
+        &self.receipt.selection_digest
+    }
+    pub fn bundle_manifest_sha256(&self) -> &str {
+        &self.receipt.bundle_manifest_sha256
+    }
+    pub fn receipt_sha256(&self) -> Option<&str> {
+        self.expected_hash.as_deref()
+    }
     pub fn proxy_state_dir(&self) -> &Path {
         &self.proxy_path
     }
@@ -483,7 +524,7 @@ mod unix {
         unsafe { libc::geteuid() }
     }
 
-    fn secure(metadata: &Metadata, directory: bool) -> Result<()> {
+    pub(super) fn secure(metadata: &Metadata, directory: bool) -> Result<()> {
         if metadata.uid() != uid()
             || metadata.mode() & 0o7777 != if directory { 0o700 } else { 0o600 }
             || if directory {
@@ -543,7 +584,7 @@ mod unix {
         }
     }
 
-    fn directory_at(parent: &File, component: &OsStr, create: bool) -> Result<File> {
+    pub(super) fn directory_at(parent: &File, component: &OsStr, create: bool) -> Result<File> {
         if create {
             mkdir_at(parent, component).map_err(|_| {
                 fail(
@@ -562,7 +603,7 @@ mod unix {
         Ok(file)
     }
 
-    fn state_root(path: &Path, workspace: &str, create: bool) -> Result<File> {
+    pub(super) fn state_root(path: &Path, workspace: &str, create: bool) -> Result<File> {
         if !path.is_absolute() || path.as_os_str().as_bytes().len() > 4096 {
             return Err(fail(
                 "LAUNCH_STATE_PATH",

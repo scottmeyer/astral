@@ -29,6 +29,7 @@ elif sys.argv[1] == 'app-server':
             print(json.dumps(dict(id=request['id'], error=dict(code=-1,message='fixture initialization rejection'))), flush=True)
             continue
         if mode == 'thread-start-drop' and request['method'] == 'thread/start': sys.exit(0)
+        if mode == 'inject-drop' and request['method'] == 'thread/inject_items': sys.exit(0)
         result = {}
         if request['method'] == 'config/read':
             result = dict(config=config)
@@ -40,6 +41,7 @@ elif sys.argv[1] == 'app-server':
             continue
         print(json.dumps(dict(id=request['id'], result=result)), flush=True)
     record('closed')
+    if mode == 'shutdown-fail': sys.exit(17)
 elif sys.argv[1] == 'resume' or sys.argv[1:3] == ['exec', 'resume']:
     assert any(json.loads(row)['kind'] == 'closed' for row in log.read_text().splitlines())
     record('resumed')
@@ -536,6 +538,153 @@ fn lost_thread_start_response_retains_uncertain_marker_and_blocks_duplicate_crea
             .count(),
         1
     );
+}
+
+#[test]
+fn staging_recovery_and_uncertain_resume_never_duplicate_thread_or_context() {
+    for native in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        fs::create_dir(&source).unwrap();
+        let (bin, log) = fixture(temp.path());
+        if native {
+            native_fixture(&source, &bin, &log);
+        } else {
+            assert!(
+                invoke(&source, &bin, &log, &["init", "--non-interactive"], "")
+                    .status
+                    .success()
+            );
+        }
+        for args in [
+            vec!["init", "-b", "main"],
+            vec!["add", "."],
+            vec!["commit", "-m", "fixture"],
+        ] {
+            let out = Command::new("git")
+                .current_dir(&source)
+                .args([
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+        }
+        let created = invoke(
+            &source,
+            &bin,
+            &log,
+            &[
+                "work",
+                "create",
+                "Recover staged worker",
+                "--acceptance",
+                "No duplicate creation",
+            ],
+            "",
+        );
+        let record: Value = serde_json::from_slice(&created.stdout).unwrap();
+        let work = record["item"]["id"].as_str().unwrap();
+        let mut args = vec!["project", "--work", work, "--non-interactive"];
+        if native {
+            args.push("--proxy");
+        }
+        assert_eq!(
+            error(&invoke(&source, &bin, &log, &args, "shutdown-fail")),
+            "CODEX_SHUTDOWN_FAILED"
+        );
+        let before = fs::read(&log).unwrap();
+        assert_eq!(
+            error(&invoke(&source, &bin, &log, &args, "")),
+            "WORKSPACE_RECOVERY_REQUIRED"
+        );
+        assert_eq!(fs::read(&log).unwrap(), before);
+        let preview = invoke(&source, &bin, &log, &["recover", "--work", work], "");
+        assert!(
+            preview.status.success(),
+            "{}",
+            String::from_utf8_lossy(&preview.stderr)
+        );
+        let plan: Value = serde_json::from_slice(&preview.stdout).unwrap();
+        assert_eq!(plan["classification"], "staging_acknowledged");
+        let applied = invoke(
+            &source,
+            &bin,
+            &log,
+            &[
+                "recover",
+                "--work",
+                work,
+                "--apply",
+                plan["plan_sha256"].as_str().unwrap(),
+            ],
+            "",
+        );
+        assert!(
+            applied.status.success(),
+            "{}",
+            String::from_utf8_lossy(&applied.stderr)
+        );
+        assert_eq!(
+            fs::read(&log).unwrap(),
+            before,
+            "recovery must not invoke Codex"
+        );
+        let continued = invoke(&source, &bin, &log, &args, "");
+        assert!(
+            continued.status.success(),
+            "{}",
+            String::from_utf8_lossy(&continued.stderr)
+        );
+        assert_eq!(
+            native_rows(&log)
+                .iter()
+                .filter(|r| r["request"]["method"] == "thread/start")
+                .count(),
+            1
+        );
+        // The initial context was acknowledged before the shutdown failure.
+        assert_eq!(
+            native_rows(&log)
+                .iter()
+                .filter(|r| r["request"]["method"] == "thread/inject_items")
+                .count(),
+            1
+        );
+        let receipt: Value = serde_json::from_slice(
+            &fs::read(source.join(format!(".git/astral/work-bindings/{work}/receipt.json")))
+                .unwrap(),
+        )
+        .unwrap();
+        let target = Path::new(receipt["root"].as_str().unwrap());
+        fs::write(
+            target.join(".astral/core/ARCHITECTURE.md"),
+            "New readable context.\n",
+        )
+        .unwrap();
+        assert_eq!(
+            error(&invoke(&source, &bin, &log, &args, "inject-drop")),
+            "CODEX_PROTOCOL"
+        );
+        let before_retry = fs::read(&log).unwrap();
+        let preview = invoke(&source, &bin, &log, &["recover", "--work", work], "");
+        let plan: Value = serde_json::from_slice(&preview.stdout).unwrap();
+        assert_eq!(plan["classification"], "staging_unknown");
+        assert!(plan["repair"].is_null());
+        assert_eq!(
+            error(&invoke(&source, &bin, &log, &args, "")),
+            "WORKSPACE_STAGE_INCOMPLETE"
+        );
+        assert_eq!(fs::read(&log).unwrap(), before_retry);
+    }
 }
 
 #[test]

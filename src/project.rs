@@ -351,6 +351,12 @@ impl Project {
         &self.manifest.id
     }
 
+    /// Every declared file observed during validation, including unselected
+    /// contexts and complete work/native inputs. Handles describe cached bytes.
+    pub fn observed_sources(&self) -> impl Iterator<Item = &SourceHandle> {
+        self.sources.values()
+    }
+
     pub fn load(root: impl AsRef<Path>) -> Result<Self> {
         Self::load_with_limits(root, Limits::default())
     }

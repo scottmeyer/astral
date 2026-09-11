@@ -40,6 +40,14 @@ needs attention. These commands do not start Codex, repair receipts or verify
 recorded threads. Use `--offset N --limit N` for further pages. See
 [finish and resume](../../docs/finish-resume.md) for limits and planned integrations.
 
+`astral recover --work ID` previews repairs backed by retained operation evidence;
+`--apply PLAN_SHA256` explicitly applies an unchanged plan under worker ownership.
+Without `--work`, recovery inventories retained private bindings, including IDs
+missing from the current work register. See [recovery](../../docs/worker-recovery.md).
+`astral finish --work ID --into main` previews branch integration and required
+review; its explicit apply supports checked fast-forwards. Ordinary commits and
+merges remain supported. See [branch completion](../../docs/branch-completion.md).
+
 For this experiment, start the proxy on loopback with `--mode passthrough
 --native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private
 state directory outside the repository. Keep it running while routed Codex

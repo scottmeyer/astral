@@ -1,6 +1,6 @@
 //! One destination-local worker and Git worktree per work ID.
 use crate::codex::{
-    StagingOptions, error, stage_native_before_start, stage_worker_before_start, wait_interactive,
+    StagingOptions, error, stage_native_with_progress, stage_worker_with_progress, wait_interactive,
 };
 use crate::launcher::{ProjectArguments, ProxyBinding, Route};
 use crate::managed_proxy::ManagedProxy;
@@ -51,10 +51,16 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
         ));
     }
     let mut metadata = binding.worker_metadata().clone();
+    if metadata.pending_save.is_some() || metadata.staged_worker.is_some() {
+        return Err(error(
+            "WORKSPACE_RECOVERY_REQUIRED",
+            "a recorded operation awaits bookkeeping; run astral recover --work ID before continuing",
+        ));
+    }
     if metadata.staging_in_progress {
         return Err(error(
             "WORKSPACE_STAGE_INCOMPLETE",
-            "a previous initial staging attempt did not record completion; inspect its retained binding and Codex diagnostics before retrying with a new work ID; Astral will not create a duplicate thread implicitly",
+            "a previous thread creation or context injection did not record completion; inspect astral recover --work ID and retained runtime evidence before continuing; Astral will not repeat the uncertain operation implicitly",
         ));
     }
     if binding.newly_created() {
@@ -91,11 +97,27 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
     };
     let result = async {
         let proxy_url = proxy.as_ref().map(ManagedProxy::base_url);
-        let mut pending = metadata.clone();
-        pending.staging_in_progress = true;
-        let before_start = || binding.update_worker_metadata(pending);
+        let progress = |event| {
+            let mut pending = metadata.clone();
+            pending.staging_in_progress = true;
+            if let crate::codex::StagingProgress::Injected(staged) = event {
+                pending.staged_worker = Some(crate::recovery::StagedWorker {
+                    thread_id: staged.thread_id,
+                    model: staged.model,
+                    provider: staged.model_provider,
+                    selection_digest: context.selection_digest.clone(),
+                    seed_bundle_sha256: if metadata.thread_id.is_none() {
+                        bundle_hash.clone()
+                    } else {
+                        metadata.seed_bundle_sha256.clone()
+                    },
+                    selected_bundle_sha256: bundle_hash.clone(),
+                });
+            }
+            binding.update_worker_metadata(pending)
+        };
         let staged = if let (None, Some(bundle)) = (&metadata.thread_id, &selected.native) {
-            stage_native_before_start(
+            stage_native_with_progress(
                 &program,
                 &root,
                 options,
@@ -103,7 +125,7 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
                 &text,
                 proxy_url.expect("native route"),
                 None,
-                before_start,
+                progress,
             )
             .await?
         } else {
@@ -124,7 +146,7 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
             let update = (metadata.selection_digest.as_deref()
                 != Some(context.selection_digest.as_str()))
             .then_some(text.as_str());
-            stage_worker_before_start(
+            stage_worker_with_progress(
                 &program,
                 &root,
                 options,
@@ -132,7 +154,7 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
                 metadata.thread_id.as_deref(),
                 update,
                 runtime,
-                before_start,
+                progress,
             )
             .await?
         };
@@ -143,6 +165,7 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
         metadata.selected_bundle_recorded = true;
         metadata.thread_id = Some(staged.thread_id.clone());
         metadata.staging_in_progress = false;
+        metadata.staged_worker = None;
         metadata.model = Some(staged.model);
         metadata.provider = Some(staged.model_provider);
         metadata.selection_digest = Some(context.selection_digest);

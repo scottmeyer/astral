@@ -27,6 +27,11 @@ to diagnose local resume blockers. Both support formatted `--json` output and
 leave files and runtime sessions unchanged. See [finish and resume](docs/finish-resume.md)
 for the current commands and planned Git/Codex integrations.
 
+`astral recover --work ID` previews repairs for interrupted operations using
+retained evidence. `astral finish --work ID --into main` previews branch completion;
+both require an explicit reviewed plan hash before applying a change. See
+[recovery](docs/worker-recovery.md) and [branch completion](docs/branch-completion.md).
+
 Inspection prints formatted JSON. `astral work id` proposes a short random work
 ID for new JSONL records, avoiding per-branch counters. `astral work create`,
 `update`, and `merge` provide bounded record operations. See the

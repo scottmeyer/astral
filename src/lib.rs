@@ -1,4 +1,5 @@
 pub mod codex;
+pub mod completion;
 pub mod config;
 pub mod economics;
 pub mod engine;
@@ -16,6 +17,7 @@ pub mod policy;
 pub mod project;
 pub mod projection_save;
 pub mod proxy;
+pub mod recovery;
 pub mod save;
 pub mod server;
 pub mod status;

@@ -40,9 +40,10 @@ stash, reset, prune, or delete user work. These locks coordinate Astral processe
 direct Git/Codex processes do not automatically honor them.
 
 An incomplete initial context copy or an unknown initial staging outcome is
-reported explicitly on retry. Astral does not overwrite the retained worktree or
-create another thread implicitly. Inspect the retained artifacts and private
-binding before repairing them or choosing a new work ID.
+reported explicitly on retry. Use `astral recover --work ID` to preview supported
+repairs from retained evidence. Astral does not overwrite the retained worktree
+or create another thread implicitly. See [worker recovery](worker-recovery.md)
+for acknowledged staging, uncertain outcomes and explicit apply hashes.
 Failures before a thread could be created, such as a missing Codex executable,
 unsupported version, or failed initialization, can be corrected and retried with
 the same work ID.
@@ -119,6 +120,8 @@ If publication succeeds but the final private receipt update fails, the command
 reports `SAVE_PUBLISHED_METADATA_FAILED` and the published artifact handles.
 Preserve those artifacts; a new work ID can import the published projection.
 The existing worker will not silently adopt an unrecorded changed seed.
+New saves retain prospective publication evidence, allowing `astral recover`
+to validate the exact published bundle and explicitly finish that bookkeeping.
 
 ## Work records and Git conflicts
 
@@ -140,3 +143,8 @@ Do not install a concatenating JSONL merge driver. Distinct native artifacts can
 coexist, but encrypted histories cannot be semantically merged by Git. Preserve
 both bundles, reconcile readable decisions and records, and explicitly choose
 a starting projection or create a reconciliation worker.
+
+`astral finish --work ID --into main` previews committed branch results and
+remaining stages. An explicit apply hash can authorize a checked fast-forward;
+ordinary Git merges are recognized on the next preview. See
+[branch completion](branch-completion.md) for context selection and limits.

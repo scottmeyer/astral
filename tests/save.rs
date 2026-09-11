@@ -47,6 +47,7 @@ elif sys.argv[1] == 'app-server':
         if method == 'thread/inject_items':
             assert params['threadId'] == thread
             for item in params['items']: append('response_item', item)
+            if os.environ.get('SAVE_INJECT_DROP'): sys.exit(0)
         if method == 'thread/compact/start':
             assert params['threadId'] == thread
             if os.environ.get('SAVE_FAIL'):
@@ -397,4 +398,41 @@ fn failed_compaction_does_not_publish_and_the_same_worker_can_retry() {
     checked(f.launch());
     assert_eq!(f.metadata()["thread_id"], THREAD);
     assert_eq!(f.metadata()["selected_bundle_sha256"], f.seed);
+}
+
+#[test]
+fn lost_save_context_injection_acknowledgement_blocks_blind_retry() {
+    let f = Fixture::new();
+    put(
+        &f.target,
+        ".astral/core/ARCHITECTURE.md",
+        "Changed save context.\n",
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--root")
+        .arg(&f.root)
+        .args([
+            "save",
+            "q",
+            "--context",
+            "projection:p",
+            "--work",
+            &f.work,
+            "--proxy",
+        ])
+        .env("ASTRAL_CODEX_BIN", &f.bin)
+        .env("SAVE_LOG", &f.log)
+        .env("SAVE_ROLLOUT", &f.rollout)
+        .env("SAVE_INJECT_DROP", "1")
+        .output()
+        .unwrap();
+    assert_eq!(error(out), "CODEX_PROTOCOL");
+    assert_eq!(f.metadata()["staging_in_progress"], true);
+    let log = fs::read(&f.log).unwrap();
+    assert_eq!(error(f.save("q", false)), "WORKSPACE_RECOVERY_REQUIRED");
+    assert_eq!(error(f.launch()), "WORKSPACE_STAGE_INCOMPLETE");
+    let preview = checked(f.invoke(&["recover", "--work", &f.work], false));
+    assert_eq!(preview["classification"], "staging_unknown");
+    assert!(preview["repair"].is_null());
+    assert_eq!(fs::read(&f.log).unwrap(), log);
 }

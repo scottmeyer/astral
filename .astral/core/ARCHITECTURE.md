@@ -47,6 +47,14 @@ claims in `docs/` retain their original scope and dates.
 
 ## Project context
 
+`recovery.rs` interprets bounded private operation acknowledgements and validates
+explicit repair plans. Bound staging records confirmed injection before runtime
+shutdown; save records an expected immutable export before publication. Recovery
+never retries inference or unknown thread creation. `completion.rs` compares
+worker and target Git results, work-record conflicts and native artifacts, with
+an explicit checked fast-forward path. Ordinary Git commits and merges remain
+valid stages of the workflow; the command does not infer test success.
+
 `src/project.rs` validates the versioned TOML and JSONL contract and resolves
 selected core, subsystem, projection and work-item sources. Its `schema` module
 defines the public manifest/output types and limits; its `reader` module owns

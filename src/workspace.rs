@@ -13,6 +13,8 @@ pub const MAX_BINDING_BYTES: usize = 16_384;
 
 mod observation;
 pub use observation::{BindingObservation, OwnershipObservation};
+mod recovery;
+pub use recovery::{BindingInventory, MAX_BINDING_INVENTORY, RecoveryPreview};
 
 /// Shared bounded Git invocation; current process supplies every literal argument.
 pub(crate) fn git_read(root: &Path, args: &[std::ffi::OsString]) -> Result<Vec<u8>> {
@@ -28,6 +30,50 @@ pub(crate) fn git_read(root: &Path, args: &[std::ffi::OsString]) -> Result<Vec<u
     #[cfg(not(unix))]
     {
         let _ = (root, args);
+        Err(unsupported())
+    }
+}
+
+/// A bounded larger read for committed native blobs; normal Git plumbing keeps
+/// its existing one-MiB output cap. This never changes the subprocess deadline.
+pub(crate) fn git_read_with_limit(
+    root: &Path,
+    args: &[std::ffi::OsString],
+    limit: usize,
+) -> Result<Vec<u8>> {
+    if limit > crate::native_bundle::MAX_PAYLOAD_BYTES {
+        return Err(fail(
+            "WORKSPACE_GIT_LIMIT",
+            "requested Git output limit exceeds the native artifact limit",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        unix::git_bounded(
+            root,
+            &args.iter().map(|a| a.as_os_str()).collect::<Vec<_>>(),
+            false,
+            limit,
+        )
+        .map(|(_, bytes)| bytes)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (root, args, limit);
+        Err(unsupported())
+    }
+}
+
+/// Read effective Git policy without executing it. Only the fixed config-list
+/// command sees standard global/system settings and GIT_CONFIG_* overrides.
+pub(crate) fn git_config_for_completion(root: &Path) -> Result<Vec<u8>> {
+    #[cfg(unix)]
+    {
+        unix::git_config(root).map(|(_, bytes)| bytes)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = root;
         Err(unsupported())
     }
 }
@@ -56,6 +102,14 @@ pub struct WorkerMetadata {
     /// Distinguish a recorded fresh selection from an older receipt without an anchor.
     #[serde(default)]
     pub selected_bundle_recorded: bool,
+    /// Durable acknowledgement of initial staging before app-server shutdown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged_worker: Option<crate::recovery::StagedWorker>,
+    /// Exact completed capture awaiting publication bookkeeping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_save: Option<crate::recovery::PendingSave>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_recovery_sha256: Option<String>,
 }
 
 impl WorkerMetadata {
@@ -105,6 +159,7 @@ impl WorkerMetadata {
                 &self.seed_bundle_sha256,
                 &self.saved_bundle_sha256,
                 &self.selected_bundle_sha256,
+                &self.last_recovery_sha256,
             ]
             .into_iter()
             .flatten()
@@ -113,6 +168,40 @@ impl WorkerMetadata {
             return Err(fail(
                 "WORKSPACE_METADATA",
                 "invalid worker identifiers or digests",
+            ));
+        }
+        if let Some(staged) = &self.staged_worker {
+            staged.validate()?;
+            if !self.context_initialized
+                || !self.staging_in_progress
+                || self
+                    .thread_id
+                    .as_deref()
+                    .is_some_and(|id| id != staged.thread_id)
+            {
+                return Err(fail(
+                    "WORKSPACE_METADATA",
+                    "staging evidence conflicts with the worker lifecycle",
+                ));
+            }
+        }
+        if let Some(save) = &self.pending_save {
+            save.validate()?;
+            if !self.context_initialized
+                || self.thread_id.is_none()
+                || self.staging_in_progress
+                || !self.requires_tool_rebinding
+            {
+                return Err(fail(
+                    "WORKSPACE_METADATA",
+                    "save evidence conflicts with the worker lifecycle",
+                ));
+            }
+        }
+        if self.staged_worker.is_some() && self.pending_save.is_some() {
+            return Err(fail(
+                "WORKSPACE_METADATA",
+                "staging and save evidence cannot overlap",
             ));
         }
         Ok(())
@@ -377,6 +466,8 @@ struct Receipt {
     git_identity: Option<FileIdentity>,
     worker_metadata: WorkerMetadata,
     last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    creation_proof: Option<recovery::CreationProof>,
 }
 
 impl Receipt {
@@ -565,7 +656,7 @@ mod unix {
         private_child(&astral, "work-bindings", create)
     }
 
-    fn lock(parent: &File, part: &str, create: bool, wait: bool) -> Result<File> {
+    pub(super) fn lock(parent: &File, part: &str, create: bool, wait: bool) -> Result<File> {
         let file = match open_at(parent, OsStr::new(part), false, false, true)? {
             Some(file) => file,
             None if create => match open_at(parent, OsStr::new(part), false, true, true) {
@@ -647,6 +738,35 @@ mod unix {
     }
 
     pub(super) fn git(root: &Path, args: &[&OsStr], allow_one: bool) -> Result<(bool, Vec<u8>)> {
+        git_bounded(root, args, allow_one, MAX_STDOUT)
+    }
+
+    pub(super) fn git_bounded(
+        root: &Path,
+        args: &[&OsStr],
+        allow_one: bool,
+        stdout_limit: usize,
+    ) -> Result<(bool, Vec<u8>)> {
+        git_run(root, args, allow_one, stdout_limit, false)
+    }
+
+    pub(super) fn git_config(root: &Path) -> Result<(bool, Vec<u8>)> {
+        git_run(
+            root,
+            &["config", "--null", "--list", "--includes"].map(OsStr::new),
+            false,
+            MAX_STDOUT,
+            true,
+        )
+    }
+
+    fn git_run(
+        root: &Path,
+        args: &[&OsStr],
+        allow_one: bool,
+        stdout_limit: usize,
+        observe_config: bool,
+    ) -> Result<(bool, Vec<u8>)> {
         let mut cmd = Command::new("git");
         cmd.current_dir(root)
             .args([
@@ -669,15 +789,20 @@ mod unix {
             .stderr(Stdio::piped())
             .process_group(0);
         for (key, _) in std::env::vars_os() {
-            if key.as_bytes().starts_with(b"GIT_") {
+            if key.as_bytes().starts_with(b"GIT_")
+                && !(observe_config && key.as_bytes().starts_with(b"GIT_CONFIG_"))
+            {
                 cmd.env_remove(key);
             }
         }
         cmd.env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_ATTR_NOSYSTEM", "1")
             .env("LC_ALL", "C");
+        if !observe_config {
+            cmd.env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null");
+        }
         let mut child = GitChild(
             cmd.spawn()
                 .map_err(|_| fail("WORKSPACE_GIT_START", "cannot start Git"))?,
@@ -690,7 +815,7 @@ mod unix {
         let start = Instant::now();
         let mut status = None;
         loop {
-            let out_done = drain(&mut stdout, &mut out, MAX_STDOUT)?;
+            let out_done = drain(&mut stdout, &mut out, stdout_limit)?;
             let err_done = drain(&mut stderr, &mut err, MAX_STDERR)?;
             if status.is_none() {
                 status = child.0.try_wait().map_err(io_error)?;
@@ -906,6 +1031,7 @@ mod unix {
             git_identity: None,
             worker_metadata: WorkerMetadata::default(),
             last_error: None,
+            creation_proof: None,
         })
     }
 
@@ -946,7 +1072,7 @@ mod unix {
         Ok(())
     }
 
-    fn read_receipt(dir: &File) -> Result<Vec<u8>> {
+    pub(super) fn read_receipt(dir: &File) -> Result<Vec<u8>> {
         let file =
             open_at(dir, OsStr::new("receipt.json"), false, false, false)?.ok_or_else(|| {
                 fail(
@@ -1024,6 +1150,21 @@ mod unix {
                 return Err(fail(
                     "WORKSPACE_MISMATCH",
                     "bound Git directory is outside this repository's worktree registry",
+                ));
+            }
+        }
+        if let Some(proof) = &receipt.creation_proof {
+            path_valid(&proof.git_dir)?;
+            if proof.schema_version != 1
+                || proof.git_dir.parent() != Some(receipt.common_dir.join("worktrees").as_path())
+                || receipt.status == BindingStatus::Ready
+                    && (receipt.root_identity != Some(proof.root_identity)
+                        || receipt.git_dir.as_ref() != Some(&proof.git_dir)
+                        || receipt.git_identity != Some(proof.git_identity))
+            {
+                return Err(fail(
+                    "WORKSPACE_METADATA",
+                    "checkout identity proof differs from the bound worktree",
                 ));
             }
         }
@@ -1129,10 +1270,10 @@ mod unix {
     }
 
     pub(super) struct Storage {
-        directory: File,
-        lock: File,
-        path: PathBuf,
-        expected_hash: Option<String>,
+        pub(super) directory: File,
+        pub(super) lock: File,
+        pub(super) path: PathBuf,
+        pub(super) expected_hash: Option<String>,
     }
 
     impl Drop for Storage {
@@ -1214,7 +1355,7 @@ mod unix {
         }
     }
 
-    fn binding_path(receipt: &Receipt) -> PathBuf {
+    pub(super) fn binding_path(receipt: &Receipt) -> PathBuf {
         receipt
             .common_dir
             .join("astral/work-bindings")
@@ -1353,6 +1494,18 @@ mod unix {
             receipt.git_dir = Some(git_dir);
             receipt.status = BindingStatus::Ready;
             validate_live(&receipt)?;
+            receipt.creation_proof = Some(recovery::CreationProof {
+                schema_version: 1,
+                root_identity: receipt.root_identity.expect("validated root identity"),
+                git_dir: receipt.git_dir.clone().expect("validated Git directory"),
+                git_identity: receipt.git_identity.expect("validated Git identity"),
+            });
+            let mut prepared = receipt.clone();
+            prepared.status = BindingStatus::Preparing;
+            prepared.root_identity = None;
+            prepared.git_dir = None;
+            prepared.git_identity = None;
+            storage.write(&prepared)?;
             storage.write(&receipt)
         })();
         if let Err(error) = result {

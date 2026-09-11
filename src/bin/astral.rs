@@ -23,6 +23,31 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Preview interrupted operations; apply only the exact reviewed plan hash.
+    Recover {
+        #[arg(long)]
+        work: Option<String>,
+        #[arg(long, requires = "work")]
+        apply: Option<String>,
+        /// Explicit trusted receipt root for inventory; never inferred from project files.
+        #[arg(long, conflicts_with = "work")]
+        launch_state_root: Option<PathBuf>,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 32)]
+        limit: usize,
+    },
+    /// Preview branch completion; explicitly apply only a reviewed fast-forward.
+    Finish {
+        #[arg(long)]
+        work: String,
+        #[arg(long)]
+        into: String,
+        #[arg(long)]
+        context: Option<String>,
+        #[arg(long)]
+        apply: Option<String>,
+    },
     /// Inspect recorded workers and selected context without launching a runtime.
     Status {
         #[arg(long)]
@@ -141,6 +166,52 @@ enum WorkCommand {
 
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     match cli.command {
+        Command::Recover {
+            work,
+            apply,
+            launch_state_root,
+            offset,
+            limit,
+        } => {
+            let value = if let Some(work) = work {
+                if offset != 0 || limit != 32 {
+                    return Err(Error {
+                        code: "CLI_USAGE",
+                        message: "pagination applies only to recovery inventory".into(),
+                    });
+                }
+                match apply {
+                    Some(expected) => ostk_gpt_cache::recovery::apply(&cli.root, &work, &expected)?,
+                    None => json!(ostk_gpt_cache::recovery::plan(&cli.root, &work)?),
+                }
+            } else {
+                ostk_gpt_cache::recovery::inventory(
+                    &cli.root,
+                    launch_state_root.as_deref(),
+                    offset,
+                    limit,
+                )?
+            };
+            print_workflow(&value)
+        }
+        Command::Finish {
+            work,
+            into,
+            context,
+            apply,
+        } => {
+            let request = ostk_gpt_cache::completion::FinishRequest {
+                root: cli.root,
+                work,
+                into,
+                context,
+            };
+            let value = match apply {
+                Some(expected) => json!(ostk_gpt_cache::completion::apply(&request, &expected)?),
+                None => json!(ostk_gpt_cache::completion::plan(&request)?),
+            };
+            print_workflow(&value)
+        }
         Command::Status {
             work,
             json,
@@ -392,6 +463,18 @@ fn render_output(output: Value) -> Result<String, Error> {
         });
     }
     Ok(text)
+}
+
+fn print_workflow(output: &Value) -> Result<Option<Value>, Error> {
+    let text = serde_json::to_string_pretty(output).expect("workflow JSON serializes");
+    if text.len().saturating_add(1) > ostk_gpt_cache::project::Limits::default().output_bytes {
+        return Err(Error {
+            code: "LIMIT_EXCEEDED",
+            message: "workflow output byte limit".into(),
+        });
+    }
+    println!("{text}");
+    Ok(None)
 }
 
 fn run_status(

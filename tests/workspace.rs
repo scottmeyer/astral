@@ -138,6 +138,7 @@ fn metadata() -> WorkerMetadata {
         saved_bundle_sha256: Some("c".repeat(64)),
         selected_bundle_sha256: Some("b".repeat(64)),
         selected_bundle_recorded: true,
+        ..Default::default()
     }
 }
 

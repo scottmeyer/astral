@@ -214,11 +214,13 @@ pub fn collect(
                                 .into(),
                             );
                         }
-                        if metadata.staging_in_progress {
+                        if metadata.pending_save.is_some() || metadata.staged_worker.is_some() {
+                            worker.diagnostics.push(error("WORKSPACE_RECOVERY_REQUIRED", "recorded operation evidence awaits bookkeeping; preview astral recover --work ID").into());
+                        } else if metadata.staging_in_progress {
                             worker.diagnostics.push(
                                 error(
                                     "WORKSPACE_STAGE_INCOMPLETE",
-                                    "initial thread creation has an unknown outcome",
+                                    "thread creation or context injection has an unknown outcome",
                                 )
                                 .into(),
                             );
