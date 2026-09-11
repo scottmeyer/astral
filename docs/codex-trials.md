@@ -70,7 +70,7 @@ Compare both arms and retain failed trials. A single successful fixture does not
 
 On 2026-09-11, stable Codex CLI 0.154.0 reported an existing ChatGPT login and successful provider connectivity, but `codex exec` timed out after 45 seconds before emitting events or reaching Astral (`requests_received: 0`). Earlier alpha CLI attempts also stalled during nested startup; an attempt to match the outer execution mode was rejected by the nested runtime's requirements. No requirements were bypassed. The runner records timeout as failure even when the terminated child reports exit code 0.
 
-The standalone client subsequently completed all 16 generation calls and six recall checks across both arms, including restart. All five alternate-route compaction attempts were rejected, so recall used full history and the overall trial failed. Those low-effort calls produced no encrypted reasoning items. A later [inline trial](opaque-replay.md) succeeded using `context_management` on `/responses`, including two native compactions and recall with the original facts absent from plaintext. The standalone route is still required for Astral's current autonomous scheduler.
+The standalone client subsequently completed all 16 generation calls and six recall checks across both arms, including restart. All five alternate-route compaction attempts were rejected, so recall used full history and the overall trial failed. Those low-effort calls produced no encrypted reasoning items. A later [inline trial](opaque-replay.md) succeeded using `context_management` on `/responses`, including two native compactions and recall with the original facts absent from plaintext. Astral now also supports an opt-in autonomous inline backend; its [three-arm benefit trial](benefit-evaluation.md) completed 66 calls and validated its own checkpoint adoption and restart on two task seeds.
 
 ## Responses client independent of Codex startup
 
@@ -114,3 +114,7 @@ python3 scripts/inline_trial.py \
 ```
 
 For Platform, use `--auth api-key` with your configured Platform upstream. The threshold is a provider token threshold; it is distinct from Astral's byte trigger. Native support remains backend-dependent. Astral passes these `context_management` requests through, so the provider owns compaction. The result tests that path and does not certify Astral's autonomous planner. See [opaque replay](opaque-replay.md) for the exact evidence and handling rules.
+
+## Matched benefit trial
+
+`scripts/benefit_trial.py` compares full history, provider-owned inline compaction, and Astral-scheduled inline checkpoints. The client retains complete original history in the Astral arm, allowing the proxy to own and persist its mapping. Two default seeds each run nine user turns with eleven generation calls, two fixtures, two rollovers in each compacted arm, and final recall after restart. Complete commands, measured input/output/latency, and cache limitations are in [benefit-evaluation.md](benefit-evaluation.md). This client is independent of the blocked nested `codex exec` startup.

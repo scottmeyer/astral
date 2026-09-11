@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, Mode},
+    config::{CompactionBackend, Config, Mode},
     engine::{self, Lane},
     hash, now_ms, policy,
     store::Store,
@@ -26,7 +26,13 @@ use std::{
 use tokio::sync::OwnedMutexGuard;
 
 const HOP: &str = "x-ostk-gpt-hop";
-type Pending = (String, OwnedMutexGuard<Option<Lane>>, Lane);
+type Pending = (
+    String,
+    OwnedMutexGuard<Option<Lane>>,
+    Lane,
+    Option<usize>,
+    String,
+);
 
 #[derive(Clone)]
 pub struct App {
@@ -209,6 +215,8 @@ fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
     let parts = json!([
         app.config.upstream,
         app.config.compact_path,
+        app.config.compaction_backend,
+        app.config.inline_threshold_tokens,
         headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
@@ -352,7 +360,16 @@ async fn handle(
         headers.get("x-ostk-roll").is_some_and(|v| v == "1"),
     );
     let mut reason = plan.reason;
-    if let Some(prefix) = plan.compact_input.clone() {
+    let mut inline_bytes = None;
+    if plan.compact_input.is_some() && app.config.compaction_backend == CompactionBackend::Inline {
+        if app.config.platform() || app.config.allow_compatible_compaction {
+            inline_bytes = Some(engine::bytes(&plan.effective));
+            value["context_management"] = json!([{"type":"compaction", "compact_threshold":app.config.inline_threshold_tokens}]);
+            reason = "scheduled_inline";
+        } else {
+            reason = "compatible_compaction_disabled";
+        }
+    } else if let Some(prefix) = plan.compact_input.clone() {
         if app.config.platform() || app.config.allow_compatible_compaction {
             let start = Instant::now();
             let mut compact_body = json!({"model":value["model"], "input":prefix});
@@ -413,7 +430,13 @@ async fn handle(
             "projected request exceeds max-body-bytes; no history was discarded",
         );
     }
-    let pending = Some((id, guard, plan.next));
+    let pending = Some((
+        id,
+        guard,
+        plan.next,
+        inline_bytes,
+        crate::fingerprint(&value["input"]),
+    ));
     forward(
         app,
         headers,
@@ -506,8 +529,10 @@ async fn forward(
         }
     }
     let mut chunks = response.bytes_stream();
+    let inline_bytes = pending.as_ref().and_then(|p| p.3);
     let stream = async_stream::stream! {
         let mut observer = Observer::new(sse, app.config.max_observation_bytes);
+        if inline_bytes.is_some() { observer.capture_output(); }
         let mut response_bytes = 0usize;
         let mut first_byte_ms = None;
         let mut clean_eof = true;
@@ -528,11 +553,22 @@ async fn forward(
             }
         }
         observer.finish();
-        let complete = clean_eof && status.is_success() && observer.completed();
+        let inline_output = inline_bytes.and_then(|_| observer.output());
+        let complete = clean_eof && status.is_success() && observer.completed()
+            && (inline_bytes.is_none() || inline_output.is_some());
         let mut committed = false;
         let mut state_error = false;
+        let mut inline_adopted = 0usize;
+        let mut inline_rejection = None;
+        let inline_observed = inline_output.as_ref().map_or(0, |items| items.iter().filter(|i| i["type"] == "compaction").count());
         if complete {
-            if let Some((id, guard, candidate)) = pending.as_mut() {
+            if let Some((id, guard, candidate, _, _)) = pending.as_mut() {
+                if let (Some(output), Some(bytes)) = (&inline_output, inline_bytes) {
+                    match engine::adopt_inline(candidate, output, bytes, app.config.min_savings) {
+                        Ok(count) => inline_adopted = count,
+                        Err(error) => inline_rejection = Some(error.to_string()),
+                    }
+                }
                 candidate.last_success_ms = now_ms();
                 match app.store.commit(id, candidate).await {
                     Ok(()) => { **guard = Some(candidate.clone()); committed = true; }
@@ -544,6 +580,12 @@ async fn forward(
             app.store.record(&json!({"kind":"response", "ts_ms":now_ms(), "lane":lane, "reason":reason,
                 "outcome":if complete { "completed" } else { "not_completed" }, "status":status.as_u16(),
                 "epoch":pending.as_ref().map(|p| p.2.epoch), "committed":committed, "state_error":state_error,
+                "cut":pending.as_ref().map(|p| p.2.cut),
+                "projection_sha256":pending.as_ref().map(|p| crate::fingerprint(&json!(p.2.projection))),
+                "effective_input_sha256":pending.as_ref().map(|p| &p.4),
+                "inline_scheduled":inline_bytes.is_some(), "inline_checkpoints_observed":inline_observed,
+                "inline_checkpoints_adopted":if committed { inline_adopted } else { 0 },
+                "inline_rejection_reason":inline_rejection,
                 "bytes_in":bytes_in, "bytes_out":bytes_out, "response_bytes":response_bytes,
                 "first_byte_ms":first_byte_ms, "elapsed_ms":start.elapsed().as_millis(),
                 "observation_overflow":observer.overflow, "usage":observer.usage,

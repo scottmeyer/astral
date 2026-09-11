@@ -1,5 +1,7 @@
 # Rolling projection contract
 
+This describes the default standalone backend. The opt-in [inline backend](inline-backend.md) uses the same original-history mapping and commit discipline, with a cut extending through the latest provider checkpoint in the completed response output.
+
 ## Representation
 
 Let `H_t` be the client's original full input array at time `t`. A committed lane holds an epoch `e`, a cut offset `b_e`, and a projection `P_e`. The outbound input is:

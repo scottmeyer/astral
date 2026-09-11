@@ -7,6 +7,13 @@ pub enum Mode {
     Passthrough,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionBackend {
+    Standalone,
+    Inline,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Retention {
     ProviderDefault,
@@ -32,6 +39,12 @@ pub struct Config {
     /// Native compact route relative to the upstream base.
     #[arg(long, default_value = "/responses/compact")]
     pub compact_path: String,
+    /// Inline lets Astral schedule native checkpoints within generation responses.
+    #[arg(long, value_enum, default_value = "standalone")]
+    pub compaction_backend: CompactionBackend,
+    /// Provider token threshold when an inline rollover is scheduled.
+    #[arg(long, default_value_t = 8192)]
+    pub inline_threshold_tokens: usize,
     #[arg(long, value_enum, default_value = "rolling")]
     pub mode: Mode,
     #[arg(long, default_value = ".ostk-gpt")]
@@ -110,6 +123,10 @@ impl Config {
         anyhow::ensure!(
             self.request_timeout_seconds > 0 && self.compact_timeout_seconds > 0,
             "timeouts must be positive"
+        );
+        anyhow::ensure!(
+            self.inline_threshold_tokens > 0,
+            "inline threshold must be positive"
         );
         Ok(())
     }

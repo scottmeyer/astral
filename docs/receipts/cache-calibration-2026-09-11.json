@@ -1,0 +1,38 @@
+[
+  {
+    "variant": "default",
+    "repeat": 0,
+    "status": 200,
+    "seconds": 7.121,
+    "input": 5053,
+    "details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output": 5,
+    "retention": "24h",
+    "options": null,
+    "key_preserved": false
+  },
+  {
+    "variant": "default",
+    "repeat": 1,
+    "status": 200,
+    "seconds": 2.51,
+    "input": 5053,
+    "details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output": 5,
+    "retention": "24h",
+    "options": null,
+    "key_preserved": false
+  },
+  {
+    "variant": "implicit",
+    "repeat": 0,
+    "status": 400,
+    "error": "{\"detail\":\"Unsupported parameter: prompt_cache_options\"}"
+  }
+]

@@ -1,0 +1,2111 @@
+{
+  "date": "2026-09-11",
+  "model": "gpt-6-astra",
+  "upstream": "https://chatgpt.com:18080/backend-api/codex",
+  "auth": "gateway",
+  "seeds": [
+    731,
+    947
+  ],
+  "cache_mode": "provider-default",
+  "threshold": 8192,
+  "roll_bytes": 64000,
+  "ordering": [
+    {
+      "seed": 731,
+      "arms": [
+        "provider",
+        "full",
+        "astral"
+      ]
+    },
+    {
+      "seed": 947,
+      "arms": [
+        "astral",
+        "provider",
+        "full"
+      ]
+    }
+  ],
+  "trials": [
+    {
+      "arm": "provider",
+      "seed": 731,
+      "expected": {
+        "deployment_label": "deploy-b2ca4ff311c46385b8d56720",
+        "region": "zone-e55d5c6b892b0fb7",
+        "budget": 23,
+        "recovery_code": "recover-1afb2ba0f539da1dd07b64c8",
+        "audit_code": "audit-01328374f6970d3aff24bf82"
+      },
+      "calls": [
+        {
+          "turn": 1,
+          "seconds": 4.078,
+          "client_input_bytes": 159,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 1,
+          "seconds": 9.758,
+          "client_input_bytes": 112243,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 2,
+          "seconds": 2.61,
+          "client_input_bytes": 3434,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 3,
+          "seconds": 5.045,
+          "client_input_bytes": 3841,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 4,
+          "seconds": 4.283,
+          "client_input_bytes": 4247,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 5,
+          "seconds": 2.32,
+          "client_input_bytes": 4655,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 3.645,
+          "client_input_bytes": 5106,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 16.375,
+          "client_input_bytes": 117070,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 7,
+          "seconds": 3.658,
+          "client_input_bytes": 4843,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 8,
+          "seconds": 4.013,
+          "client_input_bytes": 5251,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 9,
+          "seconds": 5.287,
+          "client_input_bytes": 5672,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        }
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "text": "READY"
+        },
+        {
+          "turn": 2,
+          "text": "READY"
+        },
+        {
+          "turn": 3,
+          "text": "READY"
+        },
+        {
+          "turn": 4,
+          "text": "READY"
+        },
+        {
+          "turn": 5,
+          "text": "READY"
+        },
+        {
+          "turn": 6,
+          "text": "READY"
+        },
+        {
+          "turn": 7,
+          "text": "READY"
+        },
+        {
+          "turn": 8,
+          "text": "READY"
+        },
+        {
+          "turn": 9,
+          "text": "{\"deployment_label\":\"deploy-b2ca4ff311c46385b8d56720\",\"region\":\"zone-e55d5c6b892b0fb7\",\"budget\":23,\"recovery_code\":\"recover-1afb2ba0f539da1dd07b64c8\",\"audit_code\":\"audit-01328374f6970d3aff24bf82\"}",
+          "correct": true
+        }
+      ],
+      "passed": true,
+      "canaries_absent_from_final_upstream_input": true,
+      "final_effective_input_bytes": 5672,
+      "native_compactions": 2,
+      "astral_adopted_checkpoints": 0,
+      "projection_epochs": [
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 1025,
+          "bytes_out": 1025,
+          "first_byte_ms": 2095,
+          "elapsed_ms": 4076,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113109,
+          "bytes_out": 113109,
+          "first_byte_ms": 1780,
+          "elapsed_ms": 9754,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 4300,
+          "bytes_out": 4300,
+          "first_byte_ms": 1191,
+          "elapsed_ms": 2608,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 4707,
+          "bytes_out": 4707,
+          "first_byte_ms": 3410,
+          "elapsed_ms": 5042,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5113,
+          "bytes_out": 5113,
+          "first_byte_ms": 1385,
+          "elapsed_ms": 4280,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5521,
+          "bytes_out": 5521,
+          "first_byte_ms": 999,
+          "elapsed_ms": 2318,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5972,
+          "bytes_out": 5972,
+          "first_byte_ms": 1247,
+          "elapsed_ms": 3643,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 117936,
+          "bytes_out": 117936,
+          "first_byte_ms": 2293,
+          "elapsed_ms": 16371,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5709,
+          "bytes_out": 5709,
+          "first_byte_ms": 1405,
+          "elapsed_ms": 3655,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 6117,
+          "bytes_out": 6117,
+          "first_byte_ms": 2113,
+          "elapsed_ms": 4010,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 6538,
+          "bytes_out": 6538,
+          "first_byte_ms": 1278,
+          "elapsed_ms": 5285,
+          "reason": "passthrough"
+        }
+      ],
+      "checks": {
+        "both_fixtures_loaded": true,
+        "task_correct": true,
+        "all_generations_completed": true,
+        "rollovers": true,
+        "no_plaintext_canaries": true
+      },
+      "seconds": 61.196,
+      "proxy_ingress": [
+        10,
+        1
+      ],
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 11,
+          "completed": 11,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 11,
+          "input_tokens": 46316,
+          "cached_tokens": 0,
+          "output_tokens": 1208,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    },
+    {
+      "arm": "full",
+      "seed": 731,
+      "expected": {
+        "deployment_label": "deploy-b2ca4ff311c46385b8d56720",
+        "region": "zone-e55d5c6b892b0fb7",
+        "budget": 23,
+        "recovery_code": "recover-1afb2ba0f539da1dd07b64c8",
+        "audit_code": "audit-01328374f6970d3aff24bf82"
+      },
+      "calls": [
+        {
+          "turn": 1,
+          "seconds": 3.201,
+          "client_input_bytes": 159,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 1,
+          "seconds": 3.944,
+          "client_input_bytes": 112243,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 2,
+          "seconds": 2.279,
+          "client_input_bytes": 112648,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 3,
+          "seconds": 3.685,
+          "client_input_bytes": 113055,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 4,
+          "seconds": 5.658,
+          "client_input_bytes": 113461,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 5,
+          "seconds": 3.223,
+          "client_input_bytes": 113869,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 3.426,
+          "client_input_bytes": 114320,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 3.41,
+          "client_input_bytes": 226284,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 7,
+          "seconds": 8.718,
+          "client_input_bytes": 226690,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 8,
+          "seconds": 3.012,
+          "client_input_bytes": 227098,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 9,
+          "seconds": 4.853,
+          "client_input_bytes": 227519,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        }
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "text": "READY"
+        },
+        {
+          "turn": 2,
+          "text": "READY"
+        },
+        {
+          "turn": 3,
+          "text": "READY"
+        },
+        {
+          "turn": 4,
+          "text": "READY"
+        },
+        {
+          "turn": 5,
+          "text": "READY"
+        },
+        {
+          "turn": 6,
+          "text": "READY"
+        },
+        {
+          "turn": 7,
+          "text": "READY"
+        },
+        {
+          "turn": 8,
+          "text": "READY"
+        },
+        {
+          "turn": 9,
+          "text": "{\"deployment_label\":\"deploy-b2ca4ff311c46385b8d56720\",\"region\":\"zone-e55d5c6b892b0fb7\",\"budget\":23,\"recovery_code\":\"recover-1afb2ba0f539da1dd07b64c8\",\"audit_code\":\"audit-01328374f6970d3aff24bf82\"}",
+          "correct": true
+        }
+      ],
+      "passed": true,
+      "canaries_absent_from_final_upstream_input": false,
+      "final_effective_input_bytes": 227519,
+      "native_compactions": 0,
+      "astral_adopted_checkpoints": 0,
+      "projection_epochs": [
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 950,
+          "bytes_out": 950,
+          "first_byte_ms": 1045,
+          "elapsed_ms": 3199,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113034,
+          "bytes_out": 113034,
+          "first_byte_ms": 1494,
+          "elapsed_ms": 3941,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113439,
+          "bytes_out": 113439,
+          "first_byte_ms": 1001,
+          "elapsed_ms": 2275,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113846,
+          "bytes_out": 113846,
+          "first_byte_ms": 2026,
+          "elapsed_ms": 3682,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 114252,
+          "bytes_out": 114252,
+          "first_byte_ms": 1192,
+          "elapsed_ms": 5655,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 114660,
+          "bytes_out": 114660,
+          "first_byte_ms": 946,
+          "elapsed_ms": 3220,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 115111,
+          "bytes_out": 115111,
+          "first_byte_ms": 1378,
+          "elapsed_ms": 3423,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 227075,
+          "bytes_out": 227075,
+          "first_byte_ms": 1266,
+          "elapsed_ms": 3406,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 227481,
+          "bytes_out": 227481,
+          "first_byte_ms": 2926,
+          "elapsed_ms": 8715,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 227889,
+          "bytes_out": 227889,
+          "first_byte_ms": 1085,
+          "elapsed_ms": 3009,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 228310,
+          "bytes_out": 228310,
+          "first_byte_ms": 1063,
+          "elapsed_ms": 4847,
+          "reason": "passthrough"
+        }
+      ],
+      "checks": {
+        "both_fixtures_loaded": true,
+        "task_correct": true,
+        "all_generations_completed": true,
+        "rollovers": true,
+        "no_plaintext_canaries": true
+      },
+      "seconds": 45.534,
+      "proxy_ingress": [
+        10,
+        1
+      ],
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 11,
+          "completed": 11,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 11,
+          "input_tokens": 281128,
+          "cached_tokens": 19968,
+          "output_tokens": 160,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    },
+    {
+      "arm": "astral",
+      "seed": 731,
+      "expected": {
+        "deployment_label": "deploy-b2ca4ff311c46385b8d56720",
+        "region": "zone-e55d5c6b892b0fb7",
+        "budget": 23,
+        "recovery_code": "recover-1afb2ba0f539da1dd07b64c8",
+        "audit_code": "audit-01328374f6970d3aff24bf82"
+      },
+      "calls": [
+        {
+          "turn": 1,
+          "seconds": 2.703,
+          "client_input_bytes": 159,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 1,
+          "seconds": 3.218,
+          "client_input_bytes": 112243,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 2,
+          "seconds": 12.878,
+          "client_input_bytes": 112648,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 3,
+          "seconds": 2.317,
+          "client_input_bytes": 116188,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 4,
+          "seconds": 2.679,
+          "client_input_bytes": 116594,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 5,
+          "seconds": 2.646,
+          "client_input_bytes": 117002,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 3.685,
+          "client_input_bytes": 117453,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 4.375,
+          "client_input_bytes": 229417,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 7,
+          "seconds": 11.497,
+          "client_input_bytes": 229823,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 8,
+          "seconds": 1.847,
+          "client_input_bytes": 234260,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 9,
+          "seconds": 4.841,
+          "client_input_bytes": 234681,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        }
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "text": "READY"
+        },
+        {
+          "turn": 2,
+          "text": "READY"
+        },
+        {
+          "turn": 3,
+          "text": "READY"
+        },
+        {
+          "turn": 4,
+          "text": "READY"
+        },
+        {
+          "turn": 5,
+          "text": "READY"
+        },
+        {
+          "turn": 6,
+          "text": "READY"
+        },
+        {
+          "turn": 7,
+          "text": "READY"
+        },
+        {
+          "turn": 8,
+          "text": "READY"
+        },
+        {
+          "turn": 9,
+          "text": "{\"deployment_label\":\"deploy-b2ca4ff311c46385b8d56720\",\"region\":\"zone-e55d5c6b892b0fb7\",\"budget\":23,\"recovery_code\":\"recover-1afb2ba0f539da1dd07b64c8\",\"audit_code\":\"audit-01328374f6970d3aff24bf82\"}",
+          "correct": true
+        }
+      ],
+      "passed": true,
+      "canaries_absent_from_final_upstream_input": true,
+      "final_effective_input_bytes": 4858,
+      "native_compactions": 2,
+      "astral_adopted_checkpoints": 2,
+      "projection_epochs": [
+        {
+          "epoch": 0,
+          "cut": 0,
+          "projection_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "bf24179a0fe89095ac3e95d392326459ca37148ab500417db11be6aa01ef9b2a",
+          "bytes_in": 950,
+          "bytes_out": 903,
+          "first_byte_ms": 1133,
+          "elapsed_ms": 2701,
+          "reason": "append"
+        },
+        {
+          "epoch": 0,
+          "cut": 0,
+          "projection_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "6114c03064615668d567d8e9b5f6f253e3eaadc9d1eb19ceae635a7979d91617",
+          "bytes_in": 113034,
+          "bytes_out": 112969,
+          "first_byte_ms": 1384,
+          "elapsed_ms": 3214,
+          "reason": "defer_active_turn"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "9bc342e524697cd7328c92dbe39f47ff6cd13d5ea76fa7bfbbd92ad2e46e87be",
+          "inline_scheduled": true,
+          "inline_checkpoints_adopted": 1,
+          "effective_input_sha256": "00c713016f9c11679f54145decdfe87b7da517e6c5e761c0123620e5f4ebf059",
+          "bytes_in": 113439,
+          "bytes_out": 113418,
+          "first_byte_ms": 1446,
+          "elapsed_ms": 12874,
+          "reason": "scheduled_inline"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "9bc342e524697cd7328c92dbe39f47ff6cd13d5ea76fa7bfbbd92ad2e46e87be",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "d6619ba0de294efb87652bc81adbf80a4c582a524b35cae0596707c4248a0cbb",
+          "bytes_in": 116979,
+          "bytes_out": 4259,
+          "first_byte_ms": 748,
+          "elapsed_ms": 2314,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "9bc342e524697cd7328c92dbe39f47ff6cd13d5ea76fa7bfbbd92ad2e46e87be",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "cc4432d5f9f95a660f671d903c88ca5b34d72e5772cda803d2b986ecf1f7b3ae",
+          "bytes_in": 117385,
+          "bytes_out": 4639,
+          "first_byte_ms": 1250,
+          "elapsed_ms": 2676,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "9bc342e524697cd7328c92dbe39f47ff6cd13d5ea76fa7bfbbd92ad2e46e87be",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "57268f31972e6077342306d235848635a81bcb17ec5af31e14c68bfb1ac84779",
+          "bytes_in": 117793,
+          "bytes_out": 5021,
+          "first_byte_ms": 947,
+          "elapsed_ms": 2643,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "9bc342e524697cd7328c92dbe39f47ff6cd13d5ea76fa7bfbbd92ad2e46e87be",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "8f5b5daa36633f14886740ba8c293c2900d7825cffb77243518ffd28081aadea",
+          "bytes_in": 118244,
+          "bytes_out": 5446,
+          "first_byte_ms": 2088,
+          "elapsed_ms": 3667,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "9bc342e524697cd7328c92dbe39f47ff6cd13d5ea76fa7bfbbd92ad2e46e87be",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "0b34119967423de8a101536ac82f601d041878c0577df42f50075cac7dd717d3",
+          "bytes_in": 230208,
+          "bytes_out": 117392,
+          "first_byte_ms": 2902,
+          "elapsed_ms": 4353,
+          "reason": "defer_active_turn"
+        },
+        {
+          "epoch": 2,
+          "cut": 19,
+          "projection_sha256": "a48f112b8189626bc178ef821ca8a2d01abafcaa6779f5244e97bf60dd67203e",
+          "inline_scheduled": true,
+          "inline_checkpoints_adopted": 1,
+          "effective_input_sha256": "95a1956344a385d53720bc37f20f0e603fe5ee7466c7eef2368751443b7a4dde",
+          "bytes_in": 230614,
+          "bytes_out": 117842,
+          "first_byte_ms": 1328,
+          "elapsed_ms": 11489,
+          "reason": "scheduled_inline"
+        },
+        {
+          "epoch": 2,
+          "cut": 19,
+          "projection_sha256": "a48f112b8189626bc178ef821ca8a2d01abafcaa6779f5244e97bf60dd67203e",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "e91d846bf88edc3eb6c8e65206f68b62f610bebe2565561e4871a33ced5c8ea6",
+          "bytes_in": 235051,
+          "bytes_out": 5156,
+          "first_byte_ms": 701,
+          "elapsed_ms": 1843,
+          "reason": "append"
+        },
+        {
+          "epoch": 2,
+          "cut": 19,
+          "projection_sha256": "a48f112b8189626bc178ef821ca8a2d01abafcaa6779f5244e97bf60dd67203e",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "f2c979140929c9a97fd4e9fc987aa477320526d1b6f49dad2f99fc503d4e36f7",
+          "bytes_in": 235472,
+          "bytes_out": 5551,
+          "first_byte_ms": 1075,
+          "elapsed_ms": 4837,
+          "reason": "append"
+        }
+      ],
+      "checks": {
+        "both_fixtures_loaded": true,
+        "task_correct": true,
+        "all_generations_completed": true,
+        "rollovers": true,
+        "no_plaintext_canaries": true,
+        "astral_owns_checkpoints": true,
+        "all_generations_committed": true,
+        "final_projected_input_verified": true,
+        "projection_reused_after_restart": true,
+        "no_history_resets": true
+      },
+      "seconds": 52.816,
+      "proxy_ingress": [
+        10,
+        1
+      ],
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 11,
+          "completed": 11,
+          "accepted": 0,
+          "committed": 11,
+          "usage_records": 11,
+          "input_tokens": 85223,
+          "cached_tokens": 0,
+          "output_tokens": 1002,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    },
+    {
+      "arm": "astral",
+      "seed": 947,
+      "expected": {
+        "deployment_label": "deploy-46d086cab11a796932f26875",
+        "region": "zone-5b42e14ae9eb3c75",
+        "budget": 23,
+        "recovery_code": "recover-2aa1f94c1b67773483feb99e",
+        "audit_code": "audit-a991d72d7be1e9d1c885a2b1"
+      },
+      "calls": [
+        {
+          "turn": 1,
+          "seconds": 2.732,
+          "client_input_bytes": 159,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 1,
+          "seconds": 3.477,
+          "client_input_bytes": 112243,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 2,
+          "seconds": 12.759,
+          "client_input_bytes": 112648,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 3,
+          "seconds": 2.973,
+          "client_input_bytes": 116636,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 4,
+          "seconds": 2.741,
+          "client_input_bytes": 117042,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 5,
+          "seconds": 3.04,
+          "client_input_bytes": 117450,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 2.641,
+          "client_input_bytes": 117901,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 3.494,
+          "client_input_bytes": 229865,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 7,
+          "seconds": 16.531,
+          "client_input_bytes": 230271,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 8,
+          "seconds": 2.206,
+          "client_input_bytes": 235648,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 9,
+          "seconds": 5.077,
+          "client_input_bytes": 236069,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        }
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "text": "READY"
+        },
+        {
+          "turn": 2,
+          "text": "READY"
+        },
+        {
+          "turn": 3,
+          "text": "READY"
+        },
+        {
+          "turn": 4,
+          "text": "READY"
+        },
+        {
+          "turn": 5,
+          "text": "READY"
+        },
+        {
+          "turn": 6,
+          "text": "READY"
+        },
+        {
+          "turn": 7,
+          "text": "READY"
+        },
+        {
+          "turn": 8,
+          "text": "READY"
+        },
+        {
+          "turn": 9,
+          "text": "{\"deployment_label\":\"deploy-46d086cab11a796932f26875\",\"region\":\"zone-5b42e14ae9eb3c75\",\"budget\":23,\"recovery_code\":\"recover-2aa1f94c1b67773483feb99e\",\"audit_code\":\"audit-a991d72d7be1e9d1c885a2b1\"}",
+          "correct": true
+        }
+      ],
+      "passed": true,
+      "canaries_absent_from_final_upstream_input": true,
+      "final_effective_input_bytes": 5798,
+      "native_compactions": 2,
+      "astral_adopted_checkpoints": 2,
+      "projection_epochs": [
+        {
+          "epoch": 0,
+          "cut": 0,
+          "projection_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "bf24179a0fe89095ac3e95d392326459ca37148ab500417db11be6aa01ef9b2a",
+          "bytes_in": 950,
+          "bytes_out": 903,
+          "first_byte_ms": 1310,
+          "elapsed_ms": 2730,
+          "reason": "append"
+        },
+        {
+          "epoch": 0,
+          "cut": 0,
+          "projection_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "bdcb8cbc7bb2f70db52564a755b36d422ae372c431a6aa938bcf713d08af20d8",
+          "bytes_in": 113034,
+          "bytes_out": 112969,
+          "first_byte_ms": 1977,
+          "elapsed_ms": 3473,
+          "reason": "defer_active_turn"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "5226ae42b13e3b6d7a389a03977813604e563b9fc570058614780531100602e4",
+          "inline_scheduled": true,
+          "inline_checkpoints_adopted": 1,
+          "effective_input_sha256": "25ee2715a3aab796494ca49645ab6a57ccd3cc27a9d948c0a73916c4d9c8d021",
+          "bytes_in": 113439,
+          "bytes_out": 113418,
+          "first_byte_ms": 1587,
+          "elapsed_ms": 12754,
+          "reason": "scheduled_inline"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "5226ae42b13e3b6d7a389a03977813604e563b9fc570058614780531100602e4",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "930e5d48a978dc99b1b2a5e4fcb8f8f90a027514337838aa689ff04c75398564",
+          "bytes_in": 117427,
+          "bytes_out": 4707,
+          "first_byte_ms": 907,
+          "elapsed_ms": 2969,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "5226ae42b13e3b6d7a389a03977813604e563b9fc570058614780531100602e4",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "171391afc1d567c5c4fc550611e1d58aa73d97e755dc8526193eebb582d302ec",
+          "bytes_in": 117833,
+          "bytes_out": 5087,
+          "first_byte_ms": 815,
+          "elapsed_ms": 2738,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "5226ae42b13e3b6d7a389a03977813604e563b9fc570058614780531100602e4",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "ee7c58b54d782d002ccd28843e5304b7276b0f726f2e967b1469a9bf967e795a",
+          "bytes_in": 118241,
+          "bytes_out": 5469,
+          "first_byte_ms": 1353,
+          "elapsed_ms": 3037,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "5226ae42b13e3b6d7a389a03977813604e563b9fc570058614780531100602e4",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "a59612f6f55932124d9142bc9fc218fe603c02c61354827f2f8a61425215d50c",
+          "bytes_in": 118692,
+          "bytes_out": 5894,
+          "first_byte_ms": 996,
+          "elapsed_ms": 2637,
+          "reason": "append"
+        },
+        {
+          "epoch": 1,
+          "cut": 6,
+          "projection_sha256": "5226ae42b13e3b6d7a389a03977813604e563b9fc570058614780531100602e4",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "fb9671db566665845b38ff0175f3744a8d4c2f55e4d02fb8412d36622623a1de",
+          "bytes_in": 230656,
+          "bytes_out": 117840,
+          "first_byte_ms": 1082,
+          "elapsed_ms": 3490,
+          "reason": "defer_active_turn"
+        },
+        {
+          "epoch": 2,
+          "cut": 19,
+          "projection_sha256": "8d3e785d0308fbf3c7aa6730f52994925fe56d410bd61bd382117dbf25d016b7",
+          "inline_scheduled": true,
+          "inline_checkpoints_adopted": 1,
+          "effective_input_sha256": "df8113d41468d1069a39acfa16b2d5a567a307ceaf6d799f0a76cfefed51a2c5",
+          "bytes_in": 231062,
+          "bytes_out": 118290,
+          "first_byte_ms": 1155,
+          "elapsed_ms": 16527,
+          "reason": "scheduled_inline"
+        },
+        {
+          "epoch": 2,
+          "cut": 19,
+          "projection_sha256": "8d3e785d0308fbf3c7aa6730f52994925fe56d410bd61bd382117dbf25d016b7",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "3419387ea0d9794dad92449bd025b823403b7bf76dc168854140a1b5c1c625e2",
+          "bytes_in": 236439,
+          "bytes_out": 6096,
+          "first_byte_ms": 783,
+          "elapsed_ms": 2202,
+          "reason": "append"
+        },
+        {
+          "epoch": 2,
+          "cut": 19,
+          "projection_sha256": "8d3e785d0308fbf3c7aa6730f52994925fe56d410bd61bd382117dbf25d016b7",
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": "cdba84bccafc000154d28217a96fa3a6a6b7812b762d7d850355507478117106",
+          "bytes_in": 236860,
+          "bytes_out": 6491,
+          "first_byte_ms": 967,
+          "elapsed_ms": 5073,
+          "reason": "append"
+        }
+      ],
+      "checks": {
+        "both_fixtures_loaded": true,
+        "task_correct": true,
+        "all_generations_completed": true,
+        "rollovers": true,
+        "no_plaintext_canaries": true,
+        "astral_owns_checkpoints": true,
+        "all_generations_committed": true,
+        "final_projected_input_verified": true,
+        "projection_reused_after_restart": true,
+        "no_history_resets": true
+      },
+      "seconds": 57.792,
+      "proxy_ingress": [
+        10,
+        1
+      ],
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 11,
+          "completed": 11,
+          "accepted": 0,
+          "committed": 11,
+          "usage_records": 11,
+          "input_tokens": 86698,
+          "cached_tokens": 0,
+          "output_tokens": 1564,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    },
+    {
+      "arm": "provider",
+      "seed": 947,
+      "expected": {
+        "deployment_label": "deploy-46d086cab11a796932f26875",
+        "region": "zone-5b42e14ae9eb3c75",
+        "budget": 23,
+        "recovery_code": "recover-2aa1f94c1b67773483feb99e",
+        "audit_code": "audit-a991d72d7be1e9d1c885a2b1"
+      },
+      "calls": [
+        {
+          "turn": 1,
+          "seconds": 5.113,
+          "client_input_bytes": 159,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 1,
+          "seconds": 10.726,
+          "client_input_bytes": 112243,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 2,
+          "seconds": 2.15,
+          "client_input_bytes": 3498,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 3,
+          "seconds": 2.856,
+          "client_input_bytes": 3905,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 4,
+          "seconds": 2.495,
+          "client_input_bytes": 4311,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 5,
+          "seconds": 2.231,
+          "client_input_bytes": 4719,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 2.643,
+          "client_input_bytes": 5170,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 13.561,
+          "client_input_bytes": 117134,
+          "native_compactions": 1,
+          "output_types": [
+            "compaction",
+            "message"
+          ]
+        },
+        {
+          "turn": 7,
+          "seconds": 2.15,
+          "client_input_bytes": 4587,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 8,
+          "seconds": 2.325,
+          "client_input_bytes": 4995,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 9,
+          "seconds": 6.67,
+          "client_input_bytes": 5416,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        }
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "text": "READY"
+        },
+        {
+          "turn": 2,
+          "text": "READY"
+        },
+        {
+          "turn": 3,
+          "text": "READY"
+        },
+        {
+          "turn": 4,
+          "text": "READY"
+        },
+        {
+          "turn": 5,
+          "text": "READY"
+        },
+        {
+          "turn": 6,
+          "text": "READY"
+        },
+        {
+          "turn": 7,
+          "text": "READY"
+        },
+        {
+          "turn": 8,
+          "text": "READY"
+        },
+        {
+          "turn": 9,
+          "text": "{\"deployment_label\":\"deploy-46d086cab11a796932f26875\",\"region\":\"zone-5b42e14ae9eb3c75\",\"budget\":23,\"recovery_code\":\"recover-2aa1f94c1b67773483feb99e\",\"audit_code\":\"audit-a991d72d7be1e9d1c885a2b1\"}",
+          "correct": true
+        }
+      ],
+      "passed": true,
+      "canaries_absent_from_final_upstream_input": true,
+      "final_effective_input_bytes": 5416,
+      "native_compactions": 2,
+      "astral_adopted_checkpoints": 0,
+      "projection_epochs": [
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 1025,
+          "bytes_out": 1025,
+          "first_byte_ms": 1165,
+          "elapsed_ms": 5111,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113109,
+          "bytes_out": 113109,
+          "first_byte_ms": 2284,
+          "elapsed_ms": 10723,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 4364,
+          "bytes_out": 4364,
+          "first_byte_ms": 1052,
+          "elapsed_ms": 2148,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 4771,
+          "bytes_out": 4771,
+          "first_byte_ms": 903,
+          "elapsed_ms": 2853,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5177,
+          "bytes_out": 5177,
+          "first_byte_ms": 905,
+          "elapsed_ms": 2492,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5585,
+          "bytes_out": 5585,
+          "first_byte_ms": 954,
+          "elapsed_ms": 2228,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 6036,
+          "bytes_out": 6036,
+          "first_byte_ms": 890,
+          "elapsed_ms": 2641,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 118000,
+          "bytes_out": 118000,
+          "first_byte_ms": 1266,
+          "elapsed_ms": 13558,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5453,
+          "bytes_out": 5453,
+          "first_byte_ms": 949,
+          "elapsed_ms": 2148,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 5861,
+          "bytes_out": 5861,
+          "first_byte_ms": 774,
+          "elapsed_ms": 2322,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 6282,
+          "bytes_out": 6282,
+          "first_byte_ms": 1337,
+          "elapsed_ms": 6667,
+          "reason": "passthrough"
+        }
+      ],
+      "checks": {
+        "both_fixtures_loaded": true,
+        "task_correct": true,
+        "all_generations_completed": true,
+        "rollovers": true,
+        "no_plaintext_canaries": true
+      },
+      "seconds": 53.039,
+      "proxy_ingress": [
+        10,
+        1
+      ],
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 11,
+          "completed": 11,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 11,
+          "input_tokens": 46174,
+          "cached_tokens": 0,
+          "output_tokens": 1152,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    },
+    {
+      "arm": "full",
+      "seed": 947,
+      "expected": {
+        "deployment_label": "deploy-46d086cab11a796932f26875",
+        "region": "zone-5b42e14ae9eb3c75",
+        "budget": 23,
+        "recovery_code": "recover-2aa1f94c1b67773483feb99e",
+        "audit_code": "audit-a991d72d7be1e9d1c885a2b1"
+      },
+      "calls": [
+        {
+          "turn": 1,
+          "seconds": 2.557,
+          "client_input_bytes": 159,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 1,
+          "seconds": 5.937,
+          "client_input_bytes": 112243,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 2,
+          "seconds": 3.755,
+          "client_input_bytes": 112648,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 3,
+          "seconds": 2.69,
+          "client_input_bytes": 113055,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 4,
+          "seconds": 3.354,
+          "client_input_bytes": 113461,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 5,
+          "seconds": 5.672,
+          "client_input_bytes": 113869,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 2.741,
+          "client_input_bytes": 114320,
+          "native_compactions": 0,
+          "output_types": [
+            "function_call"
+          ]
+        },
+        {
+          "turn": 6,
+          "seconds": 2.939,
+          "client_input_bytes": 226284,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 7,
+          "seconds": 4.163,
+          "client_input_bytes": 226690,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 8,
+          "seconds": 3.656,
+          "client_input_bytes": 227098,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        },
+        {
+          "turn": 9,
+          "seconds": 7.472,
+          "client_input_bytes": 227519,
+          "native_compactions": 0,
+          "output_types": [
+            "message"
+          ]
+        }
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "text": "READY"
+        },
+        {
+          "turn": 2,
+          "text": "READY"
+        },
+        {
+          "turn": 3,
+          "text": "READY"
+        },
+        {
+          "turn": 4,
+          "text": "READY"
+        },
+        {
+          "turn": 5,
+          "text": "READY"
+        },
+        {
+          "turn": 6,
+          "text": "READY"
+        },
+        {
+          "turn": 7,
+          "text": "READY"
+        },
+        {
+          "turn": 8,
+          "text": "READY"
+        },
+        {
+          "turn": 9,
+          "text": "{\"deployment_label\":\"deploy-46d086cab11a796932f26875\",\"region\":\"zone-5b42e14ae9eb3c75\",\"budget\":23,\"recovery_code\":\"recover-2aa1f94c1b67773483feb99e\",\"audit_code\":\"audit-a991d72d7be1e9d1c885a2b1\"}",
+          "correct": true
+        }
+      ],
+      "passed": true,
+      "canaries_absent_from_final_upstream_input": false,
+      "final_effective_input_bytes": 227519,
+      "native_compactions": 0,
+      "astral_adopted_checkpoints": 0,
+      "projection_epochs": [
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 950,
+          "bytes_out": 950,
+          "first_byte_ms": 1062,
+          "elapsed_ms": 2554,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113034,
+          "bytes_out": 113034,
+          "first_byte_ms": 1476,
+          "elapsed_ms": 5935,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113439,
+          "bytes_out": 113439,
+          "first_byte_ms": 994,
+          "elapsed_ms": 3752,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 113846,
+          "bytes_out": 113846,
+          "first_byte_ms": 1059,
+          "elapsed_ms": 2687,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 114252,
+          "bytes_out": 114252,
+          "first_byte_ms": 841,
+          "elapsed_ms": 3351,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 114660,
+          "bytes_out": 114660,
+          "first_byte_ms": 3678,
+          "elapsed_ms": 5669,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 115111,
+          "bytes_out": 115111,
+          "first_byte_ms": 865,
+          "elapsed_ms": 2738,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 227075,
+          "bytes_out": 227075,
+          "first_byte_ms": 1420,
+          "elapsed_ms": 2935,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 227481,
+          "bytes_out": 227481,
+          "first_byte_ms": 2193,
+          "elapsed_ms": 4159,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 227889,
+          "bytes_out": 227889,
+          "first_byte_ms": 904,
+          "elapsed_ms": 3652,
+          "reason": "passthrough"
+        },
+        {
+          "epoch": null,
+          "cut": null,
+          "projection_sha256": null,
+          "inline_scheduled": false,
+          "inline_checkpoints_adopted": 0,
+          "effective_input_sha256": null,
+          "bytes_in": 228310,
+          "bytes_out": 228310,
+          "first_byte_ms": 2901,
+          "elapsed_ms": 7469,
+          "reason": "passthrough"
+        }
+      ],
+      "checks": {
+        "both_fixtures_loaded": true,
+        "task_correct": true,
+        "all_generations_completed": true,
+        "rollovers": true,
+        "no_plaintext_canaries": true
+      },
+      "seconds": 45.061,
+      "proxy_ingress": [
+        10,
+        1
+      ],
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "usage": {
+        "response": {
+          "requests": 11,
+          "completed": 11,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 11,
+          "input_tokens": 281140,
+          "cached_tokens": 19968,
+          "output_tokens": 162,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    }
+  ],
+  "passed": true,
+  "limits": "Synthetic tool-heavy task; small sample. Reported token use and wall time are not verified charges. Inline compaction work is not separately itemized. Separate stable keys and instruction nonces per arm."
+}

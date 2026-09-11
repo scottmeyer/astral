@@ -106,6 +106,8 @@ class Proxy:
         command = [str(self.args.binary), "--listen", f"127.0.0.1:{self.port}",
                    "--upstream", self.args.upstream, "--mode", self.arm,
                    "--compact-path", getattr(self.args, "compact_path", "/responses/compact"),
+                   "--compaction-backend", getattr(self.args, "compaction_backend", "standalone"),
+                   "--inline-threshold-tokens", str(getattr(self.args, "threshold", 8192)),
                    "--state-dir", str(self.state), "--roll-bytes", str(self.args.roll_bytes),
                    "--keep-recent-turns", "1", "--min-compact-bytes", "4096",
                    "--min-roll-seconds", "0",

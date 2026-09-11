@@ -8,7 +8,7 @@ use axum::{
 };
 use clap::Parser;
 use ostk_gpt_cache::{
-    config::{Config, Mode},
+    config::{CompactionBackend, Config, Mode},
     proxy::{App, router},
 };
 use serde_json::{Value, json};
@@ -35,6 +35,35 @@ struct Mock {
     delay: AtomicUsize,
     active: AtomicUsize,
     peak: AtomicUsize,
+    inline_mode: AtomicUsize,
+    inline_count: AtomicUsize,
+}
+fn inline_output(number: usize) -> Vec<Value> {
+    vec![
+        json!({"type":"message","role":"assistant","phase":"commentary","content":"working"}),
+        json!({"type":"compaction","id":format!("c{number}"),"encrypted_content":format!("opaque-{number}")}),
+        json!({"type":"reasoning","encrypted_content":"reasoning+/=","summary":[]}),
+        json!({"type":"message","role":"assistant","phase":"final_answer","content":"READY"}),
+    ]
+}
+fn inline_wire(number: usize, complete: bool, missing_index: bool) -> Vec<u8> {
+    let mut wire = Vec::new();
+    for (index, item) in inline_output(number).iter().enumerate() {
+        if missing_index && index == 0 {
+            continue;
+        }
+        wire.extend(
+            format!(
+                "data: {}\n\n",
+                json!({"type":"response.output_item.done","output_index":index,"item":item})
+            )
+            .bytes(),
+        );
+    }
+    if complete {
+        wire.extend(format!("data: {}\n\n", json!({"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":100,"input_tokens_details":{"cached_tokens":0},"output_tokens":20}}})).bytes());
+    }
+    wire
 }
 async fn mock_compact(State(m): State<Arc<Mock>>, headers: HeaderMap, body: Bytes) -> Response {
     m.records.lock().unwrap().push(Record {
@@ -67,6 +96,28 @@ async fn mock_response(State(m): State<Arc<Mock>>, headers: HeaderMap, body: Byt
         tokio::time::sleep(std::time::Duration::from_millis(delay as u64)).await;
     }
     m.active.fetch_sub(1, Ordering::SeqCst);
+    let inline_mode = m.inline_mode.load(Ordering::SeqCst);
+    if inline_mode > 0
+        && serde_json::from_slice::<Value>(&body)
+            .unwrap()
+            .get("context_management")
+            .is_some()
+    {
+        let number = m.inline_count.fetch_add(1, Ordering::SeqCst) + 1;
+        let wire = inline_wire(
+            number,
+            inline_mode != 2 && inline_mode != 3,
+            inline_mode == 4,
+        );
+        let stream = async_stream::stream! {
+            for chunk in wire.chunks(7) { yield Ok::<Bytes, std::io::Error>(Bytes::copy_from_slice(chunk)); }
+            if inline_mode == 3 { std::future::pending::<()>().await; }
+        };
+        return Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(Body::from_stream(stream))
+            .unwrap();
+    }
     match m.mode.load(Ordering::SeqCst) {
         1 | 2 | 5 => {
             let mode = m.mode.load(Ordering::SeqCst);
@@ -818,4 +869,214 @@ async fn custom_compact_path_handles_autonomous_and_caller_compaction() {
         cfg.compact_path = path.into();
         assert!(cfg.validate().is_err());
     }
+}
+
+#[tokio::test]
+async fn scheduled_inline_maps_original_history_across_two_checkpoints_and_restart() {
+    let mut f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compaction_backend = CompactionBackend::Inline;
+        cfg.roll_bytes = 100_000;
+    })
+    .await;
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    let mut r = input();
+    r["prompt_cache_key"] = json!("stable-caller-key");
+    r["prompt_cache_options"] = json!({"mode":"explicit","ttl":"30m"});
+    let bytes = f
+        .request("inline")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), inline_wire(1, true, false));
+    assert_eq!(f.snapshots().await[0]["cut"], 5);
+    r["input"].as_array_mut().unwrap().extend(inline_output(1));
+    let active = vec![
+        json!({"role":"user","content":"Read a file"}),
+        json!({"type":"reasoning","encrypted_content":"active-opaque","summary":[]}),
+        json!({"type":"function_call","call_id":"tool-1","name":"read","arguments":"{}"}),
+        json!({"type":"function_call_output","call_id":"tool-1","output":"X".repeat(1000)}),
+    ];
+    r["input"].as_array_mut().unwrap().extend(active.clone());
+    f.request("inline")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[1].body).unwrap();
+    assert!(sent.get("context_management").is_none());
+    assert_eq!(sent["input"][0], inline_output(1)[1]);
+    assert!(sent["input"].as_array().unwrap().ends_with(&active));
+    r["input"].as_array_mut().unwrap().extend([
+        json!({"role":"assistant","content":"done"}),
+        json!({"role":"user","content":"Next"}),
+    ]);
+    f.request("inline")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[2].body).unwrap();
+    assert_eq!(sent["input"][0], inline_output(1)[1]);
+    assert_eq!(sent["context_management"][0]["compact_threshold"], 8192);
+    assert_eq!(f.snapshots().await[0]["epoch"], 2);
+    let before_restart = f.snapshots().await;
+    r["input"].as_array_mut().unwrap().extend(inline_output(2));
+    let next = json!({"role":"user","content":"After restart"});
+    r["input"].as_array_mut().unwrap().push(next.clone());
+    f.restart().await;
+    f.request("inline")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[3].body).unwrap();
+    let mut expected = inline_output(2)[1..].to_vec();
+    expected.push(next);
+    assert_eq!(sent["input"], json!(expected));
+    assert_eq!(
+        f.snapshots().await[0]["projection"],
+        before_restart[0]["projection"]
+    );
+    assert_eq!(f.snapshots().await[0]["epoch"], 2);
+    for record in f.records(false) {
+        let sent: Value = serde_json::from_slice(&record.body).unwrap();
+        assert_eq!(sent["prompt_cache_options"], r["prompt_cache_options"]);
+        assert_eq!(sent["prompt_cache_key"], r["prompt_cache_key"]);
+    }
+    assert!(f.records(true).is_empty());
+}
+
+#[tokio::test]
+async fn inline_truncation_or_missing_output_indices_cannot_advance_checkpoint() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compaction_backend = CompactionBackend::Inline
+    })
+    .await;
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    let mut r = input();
+    f.request("inline-fail")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let saved = f.snapshots().await;
+    r["input"].as_array_mut().unwrap().extend(inline_output(1));
+    r["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role":"user","content":"next"}));
+    for mode in [2, 4] {
+        f.mock.inline_mode.store(mode, Ordering::SeqCst);
+        let returned = f
+            .request("inline-fail")
+            .header("x-ostk-roll", "1")
+            .json(&r)
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        assert!(!returned.is_empty());
+        assert_eq!(f.snapshots().await, saved);
+    }
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    f.request("inline-fail")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(f.snapshots().await[0]["epoch"], 2);
+}
+
+#[tokio::test]
+async fn disconnect_after_inline_checkpoint_releases_lane_without_commit() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compaction_backend = CompactionBackend::Inline
+    })
+    .await;
+    f.mock.inline_mode.store(3, Ordering::SeqCst);
+    let r = input();
+    let mut response = f.request("inline-drop").json(&r).send().await.unwrap();
+    let mut seen = Vec::new();
+    while !String::from_utf8_lossy(&seen).contains("opaque-1") {
+        seen.extend(response.chunk().await.unwrap().unwrap());
+    }
+    drop(response);
+    assert!(f.snapshots().await.is_empty());
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        f.request("inline-drop")
+            .json(&r)
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+    })
+    .await
+    .unwrap();
+    assert_eq!(f.snapshots().await[0]["epoch"], 1);
+}
+
+#[tokio::test]
+async fn edited_replayed_inline_checkpoint_resets_to_authoritative_client_history() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compaction_backend = CompactionBackend::Inline
+    })
+    .await;
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    let mut r = input();
+    f.request("inline-edit")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let mut output = inline_output(1);
+    output[1]["encrypted_content"] = json!("changed-by-client");
+    r["input"].as_array_mut().unwrap().extend(output);
+    r["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role":"user","content":"next"}));
+    f.request("inline-edit")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[1].body).unwrap();
+    assert_eq!(sent["input"], r["input"]);
+    assert!(sent.get("context_management").is_none());
+    assert_eq!(f.snapshots().await[0]["cut"], 0);
 }

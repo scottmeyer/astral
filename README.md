@@ -2,9 +2,11 @@
 
 A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. No `haystack` or other private dependencies.
 
-The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. [Live inline compaction](docs/opaque-replay.md) passed two successive compactions and recall after restart with random facts absent from the final plaintext input. Astral's autonomous standalone compact endpoint remains unavailable on this gateway. The [validation receipt](docs/validation.md) separates these paths and records the Codex startup and GitHub publication blockers.
+The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. The default backend uses standalone native compaction; the opt-in [inline backend](docs/inline-backend.md) lets Astral schedule and persist checkpoints through the normal Responses route. The [validation receipt](docs/validation.md) distinguishes these paths and records the remaining environment limitations.
 
-The projection is the **complete native `/responses/compact` output**. The proxy maintains a mapping from the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. The client continues sending ordinary full-history requests.
+In a [two-seed live comparison](docs/benefit-evaluation.md), Astral inline reduced input tokens by 69.4% against full history, increased wall time by 22.1%, and passed all recall/restart checks. Provider-managed compaction used fewer input tokens than Astral. These are synthetic-task measurements, not verified cost savings.
+
+For the standalone backend, the projection is the **complete native `/responses/compact` output**. The proxy maps the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. Inline mode instead adopts the latest native checkpoint from a completed generation and maps the original history through that output item. The client continues sending ordinary full-history requests in both modes.
 
 ## Build and run
 
@@ -47,7 +49,7 @@ For SDK callers, set the base URL to the proxy and attach `x-ostk-session-id` as
 
 ## What rolls, and when
 
-With no projection, the entire input forwards normally. Once effective input exceeds `--roll-bytes` (160,000 by default), the proxy can compact the older completed turns. It keeps the most recent two user turns and everything after them intact.
+With no projection, the entire input forwards normally. Once effective input exceeds `--roll-bytes` (160,000 by default), the proxy can compact older completed turns. The default standalone backend keeps the most recent two user turns and everything after them intact. Inline mode lets the provider checkpoint the effective window and does not reserve a fixed raw tail; see [its ownership contract](docs/inline-backend.md).
 
 Rolls happen only on requests whose final input item is a new user message. All known external tool calls must have corresponding outputs. Mid-tool-cycle requests retain the previous projection and complete active tail. A size trigger never authorizes deleting a pending call or its reasoning.
 
@@ -86,7 +88,7 @@ For compatible backends, `--allow-compatible-compaction` is an operator assertio
 
 ## Persistence and failure behavior
 
-Lanes are isolated by upstream, compact path, effective credentials (`Authorization`, `api-key`, and `x-api-key`), ChatGPT account (`chatgpt-account-id`), OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected. Backends with additional account-selection headers need those headers added to the identity contract before sharing state across accounts.
+Lanes are isolated by upstream, compact path, compaction backend and inline threshold, effective credentials (`Authorization`, `api-key`, and `x-api-key`), ChatGPT account (`chatgpt-account-id`), OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected. Backends with additional account-selection headers need those headers added to the identity contract before sharing state across accounts.
 
 Only a successful HTTP response with a completed response object/event and clean EOF commits a candidate. A network failure, truncated SSE stream, incomplete response, or dropped downstream body leaves the previous snapshot in effect. Snapshots use atomic rename after file sync; Unix also syncs the containing directory. A process lock prevents two proxies writing the same directory.
 

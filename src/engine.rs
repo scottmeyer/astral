@@ -243,6 +243,44 @@ impl Plan {
     }
 }
 
+/// Adopt an authoritative inline checkpoint only after the complete response.
+/// The client next replays its original input plus the unmodified response output.
+pub fn adopt_inline(
+    lane: &mut Lane,
+    output: &[Value],
+    effective_bytes: usize,
+    min_savings: f64,
+) -> anyhow::Result<usize> {
+    let positions: Vec<usize> = output
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| (item["type"] == "compaction").then_some(index))
+        .collect();
+    let Some(&index) = positions.last() else {
+        return Ok(0);
+    };
+    let checkpoint = &output[index];
+    anyhow::ensure!(
+        checkpoint["encrypted_content"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty()),
+        "inline checkpoint has no encrypted content"
+    );
+    let before = effective_bytes.saturating_add(bytes(&output[..=index]));
+    anyhow::ensure!(
+        (bytes(std::slice::from_ref(checkpoint)) as f64) < before as f64 * (1.0 - min_savings),
+        "insufficient inline checkpoint savings"
+    );
+    // Include the output prefix in the expected original history. The next request
+    // must replay it exactly before the cut can safely skip it.
+    lane.input_hashes
+        .extend(output[..=index].iter().map(fingerprint));
+    lane.cut = lane.input_hashes.len();
+    lane.projection = vec![checkpoint.clone()];
+    lane.epoch += positions.len() as u64;
+    Ok(positions.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

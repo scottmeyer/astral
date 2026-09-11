@@ -26,7 +26,7 @@ Use the normal `/responses` route with:
 
 For inline compaction, append all output items to the current history, then optionally discard items before the latest compaction item. Keep that item and everything after it intact. This pruning rule applies to inline compaction only. A standalone `/responses/compact` response is already the full canonical replacement window and must not be pruned. [Compaction contract](https://developers.openai.com/api/docs/guides/compaction).
 
-Astral deliberately passes `context_management` requests through. The provider controls these compactions; Astral's autonomous standalone planner is not active in this mode.
+Astral deliberately passes caller-supplied `context_management` requests through. The provider controls these compactions; Astral's autonomous planner is not active in this mode. The separate [inline backend](inline-backend.md) allows Astral to schedule its own checkpoints when the caller supplies full original history and omits context management.
 
 ## Executed checks
 
@@ -54,6 +54,6 @@ Earlier low-effort matched trials produced zero encrypted reasoning items. Their
 
 The two successful inline trials establish a working native transport reference. They do not prove general semantic fidelity, the causal contribution of reasoning replay, cache retention duration, or a cost advantage. Inline compaction shares the response stream, so zero standalone compact ledger rows must not be interpreted as zero compaction work or cost.
 
-Astral's standalone planner still needs a live backend implementing its compact contract. Its local tests already exercise frozen prefixes, active tool-cycle safety, two recursive projections, restart, request failures, and interrupted SSE. Further live trials should retain full-history and deliberately truncated controls, use multiple random seeds, keep facts out of visible acknowledgments, and verify the actual final input rather than scoring answers alone.
+Astral's standalone planner still needs a live backend implementing its compact contract. The subsequent [benefit evaluation](benefit-evaluation.md) validated Astral's new inline backend on two task seeds, including two owned checkpoints, actual projected-input hashes, restart, and no plaintext fact leakage. It compared full history and provider inline, finding input reduction versus full history but slower complete tasks. Local interrupted-stream controls retain old state even when a checkpoint arrives before disconnection. Broader task quality and reliable cached production economics remain unverified.
 
 Cache checks should separately verify stable checkpoint bytes between rolls, stable routing keys and caller cache controls, and provider-reported cache reads/writes. Persisting an opaque checkpoint does not pin the provider's prompt cache or establish its TTL.

@@ -1,0 +1,107 @@
+{
+  "date": "2026-09-11",
+  "sample_tasks_per_arm": 2,
+  "generation_calls_per_arm": 22,
+  "model": "gpt-6-astra",
+  "source_receipt_sha256": "e7b3cab3ef6340dd41838ad09feb6f60d803dc30cf5f11458a8c3752bf8f47ad",
+  "release_binary_sha256": "32862566f75658693a1b05974a29b0b74acc5533ccc1156433be9677897631ee",
+  "source_files_sha256": {
+    "src/bin/stats.rs": "cab155a1b90d9b5378102f4181a35805f348f2ea3076f06bd7262052af065156",
+    "src/config.rs": "d3aced53e624c85d29e8ebd9a466eca59cb002154dd4bfb959994e95090b6110",
+    "src/engine.rs": "faa52ac23de5e8ac59630f7aeaaa1da4b543a253492522d61781dc2ee5c78498",
+    "src/lib.rs": "c4c5889f49509a6da81f2646a6d58128cf5427cb8d39697733265fa5408104e0",
+    "src/main.rs": "7c135f5a5e6416aa204e14573d67c1c34f62eed473cc7fdfd9c3290df88376e7",
+    "src/policy.rs": "fb56d946bdeca01d30e2135c800082aa8cbe7f93bf0332267a11e6b9ea6c28f1",
+    "src/proxy.rs": "84c083064a04b8f7e8b69b33b14653f3fa55ed53f42882de0f7cf398bcd3574b",
+    "src/store.rs": "c55ff5bef644db4d21c202eca7a7100ed4f4ec5289728f60460dde36e1f570ab",
+    "src/usage.rs": "55d3998ab738df338ab4d43c415279954713041bbb18ec918ff8689fe776415b"
+  },
+  "post_hoc_usage_checks": [
+    {
+      "seed": 731,
+      "arm": "full",
+      "all_usage_reported": true
+    },
+    {
+      "seed": 947,
+      "arm": "full",
+      "all_usage_reported": true
+    },
+    {
+      "seed": 731,
+      "arm": "provider",
+      "all_usage_reported": true
+    },
+    {
+      "seed": 947,
+      "arm": "provider",
+      "all_usage_reported": true
+    },
+    {
+      "seed": 731,
+      "arm": "astral",
+      "all_usage_reported": true
+    },
+    {
+      "seed": 947,
+      "arm": "astral",
+      "all_usage_reported": true
+    }
+  ],
+  "totals": {
+    "full": {
+      "input_tokens": 562268,
+      "cached_tokens": 39936,
+      "output_tokens": 322,
+      "known_cache_write_tokens": 0,
+      "wall_seconds": 90.595,
+      "mean_final_input_array_bytes": 227519,
+      "upstream_request_body_bytes": 3192094,
+      "rollover_response_seconds": 0,
+      "matched_post_roll_nonroll_seconds": 49.442
+    },
+    "provider": {
+      "input_tokens": 92490,
+      "cached_tokens": 0,
+      "output_tokens": 2360,
+      "known_cache_write_tokens": 0,
+      "wall_seconds": 114.235,
+      "mean_final_input_array_bytes": 5544,
+      "upstream_request_body_bytes": 551710,
+      "rollover_response_seconds": 50.42,
+      "matched_post_roll_nonroll_seconds": 43.813,
+      "input_reduction_fraction": 0.8355054884859178,
+      "wall_increase_fraction": 0.26094155306584255,
+      "hypothetical_input_price_units_saved": 433835.6,
+      "extra_output_tokens": 2038,
+      "hypothetical_break_even_output_input_price_ratio": 212.87320902845926,
+      "hypothetical_baseline_cache_fraction_break_even_free_output": 0.9283394316510197,
+      "hypothetical_baseline_cache_fraction_break_even_output_ratio_6": 0.9041753912527281
+    },
+    "astral": {
+      "input_tokens": 171921,
+      "cached_tokens": 0,
+      "output_tokens": 2566,
+      "known_cache_write_tokens": 0,
+      "wall_seconds": 110.608,
+      "mean_final_input_array_bytes": 5328,
+      "upstream_request_body_bytes": 989760,
+      "rollover_response_seconds": 53.665,
+      "matched_post_roll_nonroll_seconds": 36.693,
+      "input_reduction_fraction": 0.6942365562329708,
+      "wall_increase_fraction": 0.2209062310282024,
+      "hypothetical_input_price_units_saved": 354404.6,
+      "extra_output_tokens": 2244,
+      "hypothetical_break_even_output_input_price_ratio": 157.9343137254902,
+      "hypothetical_baseline_cache_fraction_break_even_free_output": 0.7713739513699674,
+      "hypothetical_baseline_cache_fraction_break_even_output_ratio_6": 0.7447674220992283
+    }
+  },
+  "limits": [
+    "Two synthetic tasks per arm; not a pinned model snapshot.",
+    "Reported counters and wall time are not verified charges.",
+    "Inline compaction work is not separately itemized.",
+    "Platform multiplier sensitivity is hypothetical for this gateway.",
+    "The raw receipt was not changed to add the later runner usage-presence gate."
+  ]
+}
