@@ -1,6 +1,7 @@
 pub mod config;
 pub mod economics;
 pub mod engine;
+pub mod launcher;
 pub mod policy;
 pub mod project;
 pub mod proxy;
