@@ -1,24 +1,26 @@
-# Git-native context: the first executable boundary
+# Project contexts and read-only inspection
 
-Fresh launch and repository initialization are now available; see
-[fresh launch](fresh-launch.md). The resolver and inspection contract below
-remain applicable independently of launching.
+Astral supports [fresh launch and initialization](fresh-launch.md),
+[native launch](native-launch.md), and [bound worktrees, records and explicit save](worktree-handoff.md).
+The resolver and inspection contract below remains applicable independently of
+those operations.
 
 Astral's project-context work includes **read-only inspection** of documents and
 explicit [native bundles](native-bundles.md), separate from runtime launch. The
 repository carries shared context and explicitly exported native data; runtime
-credentials and thread bindings remain private. The native proxy experiment is a
-separate layer.
-See [the current integration receipt](project-context-verification.md) for tests
-rerun on the merged implementation and the remaining launch boundary.
+credentials and thread bindings remain private. Runtime tool rebinding is a
+separate layer used by the native launcher.
+The dated [first integration receipt](project-context-verification.md) records
+checks and the launch boundary at that historical milestone.
 The subsequent [unified CLI receipt](cli-verification.md) records the binary
 rename, default context and repaired development scanner.
 
-## Scope of the first implementation
+## Historical first boundary and current inspection
 
-AST-001 adds a bounded manifest validator and named-context resolver. It does not
-launch Codex, execute scripts, fetch artifacts, change Git state, or convert a
-readable handoff into native recovery. The v1 manifest contract is repository-local
+AST-001 introduced a bounded manifest validator and named-context resolver before
+launch or Git operations. The read-only commands still do not launch Codex,
+execute scripts, fetch artifacts, change Git state, or convert a readable handoff
+into native recovery. The v1 manifest contract is repository-local
 and experimental, not a general standard for arbitrary agent checkpoints.
 
 The implemented read-only interface is:
@@ -32,9 +34,11 @@ astral --root /path/to/repository project git-native-context-bootstrap --inspect
 ```
 
 These commands return JSON; `--inspect` uses two-space indentation. The final
-output limit includes formatting and its trailing newline. Omitting `--inspect`
-starts a fresh session for a supported readable context; unsupported native
-contexts fail explicitly.
+output limit includes formatting and its trailing newline. Inspection with
+`--work` observes the proposed or existing binding without creating a branch,
+worktree, thread or reservation. Omitting `--inspect` launches the selected
+readable context or supported native bundle; native launch requires explicit
+`--proxy`. `--work` binds a reusable worker in its own branch/worktree.
 The root defaults to the current directory;
 it is not an instruction to search other projects or the user's session archive.
 Without an explicit context, `astral project` selects `project-context`. An explicit
@@ -55,8 +59,9 @@ astral project project-context --inspect --proxy -- --model gpt-6-astra
 astral project project-context --inspect -- --dangerously-bypass-approvals-and-sandbox
 ```
 
-Before the first literal `--`, Astral consumes `--root`, `--work`, `--inspect`, and
-`--proxy`; remaining arguments retain their original order. After the separator,
+Before the first literal `--`, Astral consumes `--root`, `--work`, `--inspect`,
+`--proxy`, `--non-interactive`, and `--resume`; remaining arguments retain their
+original order. After the separator,
 everything belongs to Codex. Use it when a Codex option name or an option's value
 could resemble an Astral option. Astral does not need to recognize every Codex
 flag. An explicitly supplied permission flag remains unchanged; none is added
@@ -71,12 +76,18 @@ non-UTF-8 arguments on platforms that support them. Limits are 1,024 arguments,
 also remains within the resolver's output budget.
 
 Fresh project launch uses these argument primitives with the
-[documented staging limits](fresh-launch.md). Native artifact staging, destination
-compatibility checks, proxy health/lifetime management, and branch/worktree
-binding remain subsequent work. The requested route is not a verified
-effective route: explicit Codex configuration overrides may change routing.
-A native checkpoint requiring tool rebinding must report that requirement before
-direct launch; it must not trigger an implicit proxy or plaintext substitution.
+[documented staging limits](fresh-launch.md). Native launch checks runtime
+compatibility and manages its proxy's readiness and lifetime. The requested route
+in inspection is a preview, not a verified effective route. Native staging checks
+effective configuration and rejects conflicting overrides before injection.
+A native checkpoint requiring tool rebinding reports that requirement before
+direct launch; it never triggers an implicit proxy or plaintext substitution.
+
+`--non-interactive` selects `codex exec resume` with stdin closed; otherwise launch
+uses interactive `codex resume`. Use the flags accepted by that Codex mode.
+`--resume LAUNCH_ID` names a private native launch receipt for launches without
+`--work`. Bound workers continue by repeating the same `--work ID` and selector;
+combining the two continuation mechanisms is an error.
 
 ## Manifest and selection contract
 
@@ -96,8 +107,10 @@ direct launch; it must not trigger an implicit proxy or plaintext substitution.
   duplicate IDs, missing references and dependency cycles are errors.
 - New work IDs come from `astral work id`: `AST-` plus twelve random lowercase
   Crockford base32 characters (60 bits). The command proposes an ID without
-  creating/reserving a record. Existing IDs remain stable; future writes and
-  merges must still reject duplicates. Do not allocate by incrementing a counter.
+  creating/reserving a record. `work create` persists a new record; `work update`
+  checks its observed digest, and `work merge` performs a record-aware three-way
+  merge. Existing IDs remain stable and duplicate/conflicting records are errors.
+  Do not allocate by incrementing a counter.
 - An unqualified name must identify exactly one subsystem or projection. If both
   exist, select `subsystem:NAME` or `projection:NAME` explicitly.
 - Source descriptions and availability statements are data, not filesystem paths
@@ -123,9 +136,12 @@ in for native memory. Explicit version-one native bundles are now read and
 validated through confined paths. Their availability is reported separately from
 destination binding, and their bytes never appear in inspection output.
 
-Native capture, destination compatibility checks, private binding stores and
-lifecycle launch are subsequent work. The [native lifecycle record](native-recovery-lifecycle.md)
-describes a tested runtime route, not an artifact registry or general launcher.
+Native launch now supplies destination compatibility checks and private bindings.
+Explicit save captures a supported completed boundary and publishes a named
+projection in the worker's checkout. See [native launch](native-launch.md) and
+[bound workers and handoff](worktree-handoff.md) for the current commands and
+limits. The earlier [native lifecycle record](native-recovery-lifecycle.md)
+remains historical evidence for the runtime route.
 
 ## Safety and platform boundary
 
@@ -136,9 +152,9 @@ native payload, 16 MiB aggregate input, 2,048 files, 4,096
 discovery entries, dependency depth 64, and 2 MiB JSON output. Exceeding a limit
 is an explicit error. These are filesystem/output budgets, not token estimates.
 
-The first implementation uses descriptor-relative file access on Unix. Other
+The confined reader uses descriptor-relative file access on Unix. Other
 platforms must report unsupported confinement rather than silently use a weaker
-reader. This limits v0 execution portability, not the logical names or Git format.
+reader. This limits execution portability, not the logical names or Git format.
 Individual file observations do not constitute an atomic multi-file snapshot.
 
 ## Remaining workflow
@@ -150,4 +166,5 @@ Work state and code travel together; conflicting histories still require an
 explicit choice and historical verification is never promoted to current truth.
 
 The [launch milestone plan](launch-plan.md) records the accepted Git export and
-fresh/bootstrap behavior, concrete acceptance gates, and the next work IDs.
+fresh/bootstrap behavior and completed acceptance gates. The next workflow
+milestone is [finish and resume](finish-resume.md).

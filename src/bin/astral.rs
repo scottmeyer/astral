@@ -23,6 +23,28 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect recorded workers and selected context without launching a runtime.
+    Status {
+        #[arg(long)]
+        work: Option<String>,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = ostk_gpt_cache::status::DEFAULT_PAGE_SIZE)]
+        limit: usize,
+    },
+    /// Diagnose local resume blockers; exit 1 when the inspected page needs attention.
+    Doctor {
+        #[arg(long)]
+        work: Option<String>,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = ostk_gpt_cache::status::DEFAULT_PAGE_SIZE)]
+        limit: usize,
+    },
     /// Compact and explicitly export a stopped bound worker for Git handoff.
     Save {
         name: String,
@@ -119,6 +141,18 @@ enum WorkCommand {
 
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     match cli.command {
+        Command::Status {
+            work,
+            json,
+            offset,
+            limit,
+        } => run_status(&cli.root, work.as_deref(), json, offset, limit, false),
+        Command::Doctor {
+            work,
+            json,
+            offset,
+            limit,
+        } => run_status(&cli.root, work.as_deref(), json, offset, limit, true),
         Command::Save {
             name,
             work,
@@ -358,6 +392,33 @@ fn render_output(output: Value) -> Result<String, Error> {
         });
     }
     Ok(text)
+}
+
+fn run_status(
+    root: &std::path::Path,
+    work: Option<&str>,
+    json: bool,
+    offset: usize,
+    limit: usize,
+    doctor: bool,
+) -> Result<Option<Value>, Error> {
+    let report = ostk_gpt_cache::status::collect(root, work, offset, limit)?;
+    let text = if json {
+        serde_json::to_string_pretty(&report).expect("status report serializes")
+    } else {
+        ostk_gpt_cache::status::render(&report)
+    };
+    if text.len().saturating_add(1) > ostk_gpt_cache::project::Limits::default().output_bytes {
+        return Err(Error {
+            code: "LIMIT_EXCEEDED",
+            message: "status output byte limit".into(),
+        });
+    }
+    println!("{text}");
+    if doctor && report.needs_attention() {
+        std::process::exit(1);
+    }
+    Ok(None)
 }
 
 fn finish(result: Result<Option<Value>, Error>) {

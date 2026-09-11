@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 
 pub const MAX_BINDING_BYTES: usize = 16_384;
 
+mod observation;
+pub use observation::{BindingObservation, OwnershipObservation};
+
 /// Shared bounded Git invocation; current process supplies every literal argument.
 pub(crate) fn git_read(root: &Path, args: &[std::ffi::OsString]) -> Result<Vec<u8>> {
     #[cfg(unix)]
@@ -411,10 +414,10 @@ mod unix {
     const MAX_STDERR: usize = 65_536;
     const MAX_WORKTREES: usize = 4096;
 
-    fn io_error(_: std::io::Error) -> Error {
+    pub(super) fn io_error(_: std::io::Error) -> Error {
         fail("WORKSPACE_IO", "workspace filesystem operation failed")
     }
-    fn identity(m: &Metadata) -> FileIdentity {
+    pub(super) fn identity(m: &Metadata) -> FileIdentity {
         FileIdentity {
             device: m.dev(),
             inode: m.ino(),
@@ -446,7 +449,7 @@ mod unix {
         CString::new(s.as_bytes()).map_err(|_| fail("WORKSPACE_PATH", "path contains NUL"))
     }
 
-    fn open_at(
+    pub(super) fn open_at(
         parent: &File,
         part: &OsStr,
         directory: bool,
@@ -494,7 +497,7 @@ mod unix {
         Err(fail("WORKSPACE_IO", "cannot create workspace directory"))
     }
 
-    fn secure(m: &Metadata, dir: bool) -> Result<()> {
+    pub(super) fn secure(m: &Metadata, dir: bool) -> Result<()> {
         if m.uid() != uid()
             || m.mode() & 0o7777 != if dir { 0o700 } else { 0o600 }
             || if dir {
@@ -538,12 +541,12 @@ mod unix {
         Ok(Some(dir))
     }
 
-    fn required_dir(path: &Path) -> Result<File> {
+    pub(super) fn required_dir(path: &Path) -> Result<File> {
         directory(path, false)?
             .ok_or_else(|| fail("WORKSPACE_MISSING", "bound workspace directory is missing"))
     }
 
-    fn private_child(parent: &File, part: &str, create: bool) -> Result<Option<File>> {
+    pub(super) fn private_child(parent: &File, part: &str, create: bool) -> Result<Option<File>> {
         if create {
             mkdir_at(parent, OsStr::new(part))?;
         }
@@ -554,7 +557,7 @@ mod unix {
         Ok(file)
     }
 
-    fn store(common: &Path, create: bool) -> Result<Option<File>> {
+    pub(super) fn store(common: &Path, create: bool) -> Result<Option<File>> {
         let common = required_dir(common)?;
         let Some(astral) = private_child(&common, "astral", create)? else {
             return Ok(None);
@@ -806,19 +809,22 @@ mod unix {
                 .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
     }
 
-    fn expected(
+    pub(super) fn selection_valid(selector: &str) -> bool {
+        selector.split_once(':').map_or_else(
+            || logical(selector),
+            |(kind, id)| matches!(kind, "subsystem" | "projection") && logical(id),
+        )
+    }
+
+    pub(super) fn expected(
         source: &Path,
         project: &str,
         selector: &str,
         work: &str,
         managed: Option<&Path>,
     ) -> Result<Receipt> {
-        let selection_ok = selector.split_once(':').map_or_else(
-            || logical(selector),
-            |(kind, id)| matches!(kind, "subsystem" | "projection") && logical(id),
-        );
         if !logical(project)
-            || !selection_ok
+            || !selection_valid(selector)
             || !logical(work)
             || work.starts_with('.')
             || work.ends_with('.')
@@ -903,7 +909,7 @@ mod unix {
         })
     }
 
-    fn collision(receipt: &Receipt) -> Result<()> {
+    pub(super) fn collision(receipt: &Receipt) -> Result<()> {
         // lstat catches a dangling symlink too; an empty directory is still a conflict.
         match std::fs::symlink_metadata(&receipt.root) {
             Ok(_) => {
@@ -969,7 +975,7 @@ mod unix {
         Ok(bytes)
     }
 
-    fn parse(bytes: &[u8], expected: &Receipt) -> Result<Receipt> {
+    pub(super) fn parse(bytes: &[u8], expected: &Receipt) -> Result<Receipt> {
         let receipt: Receipt = serde_json::from_slice(bytes)
             .map_err(|_| fail("WORKSPACE_METADATA", "binding JSON or schema is invalid"))?;
         receipt.worker_metadata.validate()?;

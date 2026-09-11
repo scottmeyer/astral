@@ -2,10 +2,12 @@
 
 Astral can validate a Git-trackable native bundle and inspect its metadata. A
 bundle preserves a complete native item window and its continuation as data.
-Capture remains a later milestone. The separate [native launcher](native-launch.md)
-now stages compatible bundles and binds a destination runtime through an owned
-proxy. Bundle-reader checks and limitations are recorded in the
-[verification receipt](native-bundle-verification.md).
+The separate [native launcher](native-launch.md) stages compatible bundles and
+binds a destination runtime through an owned proxy. Explicit
+[save and handoff](worktree-handoff.md#save-and-hand-off) captures a supported,
+completed compaction from a stopped bound worker. The dated
+[bundle-reader verification receipt](native-bundle-verification.md) records that
+earlier milestone's checks and limitations; it is not a current execution receipt.
 
 ## Layout and identity
 
@@ -19,7 +21,9 @@ The bundle's identity is the SHA-256 of its exact manifest bytes. Its projection
 pins that digest; the manifest pins the payload's exact digest, length and item
 count. Formatting changes therefore change identity. Treat published bundles as
 immutable: a new capture creates a new bundle and advances a projection reference.
-Writing, publishing and garbage collection are not implemented in this milestone.
+`astral save` writes a new immutable bundle and advances the named projection
+after validation. It does not commit or push the export. Garbage collection is
+not implemented; earlier bundles remain available.
 
 Example layout:
 
@@ -156,16 +160,21 @@ destination must supply its own trusted instructions, tools, policy and routing.
 Checksums detect mismatches against the declared bytes, including ordinary
 truncation. Matching hashes and closed tool pairs cannot prove an exporter did
 not omit a tail and then recompute its manifest. Completion and completeness are
-exporter attestations. A future capturer must reconstruct inherited history,
-surviving checkpoints after rollbacks, inter-agent messages and complete
-continuation from supported source APIs, then validate a completed boundary.
-The experimental trial helper is not a general exporter and is not used here.
+exporter attestations. The implemented saver requests a new compaction, verifies
+its matching successful completion and exports the exact replacement window from
+the pinned Codex 0.154.0 rollout format. It supports bounded standalone histories;
+referenced/forked histories, rollback reconstruction, unknown metadata and
+concurrent or incomplete boundaries fail explicitly. It does not claim a general
+exporter for every history shape. The experimental trial helper is not production
+capture code. See [save limits and failure behavior](worktree-handoff.md#save-and-hand-off).
 
 The strict manifest schema does not accept arbitrary importer code, executable
 paths, destination thread IDs, account credentials or permission settings.
 Unknown fields within a supported native item are preserved; unknown manifest
 fields are rejected. Opaque payloads can still encode sensitive conversational
-content. Only explicit exports should be committed or shared through Git.
+content. Only user-authorized explicit exports should be committed or shared
+through Git. Resolving, inspecting and launching context do not export it, and
+save itself does not commit or share it.
 
 ## Inspect and resolve
 
@@ -184,6 +193,11 @@ with `availability="validated"` and `runtime_binding="unbound"`. Raw native item
 and encrypted content are never printed. Empty arrays describe readable-only
 selections. Selected artifact hashes contribute to the selection fingerprint.
 
+An explicit native projection selects that bundle for launch while its linked
+subsystems supply current documents. A subsystem selection with distinct native
+histories in its dependency closure fails rather than combining them. Inspection
+still reports the selected artifacts without binding a runtime.
+
 Native launch requires explicit `--proxy` on the supported Codex route. Missing references
 and unavailable files have separate errors; none triggers fresh-context fallback.
 The current readable bootstrap remains a fresh context and contains no native
@@ -197,3 +211,6 @@ remain limited to 1 MiB, with 2,048 observed files, 4,096 discovery entries and
 counts. File observations are cached consistently within a load, not an atomic
 snapshot of a concurrently changing repository. Confined filesystem loading
 currently requires Unix; the data format is independent of machine paths.
+
+See the [milestone plan](launch-plan.md) for the implemented launch/save flow and
+[finish and resume](finish-resume.md) for the next workflow milestone.

@@ -58,6 +58,11 @@ publication, private staging, safe work-file copying and failure preservation.
 See the separate [worktree/handoff receipt](../../docs/worktree-handoff-verification.md)
 for this feature's current checks and disposable live controls.
 
+`tests/status.rs` and `tests/workspace_observation.rs` check local observation,
+active owners versus abandoned staging, confined receipt/lock validation, context
+drift, explicit blockers, pagination, terminal-safe rendering and no-write CLI
+behavior. These tests do not establish remote thread availability or native recall.
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

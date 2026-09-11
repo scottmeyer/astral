@@ -82,6 +82,13 @@ See [code health](../../docs/code-health.md) for the module boundaries, dependen
 review and Rust minimum-version checks. Filesystem readers, publication writers
 and private receipt stores retain their different safety policies.
 
+`src/status.rs` builds local status/doctor reports from the current work register
+and confined worker observations in `src/workspace/observation`. The observer
+checks recorded identities and briefly probes existing ownership locks without
+creating or retaining state. Context comparison uses the bound checkout's
+selected documents; recorded threads are not contacted. Mutation/recovery and
+Git/Codex hook integration remain separate [workflow work](../../docs/finish-resume.md).
+
 ## Open questions
 
 - Future schema evolution and runtime compatibility/version negotiation.

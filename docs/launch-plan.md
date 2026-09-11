@@ -6,6 +6,9 @@ indexes and launches fresh document contexts in Codex. It also validates typed
 native bundles and reports their local availability. Native launch with an owned
 proxy, local receipt-based cold resume and headless worker launch are implemented;
 see [native launch](native-launch.md) for the supported runtime and limits.
+Worktree binding, record operations and explicit save/handoff are also implemented;
+see [bound workers and handoff](worktree-handoff.md). This plan records those five
+milestones. [Finish and resume](finish-resume.md) describes the next workflow milestone.
 The earlier successful native lifecycle tests establish a feasible route, with
 the version and protocol limits in [the lifecycle receipt](native-recovery-lifecycle.md).
 
@@ -13,8 +16,8 @@ the version and protocol limits in [the lifecycle receipt](native-recovery-lifec
 
 - `astral project` selects `project-context`; an explicit name selects another
   subsystem or projection. `--inspect` prints indented JSON without launching.
-- Explicit native exports are committed through Git. Export writes a durable
-  bundle; the operator controls when it is committed or shared. Runtime
+- User-authorized native exports can be committed through Git. Explicit save
+  writes a durable bundle; it does not automatically commit or share it. Runtime
   credentials, executable connections, permissions and machine/thread bindings
   are supplied by the destination runtime rather than copied from the bundle.
 - Native import creates a new local thread from an immutable checkpoint window
@@ -50,15 +53,15 @@ does not turn a missing referenced checkpoint into a fresh-session fallback.
 | 5. Save, hand off, continue | `AST-hqx0p9xedayb` | An explicit save operation captures a completed native boundary, writes an immutable Git-trackable bundle, and advances a named projection. Import from another checkout and continue. | Work → compact → capture → new import → cold resume → continue passes with native hashes preserved, no observation-mode detour and no plaintext substitution. Concurrent native histories remain distinguishable. |
 
 The first milestone is complete with the runtime limits documented in
-[fresh launch](fresh-launch.md) and current results in its
+[fresh launch](fresh-launch.md) and dated results in its
 [verification receipt](fresh-launch-verification.md). The second milestone is
 complete: the [native bundle contract](native-bundles.md) and its
 [verification receipt](native-bundle-verification.md) keep artifact integrity
 separate from destination runtime binding. The third milestone adds usable native
-restoration in the existing checkout and `--non-interactive` workers, with
-[current verification](native-launch-verification.md). Milestone
-four adds automatic worktree creation and record operations; milestone five adds
-explicit save and same-account continuation through Git. See [bound workers and
+restoration in the existing checkout and `--non-interactive` workers, with a
+[dated verification receipt](native-launch-verification.md). Milestone
+four completed automatic worktree creation and record operations; milestone five
+completed explicit save and same-account continuation through Git. See [bound workers and
 handoff](worktree-handoff.md) and its [verification receipt](worktree-handoff-verification.md).
 Existing broad work items
 retain their IDs and close only when their acceptance criteria are actually met.
@@ -121,8 +124,10 @@ the supported identity scope; cross-account qualification remains separate work.
 No deterministic output, cache-hit, token-saving or invoice-saving guarantee follows
 from context portability.
 
-The trial harness will inform an owned adapter, not be invoked as production
-launch code: it depends on an external capsule's Python helper and hardcodes test
-model/policy settings. A production bundle is data and cannot supply an importer
-to execute. Unresolved inherited history must be resolved by supported APIs into
-a complete native window or reported unavailable.
+The trial harness informed the owned adapter; it is not production launch or
+capture code. It depends on an external capsule's Python helper and hardcodes
+test model/policy settings. A production bundle is data and cannot supply an
+importer to execute. The current saver captures only a newly completed supported
+compaction from a standalone bounded rollout. Referenced/forked histories and
+rollback reconstruction remain unsupported; they fail instead of producing a
+partial export.

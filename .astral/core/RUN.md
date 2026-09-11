@@ -33,6 +33,13 @@ export its native context in that worktree. Add `--context SELECTOR` when the
 worker used a nondefault selector. Review and commit the export for Git handoff.
 See [bound workers](../../docs/worktree-handoff.md).
 
+`astral status` shows a page of work records and local worker bindings;
+`astral status --work ID --json` selects one record with formatted JSON.
+`astral doctor --work ID` reports local blockers and exits 1 when that observation
+needs attention. These commands do not start Codex, repair receipts or verify
+recorded threads. Use `--offset N --limit N` for further pages. See
+[finish and resume](../../docs/finish-resume.md) for limits and planned integrations.
+
 For this experiment, start the proxy on loopback with `--mode passthrough
 --native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private
 state directory outside the repository. Keep it running while routed Codex

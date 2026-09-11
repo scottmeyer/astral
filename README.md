@@ -22,6 +22,11 @@ task; see [native launch and delegated workers](docs/native-launch.md).
 `astral save NAME --work ID --proxy` exports its completed native projection for
 Git handoff; see [bound workers and handoff](docs/worktree-handoff.md).
 
+Use `astral status` to inspect recorded workers, or `astral doctor --work ID`
+to diagnose local resume blockers. Both support formatted `--json` output and
+leave files and runtime sessions unchanged. See [finish and resume](docs/finish-resume.md)
+for the current commands and planned Git/Codex integrations.
+
 Inspection prints formatted JSON. `astral work id` proposes a short random work
 ID for new JSONL records, avoiding per-branch counters. `astral work create`,
 `update`, and `merge` provide bounded record operations. See the

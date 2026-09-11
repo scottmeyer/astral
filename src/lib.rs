@@ -18,6 +18,7 @@ pub mod projection_save;
 pub mod proxy;
 pub mod save;
 pub mod server;
+pub mod status;
 pub mod store;
 pub mod usage;
 pub mod work;
