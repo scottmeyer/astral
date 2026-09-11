@@ -168,6 +168,12 @@ to native inline compaction. This option does not change standalone compaction's
 user-turn boundaries. It addresses the extra generation incurred by the older
 user-boundary-only inline schedule.
 
+The reference agent defaults to `--min-roll-seconds 60`; the deliberately
+aggressive trial runner uses zero. Keep enough byte and token headroom for the
+native checkpoint and the fresh state snapshot. Very low thresholds can trigger
+another compaction immediately after adding a snapshot, with substantial cost.
+A cooldown limits retry frequency; it does not establish economic benefit.
+
 The optional `--economic-roll-policy` accepts `x-ostk-roll-estimate`:
 
 ```json

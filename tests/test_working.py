@@ -83,6 +83,12 @@ class WorkingHostTests(unittest.TestCase):
         self.assertIn('"invalidates_prior_verification":true', update)
         self.assertIn('"generation":2', update)
         self.assertEqual(session._collect_updates(), [])
+        for number in range(34):
+            self.host.call("obligation", id=f"external-{number}", text="pending", source="external host")
+        events = session._collect_updates()
+        self.assertEqual(len(events), 34)
+        self.assertEqual(len({event["sequence"] for event in events}), 34)
+        self.assertEqual(session._collect_updates(), [])
 
     def test_snapshot_wire_is_frozen_until_explicit_epoch_change_and_restart(self):
         session = Session(self.host, self.folder / "session.json", "http://127.0.0.1:1", "test")

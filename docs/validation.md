@@ -4,11 +4,11 @@ Updated: 2026-09-11. Environment: Linux x86_64, Rust/Cargo 1.98.1, Python 3.12, 
 
 | Check | Result |
 | --- | --- |
-| `cargo test --locked` | 35 passed: 12 unit tests and 23 HTTP/persistence integration tests |
-| Python trial protocol tests | 7 passed; native SSE output items, terminal completion, and inline-history pruning |
+| `cargo test --locked` | 43 passed: 13 unit tests, 25 HTTP/persistence tests, 5 working-state tests |
+| Python protocol and host tests | 12 passed; native item replay, real executable checks, exact retrieval, stale verification, frozen epochs, provider binding and paged state delivery |
 | `cargo clippy --all-targets --locked -- -D warnings` | Passed |
 | `cargo fmt --all --check` | Passed |
-| `cargo build --release --locked --bins` | Passed; proxy and stats binaries built |
+| `cargo build --release --locked --bins` | Passed; proxy, stats and `astral-state` binaries built |
 | Release proxy startup, health and SIGTERM | Passed; ingress counts captured and all paired trial proxies exited 0 |
 | Stable Codex install and normal login | 0.154.0 installed; ChatGPT login present; provider connectivity check succeeded |
 | `codex exec` through `trial.base_url` | Failed: timeout after 45 seconds, no events, zero requests received by Astral |
@@ -20,6 +20,8 @@ Updated: 2026-09-11. Environment: Linux x86_64, Rust/Cargo 1.98.1, Python 3.12, 
 | Live encrypted reasoning replay | Passed in a separate three-call probe, including restart; hashes unchanged |
 | Astral-owned projection reused after live restart | Passed in both new inline-backend trials; nonempty projection, epoch and cut unchanged, actual outbound input hash verified |
 | Three-arm live benefit comparison | 66/66 calls completed; all six tasks passed; Astral input down 69.4%, wall time up 22.1% versus full history |
+| New three-arm live coding comparison | 103/103 calls completed; six tasks passed, each including 400 unseen cases and exact old-artifact retrieval after restart |
+| Working-state rollover stress | 17/17 calls completed; 12 native checkpoints, 10 frozen snapshots, restart and exact recovery passed; aggressive settings took 515.937 seconds |
 | Push to `scottmeyer/astral` | Blocked: GitHub connector write returned HTTP 403, `Resource not accessible by integration`; shell Git has no credentials |
 
 ## Routing and runtime findings
@@ -31,6 +33,40 @@ After that fix, live Responses inference succeeded through the configured gatewa
 The standalone compact routes remain incompatible with the observed gateway. `POST /responses/compact` returned 404. The alternate `POST /compact` returned HTTP 200 with `object: response`, an encrypted `reasoning` item, and an assistant message, but no encrypted `compaction` item. Astral correctly refused to replace history. A route name, smaller response, or encrypted reasoning is insufficient evidence of native compact semantics. The standard suffix remains the default, consistent with [Codex 0.154.0's compact client](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/codex-api/src/endpoint/compact.rs). A later inline test succeeded through `/responses`, as described below.
 
 The stable nested Codex CLI stalled before HTTP ingress, independently of the working API route. Its timeout is not a successful session even though termination produced child exit code 0. The runner retained `timed_out: true`, `passed: false`, and zero ingress. Normal CLI authentication and runtime requirements were preserved.
+
+## Working-state host and executable coding task
+
+The [new host](working-state.md) stores exact artifacts by SHA-256, records
+versioned files and checks in a durable journal, detects stale verification and
+replays completed action IDs after restart. A persisted session cursor delivers
+unseen events even if another host observer discovered the change first. User
+constraint records, agent declarations and executable check receipts remain
+distinct. Frozen snapshots supplement native continuation state; they do not
+decode or replace encrypted reasoning.
+
+In the [new coding comparison](working-evaluation.md), all six tasks passed the
+actual code repair, second-phase requirements, 400 unseen acceptance cases,
+stale-check detection, process restart and retrieval of an original execution's
+token without a rerun. Model-visible tool bytes fell 93.6% using the deterministic
+adapter. Astral's observed wall time was 26.3% lower than native with the same
+adapter, but it reported more input tokens. Zero checkpoints were needed in
+the two Astral benefit runs. Two seeds and uncontrolled gateway cache behavior
+do not establish general savings. The measured revision and subsequent cursor
+follow-up are explicitly identified in the receipt.
+
+The separate [cursor-enabled rollover stress receipt](receipts/working-rollover-2026-09-11.json)
+passed all 17 generations and code/retrieval gates with a 4,096-token threshold,
+4,096-byte trigger and zero cooldown. It observed and adopted 12 native
+compaction items, persisted 10 frozen state snapshots, and preserved workspace,
+projection and snapshot state across restart. Multiple checkpoints can arrive
+in one response; a fresh snapshot is appended before the following generation.
+The final response may leave that refresh pending for the next turn.
+
+This deliberately aggressive policy took **515.937 seconds**, reported 92,238
+input tokens and 9,357 output tokens, and demonstrates repeated compaction
+overhead. It is evidence of rollover correctness, not performance benefit. The
+user-facing reference agent exposes a cooldown and defaults it to 60 seconds;
+the benchmark retains zero. The economic hook still requires caller estimates.
 
 ## Astral-owned inline rollover and benefit
 
@@ -72,5 +108,14 @@ Safe machine-readable receipts: [matched API trial](receipts/api-gateway-2026-09
 The Rust suite covers frozen projection reuse, recursive rollovers with tool calls and encrypted reasoning, full canonical compact output, exact passthrough, completed/truncated SSE, failure rollback, downstream disconnect, observer overflow, same-lane serialization, cross-lane concurrency, restart, process locking, history edits, prompt-contract changes, and account/session isolation. Routing tests cover both autonomous and caller compaction with a custom path, preserved caller bytes, invalid CA bundles, and ingress counting before identity rejection. Ordinary encrypted reasoning is explicitly rejected as replacement state, with a safe rejection reason recorded. New inline cases cover original-history mapping across two checkpoints, an earlier output item before the checkpoint, preserved cache controls, active tool continuation, replay edits, missing indices, and disconnect after checkpoint arrival. Observer tests check aggregate capture bounds, conflicting items, and JSON/SSE equivalence.
 
 The Python tests cover complete output-item reconstruction for gateways whose terminal response omits those items, canonical assistant phase, missing completion, and missing item indices. They also check preservation of the complete suffix after inline compaction, rejection of malformed checkpoints, and refusal to prune on ordinary reasoning alone. The standalone restart gate requires a nonempty projection; an unchanged empty snapshot cannot pass.
+
+New host tests execute real property checks, bind passing results to tracked
+revisions, reject stale file/state compare-and-swap writes, protect configured
+read-only paths, detect tampered artifacts, replay completed actions exactly and
+reject interrupted actions with uncertain outcomes. They cover torn journal
+recovery, constraint source history, provider-scope changes, external edits,
+frozen snapshot bytes and paged delivery of more than 16 unseen state events.
+New HTTP tests exercise complete parallel tool batches and positive, negative
+and malformed economic estimates without changing upstream native items.
 
 The passing Rust tests use local mock servers and establish state-machine/protocol behavior. macOS and Windows CI jobs are configured but were not run here. GitHub remains unmodified because the integration denied publication. Source was implemented independently of `os-tack/haystack`; no private dependency or private source was used.

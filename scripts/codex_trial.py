@@ -110,7 +110,7 @@ class Proxy:
                    "--inline-threshold-tokens", str(getattr(self.args, "threshold", 8192)),
                    "--state-dir", str(self.state), "--roll-bytes", str(self.args.roll_bytes),
                    "--keep-recent-turns", "1", "--min-compact-bytes", "4096",
-                   "--min-roll-seconds", "0",
+                   "--min-roll-seconds", str(getattr(self.args, "min_roll_seconds", 0)),
                    "--request-timeout-seconds", str(self.args.timeout),
                    "--compact-timeout-seconds", str(self.args.timeout)]
         if self.args.allow_compatible_compaction:

@@ -24,11 +24,14 @@ def main():
     p.add_argument("--max-calls", type=int, default=30)
     p.add_argument("--threshold", type=int, default=8192)
     p.add_argument("--roll-bytes", type=int, default=64000)
+    p.add_argument("--min-roll-seconds", type=int, default=60)
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--cache-mode", choices=("provider-default", "implicit"), default="provider-default")
     args = p.parse_args()
     if min(args.max_calls, args.threshold, args.roll_bytes, args.timeout) < 1:
         p.error("limits must be positive")
+    if args.min_roll_seconds < 0:
+        p.error("min-roll-seconds must be nonnegative")
     if args.auth == "api-key" and not os.environ.get("OPENAI_API_KEY"):
         p.error("OPENAI_API_KEY is required")
     args.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)

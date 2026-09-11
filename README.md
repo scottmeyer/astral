@@ -6,6 +6,12 @@ The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runner
 
 Use [the working-state integration](docs/working-state.md) to run the new agent host: `astral-state` manages configured files, checks and immutable artifacts; `examples/agent.py` connects them to Responses tools. It records immediate state changes while freezing model-visible snapshots between native checkpoints. The supplied coding trial compares native compaction, native compaction with the same adapter, and Astral with the adapter and state layer.
 
+The [first coding evaluation](docs/working-evaluation.md) passed all six tasks,
+including unseen executable checks and exact retrieval after restart. The
+adapter reduced tool-observation bytes by 93.6%. Astral finished faster in this
+small experiment while reporting more input tokens; verified cost savings and
+a general advantage over adapted native compaction remain unestablished.
+
 In a [two-seed live comparison](docs/benefit-evaluation.md), Astral inline reduced input tokens by 69.4% against full history, increased wall time by 22.1%, and passed all recall/restart checks. Provider-managed compaction used fewer input tokens than Astral. These are synthetic-task measurements, not verified cost savings.
 
 For the standalone backend, the projection is the **complete native `/responses/compact` output**. The proxy maps the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. Inline mode instead adopts the latest native checkpoint from a completed generation and maps the original history through that output item. The client continues sending ordinary full-history requests in both modes.
