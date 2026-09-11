@@ -69,6 +69,21 @@ class WorkingHostTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "configuration changed"):
             Session(self.host, self.folder / "session.json", "http://127.0.0.1:2", "test", provider_scope="provider-b")
 
+    def test_external_edits_append_updates_without_changing_frozen_snapshot(self):
+        session = Session(self.host, self.folder / "session.json", "http://127.0.0.1:1", "test")
+        session._snapshot()
+        frozen = json.dumps(session.data["history"][0], sort_keys=True)
+        (self.workspace / "requirements.json").write_text('{"phase":2,"seed":731}')
+        # An independent host observer must not consume the session's changes.
+        self.host.snapshot()
+        session._begin_turn("Continue with the changed requirements.")
+        self.assertEqual(json.dumps(session.data["history"][0], sort_keys=True), frozen)
+        update = session.data["history"][-1]["content"][0]["text"]
+        self.assertTrue(update.startswith("HOST_WORKING_UPDATES"))
+        self.assertIn('"invalidates_prior_verification":true', update)
+        self.assertIn('"generation":2', update)
+        self.assertEqual(session._collect_updates(), [])
+
     def test_snapshot_wire_is_frozen_until_explicit_epoch_change_and_restart(self):
         session = Session(self.host, self.folder / "session.json", "http://127.0.0.1:1", "test")
         session._snapshot()

@@ -391,6 +391,29 @@ impl Runtime {
         self.refresh()?;
         let mut result = match field(request, "op")? {
             "snapshot" => self.snapshot(),
+            "changes" => {
+                let since = request["since_sequence"]
+                    .as_u64()
+                    .context("since_sequence is required")?;
+                ensure!(
+                    since <= self.events.len() as u64,
+                    "change cursor is ahead of the journal"
+                );
+                let events: Vec<_> = self
+                    .events
+                    .iter()
+                    .filter(|e| {
+                        e.sequence > since && !matches!(e.kind.as_str(), "binding" | "action")
+                    })
+                    .take(16)
+                    .collect();
+                let through = if events.len() == 16 {
+                    events.last().unwrap().sequence
+                } else {
+                    self.events.len() as u64
+                };
+                json!({"events":events,"through_sequence":through,"more":through < self.events.len() as u64})
+            }
             "check_history" => {
                 let name = field(request, "name")?;
                 ensure!(

@@ -128,6 +128,12 @@ the epoch, even while the host's internal state changes. It is an observation
 in a user-role data message, not a new developer instruction. Tools and the
 orientation text also stay stable.
 
+The session persists a journal cursor, collecting unseen events through the
+host's paged `changes` operation. Tool results carry these events even when an
+independent host observer discovered the change earlier. New user turns append
+a `HOST_WORKING_UPDATES` data message; file changes invalidate prior verification.
+These updates do not rewrite the frozen snapshot or rely on rediscovery.
+
 The native encrypted checkpoint remains the provider's continuation state.
 All output items, order, assistant phases and encrypted fields are persisted
 as returned. The Astral client keeps the complete original history; the proxy
