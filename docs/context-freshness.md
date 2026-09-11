@@ -3,6 +3,10 @@
 Available in source builds after v0.1.0. This first slice detects changes against
 an explicit review baseline. It does not decide whether documentation is true,
 run tests, or qualify historical verification as current.
+Older binaries reject the new manifest table. Before checking out a branch that
+opts in, use a current build for CLI operations and any installed lifecycle hooks.
+An older advisory hook can report invalid context even when the current build
+validates it; upgrading the hook's stable executable is a separate explicit step.
 The [verification record](context-freshness-verification.md) separates fixture
 results from the remaining long-horizon evaluation work.
 
