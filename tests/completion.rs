@@ -13,6 +13,37 @@ use std::{
 
 const WORK: &str = "AST-001";
 const THREAD: &str = "01a10000-1234-7000-8000-000000000001";
+
+// Completion deliberately observes the caller's effective Git policy. Run each
+// fixture in its own process so host configuration cannot leak into library
+// calls, without mutating process-wide environment while tests run in parallel.
+fn isolated_test(name: &str) -> bool {
+    if std::env::var("ASTRAL_COMPLETION_TEST").as_deref() == Ok(name) {
+        return false;
+    }
+    let mut child = Command::new(std::env::current_exe().unwrap());
+    child.args(["--exact", name, "--nocapture"]);
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            child.env_remove(key);
+        }
+    }
+    let output = child
+        .env("ASTRAL_COMPLETION_TEST", name)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_COUNT", "0")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "isolated {name}: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
 fn put(root: &Path, path: &str, bytes: impl AsRef<[u8]>) {
     let p = root.join(path);
     fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -167,6 +198,9 @@ sources = []
 
 #[test]
 fn preview_is_read_only_and_reviewed_apply_is_idempotent() {
+    if isolated_test("preview_is_read_only_and_reviewed_apply_is_idempotent") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     let target = git(&f.root, &["rev-parse", "HEAD"]);
@@ -199,6 +233,9 @@ fn preview_is_read_only_and_reviewed_apply_is_idempotent() {
 
 #[test]
 fn advanced_evidence_and_wrong_target_cannot_apply() {
+    if isolated_test("advanced_evidence_and_wrong_target_cannot_apply") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     let plan = completion::plan(&f.request()).unwrap();
@@ -217,6 +254,9 @@ fn advanced_evidence_and_wrong_target_cannot_apply() {
 
 #[test]
 fn dirty_owned_and_uncertain_workers_are_blocked() {
+    if isolated_test("dirty_owned_and_uncertain_workers_are_blocked") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     put(&f.root, "untracked.txt", "preserve me");
@@ -240,6 +280,9 @@ fn dirty_owned_and_uncertain_workers_are_blocked() {
 
 #[test]
 fn record_conflicts_and_divergent_code_require_manual_integration() {
+    if isolated_test("record_conflicts_and_divergent_code_require_manual_integration") {
+        return;
+    }
     let f = Fixture::new();
     record(&f.root, "Target edit");
     commit(&f.root);
@@ -260,6 +303,9 @@ fn record_conflicts_and_divergent_code_require_manual_integration() {
 
 #[test]
 fn ordinary_merge_is_recognized_but_a_revert_is_not() {
+    if isolated_test("ordinary_merge_is_recognized_but_a_revert_is_not") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     put(&f.root, "target-only.txt", "target\n");
@@ -284,6 +330,10 @@ fn ordinary_merge_is_recognized_but_a_revert_is_not() {
 
 #[test]
 fn policy_filters_attributes_and_ignored_data_are_never_executed_or_overwritten() {
+    if isolated_test("policy_filters_attributes_and_ignored_data_are_never_executed_or_overwritten")
+    {
+        return;
+    }
     for (key, value, code) in [
         (
             "filter.evil.clean",
@@ -355,6 +405,9 @@ fn native(root: &Path, id: &str, opaque: &str) {
 
 #[test]
 fn distinct_native_histories_require_choice_and_both_artifacts_survive() {
+    if isolated_test("distinct_native_histories_require_choice_and_both_artifacts_survive") {
+        return;
+    }
     let f = Fixture::new();
     native(&f.root, "target-save", "TARGET_OPAQUE_SENTINEL");
     commit(&f.root);
@@ -396,6 +449,9 @@ fn distinct_native_histories_require_choice_and_both_artifacts_survive() {
 
 #[test]
 fn superseded_unselected_bundle_bytes_cannot_be_overwritten_by_apply() {
+    if isolated_test("superseded_unselected_bundle_bytes_cannot_be_overwritten_by_apply") {
+        return;
+    }
     let f = Fixture::new();
     let path = format!(
         ".astral/projections/seed/bundles/{}/window.json",
@@ -425,6 +481,9 @@ fn superseded_unselected_bundle_bytes_cannot_be_overwritten_by_apply() {
 
 #[test]
 fn ignored_unselected_declared_bundle_is_rejected_before_integration() {
+    if isolated_test("ignored_unselected_declared_bundle_is_rejected_before_integration") {
+        return;
+    }
     let f = Fixture::new();
     native(&f.worker, "unselected", "UNSELECTED_OPAQUE");
     let projection = ".astral/projections/unselected";
@@ -447,6 +506,9 @@ fn ignored_unselected_declared_bundle_is_rejected_before_integration() {
 
 #[test]
 fn payload_larger_than_default_git_output_limit_is_checked_without_printing() {
+    if isolated_test("payload_larger_than_default_git_output_limit_is_checked_without_printing") {
+        return;
+    }
     let f = Fixture::new();
     native(&f.worker, "large", &"opaque".repeat(220_000));
     commit(&f.worker);
@@ -460,6 +522,9 @@ fn payload_larger_than_default_git_output_limit_is_checked_without_printing() {
 
 #[test]
 fn committed_source_bytes_are_checked_even_when_git_stat_cache_says_clean() {
+    if isolated_test("committed_source_bytes_are_checked_even_when_git_stat_cache_says_clean") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     git(&f.worker, &["config", "core.trustctime", "false"]);
@@ -495,6 +560,9 @@ fn committed_source_bytes_are_checked_even_when_git_stat_cache_says_clean() {
 
 #[test]
 fn post_integration_work_status_update_does_not_undo_completion() {
+    if isolated_test("post_integration_work_status_update_does_not_undo_completion") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     record(&f.worker, "Worker reviewed task");
@@ -518,6 +586,9 @@ fn post_integration_work_status_update_does_not_undo_completion() {
 
 #[test]
 fn unrelated_ignored_build_outputs_survive_fast_forward() {
+    if isolated_test("unrelated_ignored_build_outputs_survive_fast_forward") {
+        return;
+    }
     let f = Fixture::new();
     f.advance();
     put(&f.root, ".git/info/exclude", "target/\n");
@@ -537,6 +608,9 @@ fn unrelated_ignored_build_outputs_survive_fast_forward() {
 
 #[test]
 fn tracked_deletions_require_manual_git_integration() {
+    if isolated_test("tracked_deletions_require_manual_git_integration") {
+        return;
+    }
     let f = Fixture::new();
     fs::remove_file(f.worker.join("code.txt")).unwrap();
     commit(&f.worker);
@@ -556,6 +630,9 @@ fn tracked_deletions_require_manual_git_integration() {
 
 #[test]
 fn ignored_file_directory_boundaries_are_plan_collisions() {
+    if isolated_test("ignored_file_directory_boundaries_are_plan_collisions") {
+        return;
+    }
     for ignored_directory in [true, false] {
         let f = Fixture::new();
         put(&f.root, ".git/info/exclude", "cache\n");
@@ -581,9 +658,16 @@ fn ignored_file_directory_boundaries_are_plan_collisions() {
 
 #[test]
 fn global_signature_and_checkout_policies_are_seen_before_any_apply() {
+    if isolated_test("global_signature_and_checkout_policies_are_seen_before_any_apply") {
+        return;
+    }
     for (policy, expected) in [
         ("[merge]\nverifySignatures = true\n", "FINISH_GIT_POLICY"),
         ("[core]\nautocrlf = true\n", "FINISH_CHECKOUT_CONVERSION"),
+        (
+            "[filter \"unused\"]\nclean = touch SHOULD_NOT_RUN\n",
+            "FINISH_EXTERNAL_FILTER",
+        ),
     ] {
         let f = Fixture::new();
         f.advance();
@@ -613,5 +697,6 @@ fn global_signature_and_checkout_policies_are_seen_before_any_apply() {
         assert!(diagnostic.contains(expected), "{diagnostic}");
         assert_eq!(before, git(&f.root, &["rev-parse", "HEAD"]));
         assert_eq!(fs::read(f.root.join("code.txt")).unwrap(), b"base\n");
+        assert!(!f.root.join("SHOULD_NOT_RUN").exists());
     }
 }
