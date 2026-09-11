@@ -47,9 +47,32 @@ pub struct WorkerMetadata {
     pub selection_digest: Option<String>,
     pub seed_bundle_sha256: Option<String>,
     pub saved_bundle_sha256: Option<String>,
+    /// The selected projection can differ from the most recently named export.
+    #[serde(default)]
+    pub selected_bundle_sha256: Option<String>,
+    /// Distinguish a recorded fresh selection from an older receipt without an anchor.
+    #[serde(default)]
+    pub selected_bundle_recorded: bool,
 }
 
 impl WorkerMetadata {
+    pub fn accepts_selected_bundle(&self, hash: Option<&str>) -> bool {
+        if self.thread_id.is_none() {
+            return true;
+        }
+        if self.selected_bundle_recorded {
+            hash == self.selected_bundle_sha256.as_deref()
+        } else {
+            // Receipts predating the selection anchor are upgraded on a successful
+            // resume/save, using only their previously recorded seed or export.
+            hash == self.seed_bundle_sha256.as_deref()
+                || self
+                    .saved_bundle_sha256
+                    .as_deref()
+                    .is_some_and(|saved| hash == Some(saved))
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         let uuid = |s: &str| {
             s.len() == 36
@@ -78,6 +101,7 @@ impl WorkerMetadata {
                 &self.selection_digest,
                 &self.seed_bundle_sha256,
                 &self.saved_bundle_sha256,
+                &self.selected_bundle_sha256,
             ]
             .into_iter()
             .flatten()

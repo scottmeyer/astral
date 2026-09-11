@@ -136,7 +136,38 @@ fn metadata() -> WorkerMetadata {
         selection_digest: Some("a".repeat(64)),
         seed_bundle_sha256: Some("b".repeat(64)),
         saved_bundle_sha256: Some("c".repeat(64)),
+        selected_bundle_sha256: Some("b".repeat(64)),
+        selected_bundle_recorded: true,
     }
+}
+
+#[test]
+fn selected_bundle_anchor_is_independent_of_latest_export_and_upgrades_old_receipts() {
+    let mut worker = metadata();
+    assert!(worker.accepts_selected_bundle(Some(&"b".repeat(64))));
+    assert!(!worker.accepts_selected_bundle(Some(&"c".repeat(64))));
+    assert!(!worker.accepts_selected_bundle(None));
+    worker.selected_bundle_sha256 = None;
+    assert!(worker.accepts_selected_bundle(None));
+    assert!(!worker.accepts_selected_bundle(Some(&"c".repeat(64))));
+    worker.selected_bundle_recorded = false;
+    assert!(worker.accepts_selected_bundle(Some(&"b".repeat(64))));
+    assert!(worker.accepts_selected_bundle(Some(&"c".repeat(64))));
+    assert!(!worker.accepts_selected_bundle(Some(&"d".repeat(64))));
+    worker.saved_bundle_sha256 = None;
+    assert!(!worker.accepts_selected_bundle(None));
+    worker.seed_bundle_sha256 = None;
+    assert!(worker.accepts_selected_bundle(None));
+    let mut old = serde_json::to_value(&worker).unwrap();
+    old.as_object_mut()
+        .unwrap()
+        .remove("selected_bundle_sha256");
+    old.as_object_mut()
+        .unwrap()
+        .remove("selected_bundle_recorded");
+    let old: WorkerMetadata = serde_json::from_value(old).unwrap();
+    old.validate().unwrap();
+    assert!(!old.selected_bundle_recorded);
 }
 
 #[test]

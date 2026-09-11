@@ -15,8 +15,9 @@ def record(kind, **values):
 record('argv', args=sys.argv[1:], cwd=str(root))
 mode = os.environ.get('ASTRAL_TEST_MODE', '')
 if sys.argv[1] == '--version':
-    print('codex-cli 0.154.0')
+    print('codex-cli ' + ('0.153.0' if mode == 'wrong-version' else '0.154.0'))
 elif sys.argv[1] == 'app-server':
+    if mode == 'server-exit': sys.exit(17)
     config = {}
     for i, arg in enumerate(sys.argv):
         if arg == '-c': config.update(tomllib.loads(sys.argv[i+1]))
@@ -24,9 +25,14 @@ elif sys.argv[1] == 'app-server':
         request = json.loads(line)
         record('rpc', request=request)
         if 'id' not in request: continue
+        if mode == 'initialize-fail' and request['method'] == 'initialize':
+            print(json.dumps(dict(id=request['id'], error=dict(code=-1,message='fixture initialization rejection'))), flush=True)
+            continue
+        if mode == 'thread-start-drop' and request['method'] == 'thread/start': sys.exit(0)
         result = {}
         if request['method'] == 'config/read':
             result = dict(config=config)
+            if mode == 'route-conflict': result['config']['openai_base_url'] = 'https://wrong.invalid'
         if request['method'] in ['thread/start', 'thread/resume']:
             result = dict(thread=dict(id='01234567-89ab-cdef-0123-456789abcdef', ephemeral=False), cwd=str(root), model='gpt-6-astra', modelProvider='openai')
         if mode == 'native-stage-fail' and request['method'] == 'thread/inject_items':
@@ -329,6 +335,207 @@ fn work_launch_carries_new_record_and_resumes_same_worktree_without_copying_code
         "",
     );
     assert_eq!(error(&rejected), "WORKSPACE_UNCOMMITTED_CONTEXT");
+}
+
+#[test]
+fn pre_thread_worker_failures_leave_same_work_retryable_for_fresh_and_native_seeds() {
+    for native in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        fs::create_dir(&source).unwrap();
+        let (bin, log) = fixture(temp.path());
+        if native {
+            native_fixture(&source, &bin, &log);
+        } else {
+            assert!(
+                invoke(&source, &bin, &log, &["init", "--non-interactive"], "")
+                    .status
+                    .success()
+            );
+        }
+        for args in [
+            vec!["init", "-b", "main"],
+            vec!["add", "."],
+            vec!["commit", "-m", "fixture"],
+        ] {
+            let out = Command::new("git")
+                .current_dir(&source)
+                .args([
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        for (mode, expected) in [
+            ("missing-executable", "CODEX_UNAVAILABLE"),
+            ("wrong-version", "NATIVE_RUNTIME_MISMATCH"),
+            ("server-exit", "CODEX_PROTOCOL"),
+            ("initialize-fail", "CODEX_REQUEST_FAILED"),
+            ("route-conflict", "NATIVE_ROUTE_CONFLICT"),
+        ] {
+            let created = invoke(
+                &source,
+                &bin,
+                &log,
+                &[
+                    "work",
+                    "create",
+                    mode,
+                    "--acceptance",
+                    "retry known no-thread failure",
+                ],
+                "",
+            );
+            assert!(created.status.success());
+            let record: Value = serde_json::from_slice(&created.stdout).unwrap();
+            let work = record["item"]["id"].as_str().unwrap();
+            let mut args = vec!["project", "--work", work, "--non-interactive"];
+            if native || mode == "route-conflict" {
+                args.push("--proxy");
+            }
+            let before = native_rows(&log).len();
+            let missing = temp.path().join("does-not-exist");
+            let first = invoke(
+                &source,
+                if mode == "missing-executable" {
+                    &missing
+                } else {
+                    &bin
+                },
+                &log,
+                &args,
+                mode,
+            );
+            assert_eq!(
+                error(&first),
+                expected,
+                "native={native} mode={mode}: {}",
+                String::from_utf8_lossy(&first.stderr)
+            );
+            let receipt_path = source
+                .join(".git/astral/work-bindings")
+                .join(work)
+                .join("receipt.json");
+            let receipt: Value = serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
+            assert_eq!(receipt["worker_metadata"]["context_initialized"], true);
+            assert_eq!(
+                receipt["worker_metadata"]["staging_in_progress"], false,
+                "native={native} mode={mode}"
+            );
+            assert!(receipt["worker_metadata"]["thread_id"].is_null());
+            assert!(
+                !native_rows(&log)[before..]
+                    .iter()
+                    .any(|r| r["request"]["method"] == "thread/start")
+            );
+            let root = receipt["root"].clone();
+            let retried = invoke(&source, &bin, &log, &args, "");
+            assert!(
+                retried.status.success(),
+                "native={native} mode={mode}: {}",
+                String::from_utf8_lossy(&retried.stderr)
+            );
+            let completed: Value =
+                serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
+            assert_eq!(completed["root"], root);
+            assert_eq!(completed["worker_metadata"]["staging_in_progress"], false);
+            assert_eq!(
+                completed["worker_metadata"]["selected_bundle_recorded"],
+                true
+            );
+            assert_eq!(
+                completed["worker_metadata"]["selected_bundle_sha256"].is_string(),
+                native
+            );
+            assert_eq!(
+                native_rows(&log)[before..]
+                    .iter()
+                    .filter(|r| r["request"]["method"] == "thread/start")
+                    .count(),
+                1
+            );
+        }
+    }
+}
+
+#[test]
+fn lost_thread_start_response_retains_uncertain_marker_and_blocks_duplicate_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    let (bin, log) = fixture(temp.path());
+    assert!(
+        invoke(&source, &bin, &log, &["init", "--non-interactive"], "")
+            .status
+            .success()
+    );
+    for args in [
+        vec!["init", "-b", "main"],
+        vec!["add", "."],
+        vec!["commit", "-m", "fixture"],
+    ] {
+        let out = Command::new("git")
+            .current_dir(&source)
+            .args([
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+    }
+    let created = invoke(
+        &source,
+        &bin,
+        &log,
+        &[
+            "work",
+            "create",
+            "uncertain creation",
+            "--acceptance",
+            "do not duplicate a potentially created thread",
+        ],
+        "",
+    );
+    let record: Value = serde_json::from_slice(&created.stdout).unwrap();
+    let work = record["item"]["id"].as_str().unwrap();
+    let args = ["project", "--work", work, "--non-interactive"];
+    let failed = invoke(&source, &bin, &log, &args, "thread-start-drop");
+    assert_eq!(error(&failed), "CODEX_PROTOCOL");
+    let path = source
+        .join(".git/astral/work-bindings")
+        .join(work)
+        .join("receipt.json");
+    let receipt: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(receipt["worker_metadata"]["staging_in_progress"], true);
+    assert!(receipt["worker_metadata"]["thread_id"].is_null());
+    let before = fs::read(&log).unwrap();
+    let retried = invoke(&source, &bin, &log, &args, "");
+    assert_eq!(error(&retried), "WORKSPACE_STAGE_INCOMPLETE");
+    assert_eq!(fs::read(&log).unwrap(), before);
+    assert_eq!(
+        native_rows(&log)
+            .iter()
+            .filter(|r| r["request"]["method"] == "thread/start")
+            .count(),
+        1
+    );
 }
 
 #[test]

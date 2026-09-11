@@ -51,6 +51,16 @@ pub async fn save(request: SaveArguments) -> Result<Value> {
         ));
     }
     let selected = Project::load(&root)?.launch_context(&request.context, Some(&request.work))?;
+    let selected_hash = selected
+        .native
+        .as_ref()
+        .map(|b| b.summary().manifest_sha256);
+    if !metadata.accepts_selected_bundle(selected_hash.as_deref()) {
+        return Err(error(
+            "WORKSPACE_SEED_CHANGED",
+            "selected native history differs from this worker's recorded selection; use a new work ID",
+        ));
+    }
     let context = selected.current_context;
     crate::projection_save::validate_target(&root, &request.name, &context.selection.subsystems)?;
     let text = crate::worker_launch::context_text(&root, &context)?;
@@ -113,9 +123,22 @@ pub async fn save(request: SaveArguments) -> Result<Value> {
         let bundle = NativeBundle::validate(&bytes, &capture.payload_bytes)?;
         crate::native_import::validate(&bundle)?;
         let publication = crate::projection_save::publish(&root, &request.name, &context.selection.subsystems, &bundle, None)?;
-        metadata.saved_bundle_sha256 = Some(bundle.summary().manifest_sha256);
+        let saved_hash = bundle.summary().manifest_sha256;
+        metadata.saved_bundle_sha256 = Some(saved_hash.clone());
         metadata.selection_digest = Some(context.selection_digest);
-        if binding.update_worker_metadata(metadata).is_err() {
+        // Saving under a different name must not replace the selected projection's
+        // anchor. Resolve again because this publication may have advanced it.
+        let recorded = (|| {
+            let after = Project::load(&root)?.launch_context(&request.context, Some(&request.work))?;
+            let after_hash = after.native.as_ref().map(|b| b.summary().manifest_sha256);
+            if after_hash != selected_hash && after_hash.as_deref() != Some(saved_hash.as_str()) {
+                return Err(error("WORKSPACE_SEED_CHANGED", "selected native history changed during publication"));
+            }
+            metadata.selected_bundle_sha256 = after_hash;
+            metadata.selected_bundle_recorded = true;
+            binding.update_worker_metadata(metadata)
+        })();
+        if recorded.is_err() {
             eprintln!("{}", json!({"operation":"save", "publication":publication,"worktree":root,"worker_metadata_updated":false}));
             return Err(error("SAVE_PUBLISHED_METADATA_FAILED", "the native projection was published, but the private worker receipt could not be updated; retain the reported artifacts and inspect the binding before retrying; a new work ID can import the published projection"));
         }

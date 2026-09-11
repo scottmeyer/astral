@@ -99,7 +99,7 @@ pub fn validate_target(root: &Path, name: &str, subsystem_ids: &[String]) -> Res
 #[cfg(unix)]
 mod unix {
     use super::*;
-    use crate::project::{Limits, Project, ProjectManifest};
+    use crate::project::{Limits, Project, ProjectManifest, SubsystemManifest};
     use std::collections::{BTreeMap, BTreeSet};
     use std::ffi::CString;
     use std::fs::{File, Metadata};
@@ -539,6 +539,33 @@ mod unix {
             })
         }
 
+        fn resolved_scope(&self, ids: &BTreeSet<String>) -> Result<BTreeSet<String>> {
+            // Resolve both caller and authored scopes from the same validated
+            // snapshot. A saved [web] scope can therefore match the launcher's
+            // expanded [common, web] selection without rewriting its manifest.
+            let mut resolved = BTreeSet::new();
+            let mut pending: Vec<_> = ids.iter().cloned().collect();
+            while let Some(id) = pending.pop() {
+                if !resolved.insert(id.clone()) {
+                    continue;
+                }
+                let directory = self.manifest.subsystems.get(&id).ok_or_else(|| {
+                    fail(
+                        "MISSING_REFERENCE",
+                        "saved projection names an unknown subsystem",
+                    )
+                })?;
+                let bytes = &self.files[&format!(".astral/{directory}/subsystem.toml")];
+                let subsystem: SubsystemManifest = toml::from_str(
+                    std::str::from_utf8(bytes)
+                        .map_err(|_| fail("INVALID_UTF8", "subsystem manifest must be UTF-8"))?,
+                )
+                .map_err(|_| fail("INVALID_MANIFEST", "subsystem manifest is invalid"))?;
+                pending.extend(subsystem.depends_on);
+            }
+            Ok(resolved)
+        }
+
         fn unchanged(&self, repository: &Repository) -> Result<()> {
             repository.unchanged_root()?;
             for (path, bytes) in &self.files {
@@ -743,12 +770,8 @@ mod unix {
                         | "reviewable"
                         | "reviewable-design-context"
                 )
-                || projection
-                    .subsystems
-                    .iter()
-                    .cloned()
-                    .collect::<BTreeSet<_>>()
-                    != scope
+                || snapshot.resolved_scope(&projection.subsystems.iter().cloned().collect())?
+                    != snapshot.resolved_scope(&scope)?
             {
                 return Err(fail(
                     "PUBLICATION_CONFLICT",
@@ -839,12 +862,8 @@ mod unix {
                         | "reviewable"
                         | "reviewable-design-context"
                 )
-                || projection
-                    .subsystems
-                    .iter()
-                    .cloned()
-                    .collect::<BTreeSet<_>>()
-                    != scope
+                || snapshot.resolved_scope(&projection.subsystems.iter().cloned().collect())?
+                    != snapshot.resolved_scope(&scope)?
             {
                 return Err(fail(
                     "PUBLICATION_CONFLICT",

@@ -7,7 +7,7 @@ passes are not counted as current checks here.
 
 ## Local checks
 
-Formatting, strict Clippy, all **290 Rust tests**, locked release builds of all
+Formatting, strict Clippy, all **297 Rust tests**, locked release builds of all
 binaries, and all **18 Python tests** pass. Production worktree, record, capture,
 and publication paths are Rust. Existing Python tests continue to cover their
 Python experiment/client helpers; Rust process tests use synthetic executables
@@ -26,6 +26,17 @@ reports an unavailable worktree plan; actual bound launch still requires Git.
 A new merge CLI test verifies exit status 1 and explicit conflicts without
 modifying inputs. Failed intermediate builds/tests were resolved before the
 complete pass above; no missing-module or isolated-worker pass substitutes for it.
+
+The first real Astral-bound review worker found three integration defects before
+merge: known pre-thread failures blocked retry, exporting under another name lost
+the selected projection's anchor, and direct subsystem lists did not match their
+dependency closures. All three were fixed. New process tests cover fresh/native
+preflight failures followed by same-work retry, uncertain thread creation without
+duplicate starts, and the complete launch/save-`p`/save-`q`/resume-`p` sequence.
+The save test exercises the owned app-server, capture, publication and private
+metadata together, including failed compaction retry and unrelated seed rejection.
+An additional review caught and fixed an absent-export comparison in older receipts.
+Synthetic fixture schema/UUID mistakes were corrected before the complete pass.
 
 ## Disposable live controls
 
@@ -78,6 +89,13 @@ record parsing, generated staging names, test assertions, and a test socket
 consumed and dropped while checking connection failure. Independent Cargo checks
 ran in the complete checkout; UBS's skipped Cargo/dependency-audit phases are
 not reported as passes. Static scanner matches are not counts of confirmed bugs.
+
+The subsequent staged scan of the review fixes covered nine Rust files: **0 critical,
+1,045 warning, 417 informational** matches, exit 0, no failed module. Reviewed
+matches include test assertions, bounded dependency traversal, JSON indexing into
+constructed thread parameters, and the previously reviewed publication paths.
+This separate scope does not erase the initial scan's findings or establish a
+warning-free scan.
 
 ## Limits
 

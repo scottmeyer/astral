@@ -43,6 +43,9 @@ An incomplete initial context copy or an unknown initial staging outcome is
 reported explicitly on retry. Astral does not overwrite the retained worktree or
 create another thread implicitly. Inspect the retained artifacts and private
 binding before repairing them or choosing a new work ID.
+Failures before a thread could be created, such as a missing Codex executable,
+unsupported version, or failed initialization, can be corrected and retried with
+the same work ID.
 
 `--work` owns continuation identity, so it cannot be combined with `--resume`.
 The latter retains its meaning for native launches without a work ID. All caller
@@ -80,6 +83,11 @@ prior bundles and parent hashes. Publication validates the prospective project
 and atomically replaces only the named reference. Staging evidence is private in
 the Git common directory. The initial publisher requires staging and the target
 checkout to share a filesystem. Save does not commit or push.
+
+A worker may save under multiple names. Its selected projection is tracked
+separately from its latest export, so saving `p`, then `q`, still allows the worker
+bound to `p` to continue. Existing projections retain their authored subsystem
+list; scope comparisons include transitive subsystem dependencies.
 
 Review and commit the worker's code, work records, and explicit export. Merge or
 fetch that commit into another checkout, then launch:

@@ -1,5 +1,7 @@
 //! One destination-local worker and Git worktree per work ID.
-use crate::codex::{StagingOptions, error, stage_native, stage_worker, wait_interactive};
+use crate::codex::{
+    StagingOptions, error, stage_native_before_start, stage_worker_before_start, wait_interactive,
+};
 use crate::launcher::{ProjectArguments, ProxyBinding, Route};
 use crate::managed_proxy::ManagedProxy;
 use crate::project::{FreshContext, Project, Result};
@@ -63,13 +65,10 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
         .native
         .as_ref()
         .map(|b| b.summary().manifest_sha256.clone());
-    if metadata.thread_id.is_some()
-        && bundle_hash != metadata.seed_bundle_sha256
-        && bundle_hash != metadata.saved_bundle_sha256
-    {
+    if !metadata.accepts_selected_bundle(bundle_hash.as_deref()) {
         return Err(error(
             "WORKSPACE_SEED_CHANGED",
-            "selected native history differs from this worker's seed or saved state; use a new work ID",
+            "selected native history differs from this worker's recorded selection; use a new work ID",
         ));
     }
     let contains_native = metadata.requires_tool_rebinding
@@ -92,12 +91,11 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
     };
     let result = async {
         let proxy_url = proxy.as_ref().map(ManagedProxy::base_url);
-        if metadata.thread_id.is_none() {
-            metadata.staging_in_progress = true;
-            binding.update_worker_metadata(metadata.clone())?;
-        }
+        let mut pending = metadata.clone();
+        pending.staging_in_progress = true;
+        let before_start = || binding.update_worker_metadata(pending);
         let staged = if let (None, Some(bundle)) = (&metadata.thread_id, &selected.native) {
-            stage_native(
+            stage_native_before_start(
                 &program,
                 &root,
                 options,
@@ -105,6 +103,7 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
                 &text,
                 proxy_url.expect("native route"),
                 None,
+                before_start,
             )
             .await?
         } else {
@@ -125,7 +124,7 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
             let update = (metadata.selection_digest.as_deref()
                 != Some(context.selection_digest.as_str()))
             .then_some(text.as_str());
-            stage_worker(
+            stage_worker_before_start(
                 &program,
                 &root,
                 options,
@@ -133,12 +132,15 @@ pub async fn project(request: &ProjectArguments, source: &Path, project_id: &str
                 metadata.thread_id.as_deref(),
                 update,
                 runtime,
+                before_start,
             )
             .await?
         };
         if metadata.thread_id.is_none() {
-            metadata.seed_bundle_sha256 = bundle_hash;
+            metadata.seed_bundle_sha256 = bundle_hash.clone();
         }
+        metadata.selected_bundle_sha256 = bundle_hash.clone();
+        metadata.selected_bundle_recorded = true;
         metadata.thread_id = Some(staged.thread_id.clone());
         metadata.staging_in_progress = false;
         metadata.model = Some(staged.model);

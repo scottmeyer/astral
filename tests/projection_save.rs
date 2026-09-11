@@ -103,6 +103,138 @@ fn scope() -> Vec<String> {
     vec!["web".into()]
 }
 
+fn dependency_fixture() -> TempDir {
+    let root = fixture();
+    let project = fs::read_to_string(root.path().join(".astral/project.toml")).unwrap();
+    put(
+        root.path(),
+        ".astral/project.toml",
+        format!("{project}common = \"core/common\"\nfoundation = \"core/foundation\"\n"),
+    );
+    let web_path = ".astral/core/web/subsystem.toml";
+    let web = fs::read_to_string(root.path().join(web_path)).unwrap();
+    put(
+        root.path(),
+        web_path,
+        web.replace("depends_on = []", "depends_on = [\"common\"]"),
+    );
+    for (id, dependencies) in [("common", vec!["foundation"]), ("foundation", vec![])] {
+        put(
+            root.path(),
+            &format!(".astral/core/{id}/subsystem.toml"),
+            format!(
+                "schema_version = 1\nid = {id:?}\npurpose = \"Dependency fixture\"\nreadme = \"README.md\"\nrules = []\ndecisions = []\nwork_items = []\nprojection = \"start\"\ndepends_on = {}\n",
+                serde_json::to_string(&dependencies).unwrap()
+            ),
+        );
+        put(
+            root.path(),
+            &format!(".astral/core/{id}/README.md"),
+            "Declared dependency.\n",
+        );
+    }
+    Project::load(root.path()).unwrap();
+    root
+}
+
+#[test]
+fn dependency_expanded_save_scope_matches_and_preserves_authored_projection_scope() {
+    let root = dependency_fixture();
+    let expanded = vec!["common".into(), "foundation".into(), "web".into()];
+    let initial = Project::load(root.path())
+        .unwrap()
+        .inspect("projection:start", None)
+        .unwrap();
+    assert_eq!(initial["selection"]["subsystems"], json!(expanded));
+    let handoff = fs::read(
+        root.path()
+            .join(".astral/projections/start/notes/handoff.md"),
+    )
+    .unwrap();
+    // Both the authored shorthand and the launcher's full dependency closure
+    // select the same project scope, including a transitive dependency.
+    for selected in [&expanded, &scope()] {
+        validate_target(root.path(), "start", selected).unwrap();
+        publish(
+            root.path(),
+            "start",
+            selected,
+            &bundle("dependency-scope"),
+            None,
+        )
+        .unwrap();
+        let inspection = Project::load(root.path())
+            .unwrap()
+            .inspect("projection:start", None)
+            .unwrap();
+        assert_eq!(
+            inspection["metadata"]["projection"]["subsystems"],
+            json!(["web"])
+        );
+        assert_eq!(inspection["selection"]["subsystems"], json!(expanded));
+        assert_eq!(
+            inspection["metadata"]["projection"]["schema_status"],
+            "Keep this note"
+        );
+        assert_eq!(
+            inspection["metadata"]["projection"]["sources"],
+            initial["metadata"]["projection"]["sources"]
+        );
+    }
+    assert_eq!(
+        fs::read(
+            root.path()
+                .join(".astral/projections/start/notes/handoff.md")
+        )
+        .unwrap(),
+        handoff
+    );
+}
+
+#[test]
+fn dependency_resolution_still_rejects_missing_or_additional_save_scope() {
+    let root = dependency_fixture();
+    let manifest_path = root
+        .path()
+        .join(".astral/projections/start/projection.toml");
+    let before = fs::read(&manifest_path).unwrap();
+    for selected in [
+        vec!["common".into(), "foundation".into()],
+        vec![
+            "common".into(),
+            "foundation".into(),
+            "web".into(),
+            "other".into(),
+        ],
+    ] {
+        assert_eq!(
+            validate_target(root.path(), "start", &selected)
+                .unwrap_err()
+                .code,
+            "PUBLICATION_CONFLICT"
+        );
+        assert_eq!(
+            publish(
+                root.path(),
+                "start",
+                &selected,
+                &bundle("rejected-scope"),
+                None
+            )
+            .unwrap_err()
+            .code,
+            "PUBLICATION_CONFLICT"
+        );
+        assert_eq!(fs::read(&manifest_path).unwrap(), before);
+    }
+    assert!(
+        !root
+            .path()
+            .join(".astral/projections/start/bundles")
+            .exists()
+    );
+}
+
 #[test]
 fn new_projection_publishes_complete_native_artifacts_and_keeps_preview_outside_git_status() {
     let root = fixture();

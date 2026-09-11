@@ -691,11 +691,38 @@ pub(crate) async fn verify_native_version(
 pub async fn stage_native(
     executable: &OsStr,
     root: &Path,
+    options: StagingOptions,
+    bundle: &NativeBundle,
+    context: &str,
+    proxy_url: &str,
+    resume_thread: Option<&str>,
+) -> Result<StagedThread> {
+    stage_native_before_start(
+        executable,
+        root,
+        options,
+        bundle,
+        context,
+        proxy_url,
+        resume_thread,
+        || Ok(()),
+    )
+    .await
+}
+
+/// Install destination ownership only after no-thread preflights pass. The hook
+/// precedes the first thread/start request; after it succeeds, any interrupted
+/// request may have created a thread and must retain uncertain staging state.
+#[allow(clippy::too_many_arguments)] // The hook supplements the compatible public staging API.
+pub(crate) async fn stage_native_before_start<F: FnOnce() -> Result<()>>(
+    executable: &OsStr,
+    root: &Path,
     mut options: StagingOptions,
     bundle: &NativeBundle,
     context: &str,
     proxy_url: &str,
     resume_thread: Option<&str>,
+    before_start: F,
 ) -> Result<StagedThread> {
     crate::native_import::validate(bundle)?;
     let compatibility = &bundle.manifest().compatibility;
@@ -735,7 +762,7 @@ pub async fn stage_native(
             options.thread_params["threadId"] = json!(id);
             options.thread_params["excludeTurns"] = json!(true);
             "thread/resume"
-        } else { "thread/start" };
+        } else { before_start()?; "thread/start" };
         let started = rpc.request(method, options.thread_params).await?;
         let id = started.pointer("/thread/id").and_then(Value::as_str).filter(|id| valid_thread_id(id))
             .ok_or_else(|| error("CODEX_PROTOCOL", "invalid staged thread ID"))?.to_owned();
@@ -872,11 +899,35 @@ pub(crate) fn staged_identity(
 pub async fn stage_worker(
     executable: &OsStr,
     root: &Path,
+    options: StagingOptions,
+    proxy: Option<&str>,
+    resume: Option<&str>,
+    context_update: Option<&str>,
+    native_runtime: Option<(&str, &str)>,
+) -> Result<StagedThread> {
+    stage_worker_before_start(
+        executable,
+        root,
+        options,
+        proxy,
+        resume,
+        context_update,
+        native_runtime,
+        || Ok(()),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)] // The hook supplements the compatible public staging API.
+pub(crate) async fn stage_worker_before_start<F: FnOnce() -> Result<()>>(
+    executable: &OsStr,
+    root: &Path,
     mut options: StagingOptions,
     proxy: Option<&str>,
     resume: Option<&str>,
     context_update: Option<&str>,
     native_runtime: Option<(&str, &str)>,
+    before_start: F,
 ) -> Result<StagedThread> {
     verify_native_version(executable, root, "0.154.0").await?;
     if resume.is_some_and(|id| !valid_thread_id(id)) {
@@ -897,7 +948,7 @@ pub async fn stage_worker(
             options.thread_params["threadId"] = json!(id);
             options.thread_params["excludeTurns"] = json!(true);
             "thread/resume"
-        } else { "thread/start" };
+        } else { before_start()?; "thread/start" };
         let started = rpc.request(method, options.thread_params).await?;
         let staged = staged_identity(&started, root, resume)?;
         if native_runtime.is_some_and(|(model,provider)| staged.model != model || staged.model_provider != provider) {
