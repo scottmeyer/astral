@@ -1,5 +1,3 @@
-# Astral
-
 ![Astral — luminous branching paths across a celestial horizon](docs/assets/astral-banner.png)
 
 **Agent context that follows your code.**
