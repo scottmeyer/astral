@@ -31,3 +31,5 @@ Download the published assets and verify `SHA256SUMS` and the embedded source
 commit. Extract the archive for your platform into a fresh directory and run its
 `astral --version` and `astral --help`. Publishing does not replace a developer's
 installed binary or alter any Git/Codex hooks or runtime configuration.
+
+Published verification receipts: [v0.1.0](v0.1.0-verification.md).
