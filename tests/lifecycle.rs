@@ -152,6 +152,7 @@ impl Fixture {
     }
     fn event(&self, name: &str, session: &str) -> Output {
         let event = json!({"hook_event_name":name,"source":"startup","session_id":session,"cwd":self.root,"model":"fixture","prompt":"SECRET-PROMPT","last_assistant_message":"SECRET-ANSWER","transcript_path":"/must/not/read"});
+        let started = Instant::now();
         let mut child = self
             .command()
             .args(["hook", "codex"])
@@ -166,7 +167,46 @@ impl Fixture {
             .unwrap()
             .write_all(event.to_string().as_bytes())
             .unwrap();
-        child.wait_with_output().unwrap()
+        let output = child.wait_with_output().unwrap();
+        if String::from_utf8_lossy(&output.stdout).contains("observation unavailable") {
+            let callback_elapsed = started.elapsed();
+            // Only after failure, inspect the same helper without its outer
+            // deadline. This distinguishes a slow observation from an error;
+            // it cannot populate the notification cache before a passing test.
+            let probe_started = Instant::now();
+            let probe = self
+                .command()
+                .env("ASTRAL_HOOK_DEPTH", "1")
+                .env("ASTRAL_HOOK_CHILD", "1")
+                .args([
+                    "hook-check",
+                    "--scope",
+                    "worktree",
+                    "--audience",
+                    "codex-model",
+                    "--session-scope",
+                    session,
+                    "--claimed-session",
+                    session,
+                    "--force-notice",
+                ])
+                .output()
+                .unwrap();
+            panic!(
+                "{name} callback unavailable after {callback_elapsed:?}; direct helper took {:?}, status {}; stdout: {}; stderr: {}",
+                probe_started.elapsed(),
+                probe.status,
+                String::from_utf8_lossy(&probe.stdout)
+                    .chars()
+                    .take(1024)
+                    .collect::<String>(),
+                String::from_utf8_lossy(&probe.stderr)
+                    .chars()
+                    .take(1024)
+                    .collect::<String>(),
+            );
+        }
+        output
     }
 }
 

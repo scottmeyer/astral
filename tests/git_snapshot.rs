@@ -141,6 +141,39 @@ fn newline_checkout_paths_keep_their_identity_when_metadata_reads_are_batched() 
     }
 }
 
+#[test]
+fn same_length_object_substitution_is_rejected_for_both_git_hash_formats() {
+    use std::os::unix::fs::PermissionsExt;
+    for sha256 in [false, true] {
+        let fixture = Fixture::new(true, sha256);
+        let snapshot = fixture.capture(SnapshotKind::Head);
+        let original = git(
+            &fixture.root,
+            &["rev-parse", "HEAD:.astral/core/web/README.md"],
+        );
+        put(&fixture.root, "replacement.txt", "tampered\n");
+        let replacement = git(&fixture.root, &["hash-object", "-w", "replacement.txt"]);
+        let object_path = |id: &str| {
+            fixture
+                .root
+                .join(".git/objects")
+                .join(&id[..2])
+                .join(&id[2..])
+        };
+        let original_path = object_path(&original);
+        fs::set_permissions(&original_path, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::copy(object_path(&replacement), &original_path).unwrap();
+        let error = snapshot
+            .load_project()
+            .err()
+            .expect("substituted object must be rejected");
+        assert!(
+            matches!(error.code, "SNAPSHOT_OBJECT_ID" | "SNAPSHOT_GIT_READ"),
+            "{error}"
+        );
+    }
+}
+
 fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     fn walk(root: &Path, at: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for e in fs::read_dir(at).unwrap() {

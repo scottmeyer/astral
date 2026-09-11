@@ -8,6 +8,7 @@ use crate::project::{Error, Limits, Project, ProjectSource, Result};
 use context::{Context, Evidence};
 use entries::Entry;
 use serde::Serialize;
+use sha2::Digest;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -194,24 +195,40 @@ impl ProjectSource for GitSnapshot {
                 "declared file is absent from the Git snapshot",
             )
         })?;
-        let size = self.context.read(&["cat-file", "-s", &entry.oid], 128)?;
-        let size: usize = std::str::from_utf8(&size)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .ok_or_else(|| error("SNAPSHOT_FORMAT", "invalid Git object size"))?;
-        if size > limit {
-            return Err(error(
-                "LIMIT_EXCEEDED",
-                "snapshot blob exceeds file or aggregate byte budget",
-            ));
-        }
+        // The process reader bounds allocation and stops oversized output, so
+        // a separate size-query process is unnecessary. Verify the complete Git
+        // object ID as well, including its type/size header, before accepting it.
         let bytes = self
             .context
-            .read(&["cat-file", "blob", &entry.oid], limit)?;
-        if bytes.len() != size {
+            .read(&["cat-file", "blob", &entry.oid], limit)
+            .map_err(|e| {
+                if e.code == "SNAPSHOT_LIMIT" {
+                    error(
+                        "LIMIT_EXCEEDED",
+                        "snapshot blob exceeds file or aggregate byte budget",
+                    )
+                } else {
+                    e
+                }
+            })?;
+        let header = format!("blob {}\0", bytes.len());
+        let actual = if entry.oid.len() == 40 {
+            // Git's SHA-1 object format is an identity format, not a new choice
+            // of authentication algorithm or a checksum for native exports.
+            let mut hash = sha1::Sha1::new();
+            hash.update(header.as_bytes());
+            hash.update(&bytes);
+            format!("{:x}", hash.finalize())
+        } else {
+            let mut hash = sha2::Sha256::new();
+            hash.update(header.as_bytes());
+            hash.update(&bytes);
+            format!("{:x}", hash.finalize())
+        };
+        if actual != entry.oid {
             return Err(error(
-                "SNAPSHOT_CHANGED",
-                "Git object bytes changed during read",
+                "SNAPSHOT_OBJECT_ID",
+                "Git object bytes do not match the captured object identifier",
             ));
         }
         Ok(bytes)
