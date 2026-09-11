@@ -1,8 +1,8 @@
 //! Opt-in feasibility transport. One Codex websocket, one upstream websocket,
 //! one inventory state; no process-global response/inventory cache.
 use crate::{
-    ast000::Connection,
-    config::Ast000,
+    config::NativeToolBindingMode,
+    native_binding::Connection,
     now_ms,
     proxy::{App, effective_headers, error, strip_header},
 };
@@ -51,7 +51,7 @@ pub(crate) async fn handle(
     if headers.contains_key("sec-websocket-protocol") {
         return error(
             StatusCode::BAD_REQUEST,
-            "AST000_UNSUPPORTED_WEBSOCKET_SUBPROTOCOL",
+            "NATIVE_BINDING_UNSUPPORTED_WEBSOCKET_SUBPROTOCOL",
         );
     }
     let mut url = match reqwest::Url::parse(&format!(
@@ -59,14 +59,14 @@ pub(crate) async fn handle(
         app.config.upstream.trim_end_matches('/')
     )) {
         Ok(u) => u,
-        Err(_) => return error(StatusCode::BAD_GATEWAY, "AST000_INVALID_UPSTREAM"),
+        Err(_) => return error(StatusCode::BAD_GATEWAY, "NATIVE_BINDING_INVALID_UPSTREAM"),
     };
     let scheme = if url.scheme() == "https" { "wss" } else { "ws" };
     let _ = url.set_scheme(scheme);
     url.set_query(uri.query());
     let mut request = match url.as_str().into_client_request() {
         Ok(r) => r,
-        Err(_) => return error(StatusCode::BAD_GATEWAY, "AST000_INVALID_UPSTREAM"),
+        Err(_) => return error(StatusCode::BAD_GATEWAY, "NATIVE_BINDING_INVALID_UPSTREAM"),
     };
     for (name, value) in &headers {
         if !strip_header(name.as_str(), &headers) && !name.as_str().starts_with("sec-websocket-") {
@@ -78,7 +78,7 @@ pub(crate) async fn handle(
         .insert("x-ostk-gpt-hop", "1".parse().unwrap());
     let connector = match tls_connector(&app).await {
         Ok(c) => c,
-        Err(_) => return error(StatusCode::BAD_GATEWAY, "AST000_TLS_CONFIG_ERROR"),
+        Err(_) => return error(StatusCode::BAD_GATEWAY, "NATIVE_BINDING_TLS_CONFIG_ERROR"),
     };
     let config = WebSocketConfig::default()
         .max_message_size(Some(app.config.max_body_bytes))
@@ -97,16 +97,19 @@ pub(crate) async fn handle(
         Ok(Ok(pair)) => pair,
         Ok(Err(tungstenite::Error::Http(response))) => {
             let status = response.status();
-            app.store.record(&json!({"kind":"ast000_transport","transport":"websocket","outcome":"upstream_handshake_rejected","status":status.as_u16(),"ts_ms":now_ms()})).await;
-            let mut rejection = error(status, "AST000_UPSTREAM_HANDSHAKE_REJECTED");
+            app.store.record(&json!({"kind":"native_binding_transport","transport":"websocket","outcome":"upstream_handshake_rejected","status":status.as_u16(),"ts_ms":now_ms()})).await;
+            let mut rejection = error(status, "NATIVE_BINDING_UPSTREAM_HANDSHAKE_REJECTED");
             // Preserve error classification/retry advice without exposing the
             // upstream body, arbitrary headers, cookies, or authentication values.
             copy_metadata(response.headers(), &mut rejection, REJECTION_METADATA);
             return rejection;
         }
         _ => {
-            app.store.record(&json!({"kind":"ast000_transport","transport":"websocket","outcome":"upstream_handshake_failed","ts_ms":now_ms()})).await;
-            return error(StatusCode::BAD_GATEWAY, "AST000_UPSTREAM_HANDSHAKE_FAILED");
+            app.store.record(&json!({"kind":"native_binding_transport","transport":"websocket","outcome":"upstream_handshake_failed","ts_ms":now_ms()})).await;
+            return error(
+                StatusCode::BAD_GATEWAY,
+                "NATIVE_BINDING_UPSTREAM_HANDSHAKE_FAILED",
+            );
         }
     };
     let limit = app.config.max_body_bytes;
@@ -162,18 +165,18 @@ async fn bridge(
                 let Ok(Some(Ok(message))) = message else { break; };
                 match message {
                     Message::Text(text) => {
-                        let prepared = serde_json::from_str::<Value>(&text).map_err(|_| anyhow::anyhow!("AST000_INVALID_JSON")).and_then(|body| state.prepare(&body, app.config.ast000_compat));
+                        let prepared = serde_json::from_str::<Value>(&text).map_err(|_| anyhow::anyhow!("NATIVE_BINDING_INVALID_JSON")).and_then(|body| state.prepare(&body, app.config.native_tool_binding));
                         let outgoing = match prepared {
                             Ok(p) => {
                                 let out = if p.changed { p.body.to_string() } else { text.to_string() };
-                                app.store.record(&json!({"kind":"ast000_request","transport":"websocket","connection":connection_id,"bytes_in":text.len(),"bytes_out":out.len(),"ts_ms":now_ms(),"evidence":p.evidence})).await;
+                                app.store.record(&json!({"kind":"native_binding_request","transport":"websocket","connection":connection_id,"bytes_in":text.len(),"bytes_out":out.len(),"ts_ms":now_ms(),"evidence":p.evidence})).await;
                                 out
                             }
                             Err(e) => {
-                                app.store.record(&json!({"kind":"ast000_rejected","transport":"websocket","connection":connection_id,"code":e.to_string(),"mode":app.config.ast000_compat,"ts_ms":now_ms()})).await;
-                                if app.config.ast000_compat == Ast000::Observe { text.to_string() }
+                                app.store.record(&json!({"kind":"native_binding_rejected","transport":"websocket","connection":connection_id,"code":e.to_string(),"mode":app.config.native_tool_binding,"ts_ms":now_ms()})).await;
+                                if app.config.native_tool_binding == NativeToolBindingMode::Observe { text.to_string() }
                                 else {
-                                    let _ = downstream.send(Message::Text(json!({"type":"error","error":{"type":"invalid_request_error","code":"ast000_unsupported","message":e.to_string()}}).to_string().into())).await;
+                                    let _ = downstream.send(Message::Text(json!({"type":"error","error":{"type":"invalid_request_error","code":"native_binding_unsupported","message":e.to_string()}}).to_string().into())).await;
                                     break;
                                 }
                             }
@@ -184,12 +187,12 @@ async fn bridge(
                     Message::Pong(p) => { if upstream.send(tungstenite::Message::Pong(p)).await.is_err() { break; } }
                     Message::Close(_) => break,
                     Message::Binary(bytes) => {
-                        if app.config.ast000_compat == Ast000::Observe {
-                            app.store.record(&json!({"kind":"ast000_rejected","transport":"websocket","connection":connection_id,"code":"AST000_BINARY_REQUEST_UNSUPPORTED","mode":app.config.ast000_compat,"ts_ms":now_ms()})).await;
+                        if app.config.native_tool_binding == NativeToolBindingMode::Observe {
+                            app.store.record(&json!({"kind":"native_binding_rejected","transport":"websocket","connection":connection_id,"code":"NATIVE_BINDING_BINARY_REQUEST_UNSUPPORTED","mode":app.config.native_tool_binding,"ts_ms":now_ms()})).await;
                             if upstream.send(tungstenite::Message::Binary(bytes)).await.is_err() { break; }
                             continue;
                         }
-                        let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"ast000_unsupported","message":"AST000_BINARY_REQUEST_UNSUPPORTED"}}).to_string().into())).await;
+                        let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"native_binding_unsupported","message":"NATIVE_BINDING_BINARY_REQUEST_UNSUPPORTED"}}).to_string().into())).await;
                         break;
                     }
                 }
@@ -200,9 +203,9 @@ async fn bridge(
                     tungstenite::Message::Text(text) => {
                         if let Ok(event) = serde_json::from_str::<Value>(&text) {
                             if let Err(error) = state.observe_response(&event) {
-                                app.store.record(&json!({"kind":"ast000_rejected_response","transport":"websocket","connection":connection_id,"code":error.to_string(),"mode":app.config.ast000_compat,"ts_ms":now_ms()})).await;
-                                if app.config.ast000_compat != Ast000::Observe {
-                                    let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"ast000_unsupported","message":error.to_string()}}).to_string().into())).await;
+                                app.store.record(&json!({"kind":"native_binding_rejected_response","transport":"websocket","connection":connection_id,"code":error.to_string(),"mode":app.config.native_tool_binding,"ts_ms":now_ms()})).await;
+                                if app.config.native_tool_binding != NativeToolBindingMode::Observe {
+                                    let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"native_binding_unsupported","message":error.to_string()}}).to_string().into())).await;
                                     break;
                                 }
                             }
@@ -217,21 +220,21 @@ async fn bridge(
                             })).collect();
                             if !checkpoints.is_empty() {
                                 // This exact text is forwarded below. No native payload is logged.
-                                app.store.record(&json!({"kind":"ast000_native_output","transport":"websocket","connection":connection_id,"event":event["type"],"frame_sha256":crate::hash(text.as_bytes()),"checkpoints":checkpoints,"forwarded_unchanged":true,"ts_ms":now_ms()})).await;
+                                app.store.record(&json!({"kind":"native_binding_native_output","transport":"websocket","connection":connection_id,"event":event["type"],"frame_sha256":crate::hash(text.as_bytes()),"checkpoints":checkpoints,"forwarded_unchanged":true,"ts_ms":now_ms()})).await;
                             }
                             if matches!(event["type"].as_str(), Some("response.completed" | "response.failed" | "response.incomplete" | "error")) {
-                                app.store.record(&json!({"kind":"ast000_response","transport":"websocket","connection":connection_id,"event":event["type"],"usage":usage_summary(&event["response"]["usage"]),"ts_ms":now_ms()})).await;
+                                app.store.record(&json!({"kind":"native_binding_response","transport":"websocket","connection":connection_id,"event":event["type"],"usage":usage_summary(&event["response"]["usage"]),"ts_ms":now_ms()})).await;
                             }
-                        } else if app.config.ast000_compat != Ast000::Observe {
-                            let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"ast000_unsupported","message":"AST000_NON_JSON_RESPONSE_UNSUPPORTED"}}).to_string().into())).await;
+                        } else if app.config.native_tool_binding != NativeToolBindingMode::Observe {
+                            let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"native_binding_unsupported","message":"NATIVE_BINDING_NON_JSON_RESPONSE_UNSUPPORTED"}}).to_string().into())).await;
                             break;
                         }
                         Message::Text(text.to_string().into())
                     }
                     tungstenite::Message::Binary(b) => {
-                        if app.config.ast000_compat == Ast000::Observe { Message::Binary(b) }
+                        if app.config.native_tool_binding == NativeToolBindingMode::Observe { Message::Binary(b) }
                         else {
-                            let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"ast000_unsupported","message":"AST000_BINARY_RESPONSE_UNSUPPORTED"}}).to_string().into())).await;
+                            let _ = downstream.send(Message::Text(json!({"type":"error","error":{"code":"native_binding_unsupported","message":"NATIVE_BINDING_BINARY_RESPONSE_UNSUPPORTED"}}).to_string().into())).await;
                             break;
                         }
                     },
@@ -246,7 +249,7 @@ async fn bridge(
     }
     let _ = upstream.close(None).await;
     let _ = downstream.close().await;
-    app.store.record(&json!({"kind":"ast000_transport","transport":"websocket","connection":connection_id,"outcome":"closed","ts_ms":now_ms()})).await;
+    app.store.record(&json!({"kind":"native_binding_transport","transport":"websocket","connection":connection_id,"outcome":"closed","ts_ms":now_ms()})).await;
 }
 
 fn usage_summary(usage: &Value) -> Value {

@@ -4,7 +4,7 @@
 //! additional_tools prefix. Imported history is never searched for an inventory.
 //! This is a format/provenance check, not authentication of arbitrary HTTP clients.
 //! No state crosses a websocket connection; unknown response references fail closed.
-use crate::{config::Ast000, fingerprint, hash};
+use crate::{config::NativeToolBindingMode, fingerprint, hash};
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
@@ -47,46 +47,52 @@ pub struct Prepared {
 impl Connection {
     /// Full requests reset inventory, including an explicitly empty inventory.
     /// Incremental requests are accepted only after this connection's completion.
-    pub fn prepare(&mut self, request: &Value, mode: Ast000) -> Result<Prepared> {
-        ensure!(!self.in_flight, "AST000_UNSUPPORTED_PIPELINING");
-        ensure!(request.is_object(), "AST000_REQUIRES_OBJECT");
+    pub fn prepare(&mut self, request: &Value, mode: NativeToolBindingMode) -> Result<Prepared> {
+        ensure!(!self.in_flight, "NATIVE_BINDING_UNSUPPORTED_PIPELINING");
+        ensure!(request.is_object(), "NATIVE_BINDING_REQUIRES_OBJECT");
         ensure!(
             request.get("type").is_none_or(|t| t == "response.create"),
-            "AST000_UNSUPPORTED_REQUEST_TYPE"
+            "NATIVE_BINDING_UNSUPPORTED_REQUEST_TYPE"
         );
         ensure!(
             request.get("conversation").is_none_or(Value::is_null),
-            "AST000_UNSUPPORTED_CONVERSATION_REFERENCE"
+            "NATIVE_BINDING_UNSUPPORTED_CONVERSATION_REFERENCE"
         );
         ensure!(
             request.get("context_management").is_none_or(Value::is_null),
-            "AST000_UNSUPPORTED_INLINE_ROLLING"
+            "NATIVE_BINDING_UNSUPPORTED_INLINE_ROLLING"
         );
         ensure!(
             request.get("background").is_none_or(|v| v != true),
-            "AST000_UNSUPPORTED_BACKGROUND"
+            "NATIVE_BINDING_UNSUPPORTED_BACKGROUND"
         );
         let input = request["input"]
             .as_array()
-            .ok_or_else(|| anyhow::anyhow!("AST000_REQUIRES_INPUT_ARRAY"))?;
-        ensure!(input.iter().all(Value::is_object), "AST000_INVALID_ITEM");
+            .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_REQUIRES_INPUT_ARRAY"))?;
+        ensure!(
+            input.iter().all(Value::is_object),
+            "NATIVE_BINDING_INVALID_ITEM"
+        );
         ensure!(
             !input.iter().any(|i| matches!(
                 i["type"].as_str(),
                 Some("item_reference" | "context_compaction" | "configuration_update")
             )),
-            "AST000_UNSUPPORTED_RESET_OR_REFERENCE"
+            "NATIVE_BINDING_UNSUPPORTED_RESET_OR_REFERENCE"
         );
         let model = request["model"]
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("AST000_REQUIRES_MODEL"))?;
+            .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_REQUIRES_MODEL"))?;
         ensure!(
             self.model.as_deref().is_none_or(|bound| bound == model),
-            "AST000_CONNECTION_MODEL_CHANGED"
+            "NATIVE_BINDING_CONNECTION_MODEL_CHANGED"
         );
         let scope = thread_scope(request)?;
         if self.inventory.is_some() || self.scope.is_some() {
-            ensure!(self.scope == scope, "AST000_CONNECTION_THREAD_CHANGED");
+            ensure!(
+                self.scope == scope,
+                "NATIVE_BINDING_CONNECTION_THREAD_CHANGED"
+            );
         }
         let incremental = request.get("previous_response_id").filter(|v| !v.is_null());
         // Codex 0.154 compact_remote_v2_attempt appends exactly this request-only
@@ -102,52 +108,52 @@ impl Connection {
             ensure!(
                 metadata["request_kind"] == "compaction"
                     && scope.as_ref().is_some_and(|s| !s.is_empty()),
-                "AST000_UNVERIFIED_COMPACTION_REQUEST"
+                "NATIVE_BINDING_UNVERIFIED_COMPACTION_REQUEST"
             );
             ensure!(
                 triggers.len() == 1
                     && triggers[0].0 + 1 == input.len()
                     && triggers[0].1.as_object().unwrap().len() == 1,
-                "AST000_UNSUPPORTED_COMPACTION_TRIGGER"
+                "NATIVE_BINDING_UNSUPPORTED_COMPACTION_TRIGGER"
             );
             ensure!(
                 request.get("generate").is_none_or(|v| v != false),
-                "AST000_COMPACTION_WARMUP_UNSUPPORTED"
+                "NATIVE_BINDING_COMPACTION_WARMUP_UNSUPPORTED"
             );
         }
         let inventory = if let Some(previous) = incremental {
             ensure!(
                 previous.as_str().is_some() && previous.as_str() == self.last_completed.as_deref(),
-                "AST000_UNKNOWN_PREVIOUS_RESPONSE"
+                "NATIVE_BINDING_UNKNOWN_PREVIOUS_RESPONSE"
             );
             ensure!(
                 self.model.as_deref() == Some(model),
-                "AST000_INCREMENTAL_MODEL_CHANGED"
+                "NATIVE_BINDING_INCREMENTAL_MODEL_CHANGED"
             );
             self.inventory
                 .clone()
-                .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_RUNTIME_PREFIX"))?
+                .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_RUNTIME_PREFIX"))?
         } else {
             let prefix = input
                 .first()
-                .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_RUNTIME_PREFIX"))?;
+                .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_RUNTIME_PREFIX"))?;
             ensure!(
                 prefix["type"] == "additional_tools"
                     && prefix["role"] == "developer"
                     && prefix["tools"].is_array(),
-                "AST000_MISSING_RUNTIME_PREFIX"
+                "NATIVE_BINDING_MISSING_RUNTIME_PREFIX"
             );
             ensure!(
                 prefix["id"]
                     .as_str()
                     .is_some_and(|s| s.starts_with("at_") && s.len() > 6),
-                "AST000_UNVERIFIED_PREFIX_ID"
+                "NATIVE_BINDING_UNVERIFIED_PREFIX_ID"
             );
             ensure!(
                 input
                     .get(1)
                     .is_some_and(|i| i["type"] == "message" && i["role"] == "developer"),
-                "AST000_UNVERIFIED_PREFIX_LAYOUT"
+                "NATIVE_BINDING_UNVERIFIED_PREFIX_LAYOUT"
             );
             // Keep only the actual runtime descriptor's fields; omit its already-used wire ID.
             let mut inventory = prefix.clone();
@@ -161,7 +167,7 @@ impl Connection {
                     item["encrypted_content"]
                         .as_str()
                         .is_some_and(|s| !s.is_empty()),
-                    "AST000_INVALID_CHECKPOINT"
+                    "NATIVE_BINDING_INVALID_CHECKPOINT"
                 );
                 checkpoints.push(n);
             }
@@ -183,7 +189,7 @@ impl Connection {
         }
         ensure!(
             !compacting || (pending_calls.is_empty() && pending_search_calls.is_empty()),
-            "AST000_COMPACTION_WITH_PENDING_CALLS"
+            "NATIVE_BINDING_COMPACTION_WITH_PENDING_CALLS"
         );
         // Apart from the verified prefix, only an identical already-positioned
         // declaration is supported. Stale or arbitrary imported inventories fail.
@@ -197,18 +203,18 @@ impl Connection {
                 candidate == inventory
                     && (checkpoints.iter().any(|c| n == c + 1 || n + 1 == *c)
                         || (inherited_checkpoint && n == 0)),
-                "AST000_UNTRUSTED_HISTORY_DECLARATION"
+                "NATIVE_BINDING_UNTRUSTED_HISTORY_DECLARATION"
             );
         }
         let mut body = request.clone();
         let mut inserted = None;
         if let Some(last) = checkpoints.last() {
-            let position = if mode == Ast000::RepeatBefore {
+            let position = if mode == NativeToolBindingMode::RepeatBefore {
                 *last
             } else {
                 last + 1
             };
-            let existing_position = if mode == Ast000::RepeatBefore {
+            let existing_position = if mode == NativeToolBindingMode::RepeatBefore {
                 last.checked_sub(1)
             } else {
                 Some(position)
@@ -223,14 +229,18 @@ impl Connection {
                         }
                         candidate == inventory
                     });
-            if matches!(mode, Ast000::Rebind | Ast000::RepeatBefore) && !already_positioned {
+            if matches!(
+                mode,
+                NativeToolBindingMode::Rebind | NativeToolBindingMode::RepeatBefore
+            ) && !already_positioned
+            {
                 body["input"]
                     .as_array_mut()
                     .unwrap()
                     .insert(position, inventory.clone());
                 inserted = Some(position);
             }
-        } else if inherited_checkpoint && mode == Ast000::Rebind {
+        } else if inherited_checkpoint && mode == NativeToolBindingMode::Rebind {
             // A completed compaction can be referenced by a delta that contains
             // no checkpoint item. Its effective boundary precedes this input.
             let already_positioned = input.first().is_some_and(|item| {
@@ -250,7 +260,7 @@ impl Connection {
         if let Some(index) = inserted {
             restored.remove(index);
         }
-        ensure!(&restored == input, "AST000_PRESERVATION_FAILURE");
+        ensure!(&restored == input, "NATIVE_BINDING_PRESERVATION_FAILURE");
         let evidence = json!({
             "mode":mode, "incremental":incremental.is_some(), "inserted_at":inserted,
             "compaction_trigger":compacting, "inherited_checkpoint":inherited_checkpoint,
@@ -290,21 +300,21 @@ impl Connection {
 
     pub fn observe_response(&mut self, event: &Value) -> Result<()> {
         if event["type"] == "response.output_item.done" {
-            ensure!(self.in_flight, "AST000_UNEXPECTED_OUTPUT");
+            ensure!(self.in_flight, "NATIVE_BINDING_UNEXPECTED_OUTPUT");
             let index = event["output_index"]
                 .as_u64()
-                .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_OUTPUT_INDEX"))?;
+                .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_OUTPUT_INDEX"))?;
             let summary = output_summary(&event["item"])?;
             if let Some(previous) = self.output.get(&index) {
                 ensure!(
                     previous.fingerprint == summary.fingerprint,
-                    "AST000_CONFLICTING_OUTPUT_ITEM"
+                    "NATIVE_BINDING_CONFLICTING_OUTPUT_ITEM"
                 );
             }
             self.output.insert(index, summary);
         }
         if event["type"] == "response.completed" {
-            ensure!(self.in_flight, "AST000_UNEXPECTED_COMPLETION");
+            ensure!(self.in_flight, "NATIVE_BINDING_UNEXPECTED_COMPLETION");
             // Some routes supply output only in the terminal event, others stream
             // output_item.done and leave the terminal output array empty.
             if self.output.is_empty() {
@@ -323,7 +333,7 @@ impl Connection {
                             .output
                             .get(&(index as u64))
                             .is_some_and(|summary| summary.fingerprint == fingerprint(item))),
-                    "AST000_CONFLICTING_COMPLETED_OUTPUT"
+                    "NATIVE_BINDING_CONFLICTING_COMPLETED_OUTPUT"
                 );
             }
             let checkpoints = self
@@ -333,32 +343,38 @@ impl Connection {
                 .count();
             ensure!(
                 !self.output.values().any(|i| i.kind == "context_compaction"),
-                "AST000_UNSUPPORTED_CONTEXT_COMPACTION_OUTPUT"
+                "NATIVE_BINDING_UNSUPPORTED_CONTEXT_COMPACTION_OUTPUT"
             );
             if self.compacting {
                 ensure!(
                     self.output.len() == 1
                         && self.output.get(&0).is_some_and(|i| i.valid_checkpoint),
-                    "AST000_INVALID_COMPACTION_COMPLETION"
+                    "NATIVE_BINDING_INVALID_COMPACTION_COMPLETION"
                 );
                 self.checkpoint_due = true;
                 self.pending_calls.clear();
                 self.pending_search_calls.clear();
             } else {
-                ensure!(checkpoints == 0, "AST000_UNEXPECTED_CHECKPOINT_OUTPUT");
+                ensure!(
+                    checkpoints == 0,
+                    "NATIVE_BINDING_UNEXPECTED_CHECKPOINT_OUTPUT"
+                );
                 for item in self.output.values() {
                     update_search_calls(&mut self.pending_search_calls, item.search.as_ref())?;
                     if matches!(item.kind.as_str(), "function_call" | "custom_tool_call") {
                         self.pending_calls.insert(
                             item.call_id
                                 .clone()
-                                .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_CALL_ID"))?,
+                                .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_CALL_ID"))?,
                         );
                     }
                 }
             }
             self.last_completed = event["response"]["id"].as_str().map(str::to_string);
-            ensure!(self.last_completed.is_some(), "AST000_MISSING_RESPONSE_ID");
+            ensure!(
+                self.last_completed.is_some(),
+                "NATIVE_BINDING_MISSING_RESPONSE_ID"
+            );
             self.in_flight = false;
         } else if matches!(
             event["type"].as_str(),
@@ -373,7 +389,7 @@ impl Connection {
             self.pending_search_calls.clear();
             ensure!(
                 event["type"] != "response.cancelled",
-                "AST000_UNSUPPORTED_CANCELLATION"
+                "NATIVE_BINDING_UNSUPPORTED_CANCELLATION"
             );
         }
         Ok(())
@@ -403,16 +419,16 @@ fn search_transition(item: &Value) -> Result<Option<SearchTransition>> {
     match item["execution"].as_str() {
         Some("server") => return Ok(None),
         Some("client") => {}
-        _ => anyhow::bail!("AST000_UNSUPPORTED_TOOL_SEARCH_EXECUTION"),
+        _ => anyhow::bail!("NATIVE_BINDING_UNSUPPORTED_TOOL_SEARCH_EXECUTION"),
     }
     let id = item["call_id"]
         .as_str()
         .filter(|id| !id.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_TOOL_SEARCH_CALL_ID"))?;
+        .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_TOOL_SEARCH_CALL_ID"))?;
     if kind == Some("tool_search_call") {
         ensure!(
             item.get("arguments").is_some(),
-            "AST000_INVALID_TOOL_SEARCH_CALL"
+            "NATIVE_BINDING_INVALID_TOOL_SEARCH_CALL"
         );
         Ok(Some(SearchTransition::Call(id.to_string())))
     } else {
@@ -420,7 +436,7 @@ fn search_transition(item: &Value) -> Result<Option<SearchTransition>> {
         // tools/context.rs; discovered schemas never replace runtime inventory.
         ensure!(
             item["status"] == "completed" && item["tools"].is_array(),
-            "AST000_INVALID_TOOL_SEARCH_OUTPUT"
+            "NATIVE_BINDING_INVALID_TOOL_SEARCH_OUTPUT"
         );
         Ok(Some(SearchTransition::Output(id.to_string())))
     }
@@ -433,10 +449,13 @@ fn update_search_calls(
     match transition {
         Some(SearchTransition::Call(id)) => ensure!(
             pending.insert(id.clone()),
-            "AST000_DUPLICATE_TOOL_SEARCH_CALL"
+            "NATIVE_BINDING_DUPLICATE_TOOL_SEARCH_CALL"
         ),
         Some(SearchTransition::Output(id)) => {
-            ensure!(pending.remove(id), "AST000_UNMATCHED_TOOL_SEARCH_OUTPUT")
+            ensure!(
+                pending.remove(id),
+                "NATIVE_BINDING_UNMATCHED_TOOL_SEARCH_OUTPUT"
+            )
         }
         None => {}
     }
@@ -448,13 +467,13 @@ fn update_calls(pending: &mut HashSet<String>, item: &Value) -> Result<()> {
         Some("function_call" | "custom_tool_call") => {
             let id = item["call_id"]
                 .as_str()
-                .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_CALL_ID"))?;
+                .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_CALL_ID"))?;
             pending.insert(id.to_string());
         }
         Some("function_call_output" | "custom_tool_call_output") => {
             let id = item["call_id"]
                 .as_str()
-                .ok_or_else(|| anyhow::anyhow!("AST000_MISSING_CALL_ID"))?;
+                .ok_or_else(|| anyhow::anyhow!("NATIVE_BINDING_MISSING_CALL_ID"))?;
             pending.remove(id);
         }
         _ => {}
@@ -472,8 +491,8 @@ fn turn_metadata(request: &Value) -> Result<Value> {
     let Some(raw) = request["client_metadata"]["x-codex-turn-metadata"].as_str() else {
         return Ok(Value::Null);
     };
-    let parsed: Value =
-        serde_json::from_str(raw).map_err(|_| anyhow::anyhow!("AST000_INVALID_THREAD_METADATA"))?;
+    let parsed: Value = serde_json::from_str(raw)
+        .map_err(|_| anyhow::anyhow!("NATIVE_BINDING_INVALID_THREAD_METADATA"))?;
     Ok(parsed)
 }
 
@@ -510,7 +529,7 @@ fn inventory_markers(tools: &Value) -> Value {
             .iter()
             .any(|n| n == name || n.ends_with(&format!(".{name}")))
     };
-    json!({"exec_command":contains("exec_command"), "apply_patch":contains("apply_patch"), "view_image":contains("view_image"), "ast000_alpha":contains("ast000_alpha"), "ast000_beta":contains("ast000_beta")})
+    json!({"exec_command":contains("exec_command"), "apply_patch":contains("apply_patch"), "view_image":contains("view_image"), "native_binding_alpha":contains("native_binding_alpha"), "native_binding_beta":contains("native_binding_beta")})
 }
 
 fn code_mode_names(value: &Value) -> Vec<String> {

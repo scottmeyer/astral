@@ -1,11 +1,11 @@
 # Run
 
 Build with `cargo build --release --locked --bins` from the repository root.
-The full launcher is not implemented. See [lifecycle instructions](../../docs/ast000-lifecycle.md)
+The full launcher is not implemented. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
 for the opt-in Codex route and tested resume procedure.
 
 For this experiment, start the proxy on loopback with `--mode passthrough
---ast000-compat rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private
+--native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private
 state directory outside the repository. Keep it running while routed Codex
 sessions are in use. Upstream TLS verification remains enabled.
 

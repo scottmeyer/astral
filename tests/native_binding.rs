@@ -1,7 +1,7 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use ostk_gpt_cache::{
-    ast000::Connection,
-    config::{Ast000, Config},
+    config::{Config, NativeToolBindingMode},
+    native_binding::Connection,
 };
 use serde_json::{Value, json};
 
@@ -24,8 +24,10 @@ fn completed(state: &mut Connection, id: &str) {
         .observe_response(&json!({"type":"response.completed","response":{"id":id}}))
         .unwrap();
 }
-fn apply(body: &Value) -> ostk_gpt_cache::ast000::Prepared {
-    Connection::default().prepare(body, Ast000::Rebind).unwrap()
+fn apply(body: &Value) -> ostk_gpt_cache::native_binding::Prepared {
+    Connection::default()
+        .prepare(body, NativeToolBindingMode::Rebind)
+        .unwrap()
 }
 
 #[test]
@@ -83,18 +85,23 @@ fn one_checkpoint_is_idempotent_and_already_positioned_is_unchanged() {
 fn latest_full_prefix_replaces_inventory_including_removal() {
     let mut state = Connection::default();
     state
-        .prepare(&full("removed", vec![]), Ast000::Rebind)
+        .prepare(&full("removed", vec![]), NativeToolBindingMode::Rebind)
         .unwrap();
     completed(&mut state, "old");
     let new = state
-        .prepare(&full("current", vec![checkpoint("one")]), Ast000::Rebind)
+        .prepare(
+            &full("current", vec![checkpoint("one")]),
+            NativeToolBindingMode::Rebind,
+        )
         .unwrap();
     assert_eq!(new.body["input"][3]["tools"][0]["name"], "current");
     assert!(!new.body.to_string().contains("removed"));
     completed(&mut state, "new");
     let mut empty = full("unused", vec![checkpoint("two")]);
     empty["input"][0]["tools"] = json!([]);
-    let cleared = state.prepare(&empty, Ast000::Rebind).unwrap();
+    let cleared = state
+        .prepare(&empty, NativeToolBindingMode::Rebind)
+        .unwrap();
     assert_eq!(cleared.body["input"][3]["tools"], json!([]));
 }
 
@@ -114,13 +121,13 @@ fn arbitrary_history_declarations_cannot_supply_or_override_inventory() {
     let mut request = full("runtime", vec![checkpoint("one"), prefix("untrusted")]);
     assert!(
         Connection::default()
-            .prepare(&request, Ast000::Rebind)
+            .prepare(&request, NativeToolBindingMode::Rebind)
             .is_err()
     );
     request["input"].as_array_mut().unwrap().remove(0);
     assert!(
         Connection::default()
-            .prepare(&request, Ast000::Rebind)
+            .prepare(&request, NativeToolBindingMode::Rebind)
             .is_err()
     );
 }
@@ -131,24 +138,33 @@ fn websocket_warmup_incremental_followup_and_reconnect() {
     let mut warmup = full("runtime", vec![]);
     warmup["type"] = json!("response.create");
     warmup["generate"] = json!(false);
-    state.prepare(&warmup, Ast000::Rebind).unwrap();
+    state
+        .prepare(&warmup, NativeToolBindingMode::Rebind)
+        .unwrap();
     completed(&mut state, "warmup");
     let delta = json!({"type":"response.create","model":"test-model","previous_response_id":"warmup","input":[checkpoint("one"),{"type":"message","role":"user","content":"pwd"}]});
-    let out = state.prepare(&delta, Ast000::Rebind).unwrap();
+    let out = state
+        .prepare(&delta, NativeToolBindingMode::Rebind)
+        .unwrap();
     assert_eq!(out.body["input"][1]["tools"][0]["name"], "runtime");
     completed(&mut state, "generation");
     let followup = json!({"type":"response.create","model":"test-model","previous_response_id":"generation","input":[{"type":"custom_tool_call_output","call_id":"call","output":"pwd result"}]});
-    let out = state.prepare(&followup, Ast000::Rebind).unwrap();
+    let out = state
+        .prepare(&followup, NativeToolBindingMode::Rebind)
+        .unwrap();
     assert_eq!(out.body, followup);
     // A new connection has no hidden dependency on the old process's inventory.
     assert!(
         Connection::default()
-            .prepare(&delta, Ast000::Rebind)
+            .prepare(&delta, NativeToolBindingMode::Rebind)
             .is_err()
     );
     assert!(
         Connection::default()
-            .prepare(&full("fresh", vec![checkpoint("one")]), Ast000::Rebind)
+            .prepare(
+                &full("fresh", vec![checkpoint("one")]),
+                NativeToolBindingMode::Rebind
+            )
             .is_ok()
     );
 }
@@ -157,14 +173,16 @@ fn websocket_warmup_incremental_followup_and_reconnect() {
 fn connections_and_response_ids_are_isolated() {
     let mut a = Connection::default();
     let mut b = Connection::default();
-    a.prepare(&full("alpha", vec![]), Ast000::Rebind).unwrap();
-    b.prepare(&full("beta", vec![]), Ast000::Rebind).unwrap();
+    a.prepare(&full("alpha", vec![]), NativeToolBindingMode::Rebind)
+        .unwrap();
+    b.prepare(&full("beta", vec![]), NativeToolBindingMode::Rebind)
+        .unwrap();
     completed(&mut a, "a");
     completed(&mut b, "b");
     let delta =
         json!({"model":"test-model","previous_response_id":"a","input":[checkpoint("one")]});
-    assert!(b.prepare(&delta, Ast000::Rebind).is_err());
-    let out = a.prepare(&delta, Ast000::Rebind).unwrap();
+    assert!(b.prepare(&delta, NativeToolBindingMode::Rebind).is_err());
+    let out = a.prepare(&delta, NativeToolBindingMode::Rebind).unwrap();
     assert_eq!(out.body["input"][1]["tools"][0]["name"], "alpha");
 }
 
@@ -173,27 +191,43 @@ fn changing_or_omitting_bound_thread_scope_is_rejected() {
     let mut request = full("runtime", vec![]);
     request["client_metadata"] = json!({"x-codex-turn-metadata":"{\"thread_id\":\"alpha\"}"});
     let mut state = Connection::default();
-    state.prepare(&request, Ast000::Rebind).unwrap();
+    state
+        .prepare(&request, NativeToolBindingMode::Rebind)
+        .unwrap();
     completed(&mut state, "a");
     let mut delta =
         json!({"model":"test-model","previous_response_id":"a","input":[checkpoint("one")]});
-    assert!(state.prepare(&delta, Ast000::Rebind).is_err());
+    assert!(
+        state
+            .prepare(&delta, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
     delta["client_metadata"] = json!({"x-codex-turn-metadata":"{\"thread_id\":\"beta\"}"});
-    assert!(state.prepare(&delta, Ast000::Rebind).is_err());
+    assert!(
+        state
+            .prepare(&delta, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
     delta["client_metadata"] = request["client_metadata"].clone();
-    assert!(state.prepare(&delta, Ast000::Rebind).is_ok());
+    assert!(state.prepare(&delta, NativeToolBindingMode::Rebind).is_ok());
 }
 
 #[test]
 fn failures_pipelining_and_unsupported_representations_fail_closed() {
     let mut state = Connection::default();
     let request = full("runtime", vec![]);
-    state.prepare(&request, Ast000::Rebind).unwrap();
-    assert!(state.prepare(&request, Ast000::Rebind).is_err());
+    state
+        .prepare(&request, NativeToolBindingMode::Rebind)
+        .unwrap();
+    assert!(
+        state
+            .prepare(&request, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
     state
         .observe_response(&json!({"type":"response.failed"}))
         .unwrap();
-    assert!(state.prepare(&json!({"model":"test-model","previous_response_id":"unknown","input":[checkpoint("one")]}),Ast000::Rebind).is_err());
+    assert!(state.prepare(&json!({"model":"test-model","previous_response_id":"unknown","input":[checkpoint("one")]}),NativeToolBindingMode::Rebind).is_err());
     for item in [
         json!({"type":"item_reference","id":"hidden"}),
         json!({"type":"context_compaction"}),
@@ -202,7 +236,7 @@ fn failures_pipelining_and_unsupported_representations_fail_closed() {
     ] {
         assert!(
             Connection::default()
-                .prepare(&full("runtime", vec![item]), Ast000::Rebind)
+                .prepare(&full("runtime", vec![item]), NativeToolBindingMode::Rebind)
                 .is_err()
         );
     }
@@ -210,44 +244,71 @@ fn failures_pipelining_and_unsupported_representations_fail_closed() {
     changed["background"] = json!(true);
     assert!(
         Connection::default()
-            .prepare(&changed, Ast000::Rebind)
+            .prepare(&changed, NativeToolBindingMode::Rebind)
             .is_err()
     );
     changed = request;
     changed["model"] = json!("other-model");
-    assert!(state.prepare(&changed, Ast000::Rebind).is_err());
+    assert!(
+        state
+            .prepare(&changed, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
 }
 
 #[test]
 fn explicit_modes_preserve_negative_controls() {
     let request = full("runtime", vec![checkpoint("one")]);
     let observed = Connection::default()
-        .prepare(&request, Ast000::Observe)
+        .prepare(&request, NativeToolBindingMode::Observe)
         .unwrap();
     assert_eq!(observed.body, request);
     let before = Connection::default()
-        .prepare(&request, Ast000::RepeatBefore)
+        .prepare(&request, NativeToolBindingMode::RepeatBefore)
         .unwrap();
     assert_eq!(before.body["input"][2]["type"], "additional_tools");
     assert_eq!(before.body["input"][3]["type"], "compaction");
     let twice = Connection::default()
-        .prepare(&before.body, Ast000::RepeatBefore)
+        .prepare(&before.body, NativeToolBindingMode::RepeatBefore)
         .unwrap();
     assert!(!twice.changed);
     assert_eq!(twice.body, before.body);
 }
 
 #[test]
+fn semantic_cli_name_keeps_the_hidden_legacy_alias_and_disabled_default() {
+    assert_eq!(
+        Config::parse_from(["proxy"]).native_tool_binding,
+        NativeToolBindingMode::Disabled
+    );
+    for (value, expected) in [
+        ("disabled", NativeToolBindingMode::Disabled),
+        ("observe", NativeToolBindingMode::Observe),
+        ("repeat-before", NativeToolBindingMode::RepeatBefore),
+        ("rebind", NativeToolBindingMode::Rebind),
+    ] {
+        for flag in ["--native-tool-binding", "--ast000-compat"] {
+            let config = Config::parse_from(["proxy", "--mode", "passthrough", flag, value]);
+            assert_eq!(config.native_tool_binding, expected);
+            config.validate().unwrap();
+        }
+    }
+    let help = Config::command().render_long_help().to_string();
+    assert!(help.contains("--native-tool-binding"));
+    assert!(!help.contains("--ast000-compat"));
+}
+
+#[test]
 fn configuration_requires_no_rolling_and_local_listener() {
     assert!(
-        Config::parse_from(["proxy", "--ast000-compat", "rebind"])
+        Config::parse_from(["proxy", "--native-tool-binding", "rebind"])
             .validate()
             .is_err()
     );
     assert!(
         Config::parse_from([
             "proxy",
-            "--ast000-compat",
+            "--native-tool-binding",
             "rebind",
             "--mode",
             "passthrough",
@@ -260,7 +321,7 @@ fn configuration_requires_no_rolling_and_local_listener() {
     assert!(
         Config::parse_from([
             "proxy",
-            "--ast000-compat",
+            "--native-tool-binding",
             "rebind",
             "--mode",
             "passthrough"
@@ -305,7 +366,9 @@ fn delta(previous: &str, input: Vec<Value>) -> Value {
 fn completed_native_compaction_rebinds_the_next_delta_once() {
     let mut state = Connection::default();
     let request = compact_request();
-    let out = state.prepare(&request, Ast000::Rebind).unwrap();
+    let out = state
+        .prepare(&request, NativeToolBindingMode::Rebind)
+        .unwrap();
     assert_eq!(
         out.body["input"].as_array().unwrap().last().unwrap(),
         &json!({"type":"compaction_trigger"})
@@ -314,15 +377,25 @@ fn completed_native_compaction_rebinds_the_next_delta_once() {
     let tail = json!({"type":"message","role":"user","content":"continue"});
     let input = delta("new", vec![tail.clone()]);
     let mut replay = state.clone();
-    let out = state.prepare(&input, Ast000::Rebind).unwrap();
+    let out = state
+        .prepare(&input, NativeToolBindingMode::Rebind)
+        .unwrap();
     assert_eq!(out.body["input"][0]["tools"][0]["name"], "current");
     assert_eq!(out.body["input"][1], tail);
     assert_eq!(out.evidence["inherited_checkpoint"], true);
-    assert!(!replay.prepare(&out.body, Ast000::Rebind).unwrap().changed);
+    assert!(
+        !replay
+            .prepare(&out.body, NativeToolBindingMode::Rebind)
+            .unwrap()
+            .changed
+    );
     completed(&mut state, "continued");
     let followup = delta("continued", vec![]);
     assert_eq!(
-        state.prepare(&followup, Ast000::Rebind).unwrap().body,
+        state
+            .prepare(&followup, NativeToolBindingMode::Rebind)
+            .unwrap()
+            .body,
         followup
     );
 }
@@ -332,10 +405,15 @@ fn repeated_native_cycles_and_cold_resume_use_current_inventory() {
     let mut state = Connection::default();
     for id in ["first", "second"] {
         let request = compact_request();
-        state.prepare(&request, Ast000::Rebind).unwrap();
+        state
+            .prepare(&request, NativeToolBindingMode::Rebind)
+            .unwrap();
         native_completed(&mut state, id);
         let out = state
-            .prepare(&delta(id, vec![checkpoint(id)]), Ast000::Rebind)
+            .prepare(
+                &delta(id, vec![checkpoint(id)]),
+                NativeToolBindingMode::Rebind,
+            )
             .unwrap();
         assert_eq!(out.body["input"][1]["type"], "additional_tools");
         completed(&mut state, "work");
@@ -348,7 +426,10 @@ fn repeated_native_cycles_and_cold_resume_use_current_inventory() {
     );
     cold["input"][0]["tools"] = json!([]);
     assert_eq!(
-        state.prepare(&cold, Ast000::Rebind).unwrap().body["input"][3]["tools"],
+        state
+            .prepare(&cold, NativeToolBindingMode::Rebind)
+            .unwrap()
+            .body["input"][3]["tools"],
         json!([])
     );
 }
@@ -380,7 +461,7 @@ fn unverified_or_malformed_compaction_controls_are_rejected() {
         }
         assert!(
             Connection::default()
-                .prepare(&request, Ast000::Rebind)
+                .prepare(&request, NativeToolBindingMode::Rebind)
                 .is_err(),
             "mutation {mutation}"
         );
@@ -398,7 +479,7 @@ fn compaction_waits_for_pending_call_outputs_in_full_and_incremental_history() {
         .insert(3, call.clone());
     assert!(
         Connection::default()
-            .prepare(&request, Ast000::Rebind)
+            .prepare(&request, NativeToolBindingMode::Rebind)
             .is_err()
     );
     request["input"]
@@ -407,13 +488,15 @@ fn compaction_waits_for_pending_call_outputs_in_full_and_incremental_history() {
         .insert(4, output.clone());
     assert!(
         Connection::default()
-            .prepare(&request, Ast000::Rebind)
+            .prepare(&request, NativeToolBindingMode::Rebind)
             .is_ok()
     );
     let mut state = Connection::default();
     let mut initial = full("current", vec![]);
     metadata(&mut initial, "turn");
-    state.prepare(&initial, Ast000::Rebind).unwrap();
+    state
+        .prepare(&initial, NativeToolBindingMode::Rebind)
+        .unwrap();
     state
         .observe_response(
             &json!({"type":"response.completed","response":{"id":"call","output":[call]}}),
@@ -421,9 +504,17 @@ fn compaction_waits_for_pending_call_outputs_in_full_and_incremental_history() {
         .unwrap();
     let mut request = delta("call", vec![json!({"type":"compaction_trigger"})]);
     metadata(&mut request, "compaction");
-    assert!(state.prepare(&request, Ast000::Rebind).is_err());
+    assert!(
+        state
+            .prepare(&request, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
     request["input"].as_array_mut().unwrap().insert(0, output);
-    assert!(state.prepare(&request, Ast000::Rebind).is_ok());
+    assert!(
+        state
+            .prepare(&request, NativeToolBindingMode::Rebind)
+            .is_ok()
+    );
 }
 
 #[test]
@@ -435,7 +526,9 @@ fn invalid_native_completion_never_establishes_a_checkpoint_reference() {
         json!([{"type":"context_compaction","encrypted_content":"opaque"}]),
     ] {
         let mut state = Connection::default();
-        state.prepare(&compact_request(), Ast000::Rebind).unwrap();
+        state
+            .prepare(&compact_request(), NativeToolBindingMode::Rebind)
+            .unwrap();
         assert!(
             state
                 .observe_response(
@@ -445,12 +538,14 @@ fn invalid_native_completion_never_establishes_a_checkpoint_reference() {
         );
         assert!(
             state
-                .prepare(&delta("bad", vec![]), Ast000::Rebind)
+                .prepare(&delta("bad", vec![]), NativeToolBindingMode::Rebind)
                 .is_err()
         );
     }
     let mut state = Connection::default();
-    state.prepare(&compact_request(), Ast000::Rebind).unwrap();
+    state
+        .prepare(&compact_request(), NativeToolBindingMode::Rebind)
+        .unwrap();
     state
         .observe_response(
             &json!({"type":"response.output_item.done","output_index":0,"item":checkpoint("a")}),
@@ -467,30 +562,42 @@ fn compaction_failure_cancellation_and_other_session_cannot_supply_inventory() {
         "response.cancelled",
     ] {
         let mut state = Connection::default();
-        state.prepare(&compact_request(), Ast000::Rebind).unwrap();
+        state
+            .prepare(&compact_request(), NativeToolBindingMode::Rebind)
+            .unwrap();
         let result = state.observe_response(&json!({"type":event}));
         assert_eq!(result.is_err(), event == "response.cancelled");
         assert!(
             state
-                .prepare(&delta("uncommitted", vec![]), Ast000::Rebind)
+                .prepare(&delta("uncommitted", vec![]), NativeToolBindingMode::Rebind)
                 .is_err()
         );
     }
     let mut state = Connection::default();
-    state.prepare(&compact_request(), Ast000::Rebind).unwrap();
+    state
+        .prepare(&compact_request(), NativeToolBindingMode::Rebind)
+        .unwrap();
     native_completed(&mut state, "good");
     let request = delta("good", vec![]);
     assert!(
         Connection::default()
-            .prepare(&request, Ast000::Rebind)
+            .prepare(&request, NativeToolBindingMode::Rebind)
             .is_err()
     );
     let mut changed = request.clone();
     changed["model"] = json!("other-model");
-    assert!(state.prepare(&changed, Ast000::Rebind).is_err());
+    assert!(
+        state
+            .prepare(&changed, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
     changed = request;
     changed["client_metadata"] = json!({"x-codex-turn-metadata":"{\"thread_id\":\"other\"}"});
-    assert!(state.prepare(&changed, Ast000::Rebind).is_err());
+    assert!(
+        state
+            .prepare(&changed, NativeToolBindingMode::Rebind)
+            .is_err()
+    );
 }
 
 fn client_search_call(id: &str) -> Value {
@@ -512,10 +619,13 @@ fn native_client_search_must_finish_before_full_history_compaction() {
     let call = client_search_call("search");
     let request = compact_with_search(vec![call.clone()]);
     let error = Connection::default()
-        .prepare(&request, Ast000::Rebind)
+        .prepare(&request, NativeToolBindingMode::Rebind)
         .err()
         .unwrap();
-    assert_eq!(error.to_string(), "AST000_COMPACTION_WITH_PENDING_CALLS");
+    assert_eq!(
+        error.to_string(),
+        "NATIVE_BINDING_COMPACTION_WITH_PENDING_CALLS"
+    );
 
     let mut output = client_search_output("search");
     output["tools"] = json!([{"type":"function","name":"discovered","parameters":{}}]);
@@ -536,7 +646,9 @@ fn native_client_search_must_finish_before_incremental_compaction() {
         let mut state = Connection::default();
         let mut initial = full("current", vec![]);
         metadata(&mut initial, "turn");
-        state.prepare(&initial, Ast000::Rebind).unwrap();
+        state
+            .prepare(&initial, NativeToolBindingMode::Rebind)
+            .unwrap();
         let call = client_search_call("search");
         if streamed {
             state
@@ -553,8 +665,14 @@ fn native_client_search_must_finish_before_incremental_compaction() {
             vec![json!({"type":"compaction_trigger"})],
         );
         metadata(&mut compact, "compaction");
-        let error = state.prepare(&compact, Ast000::Rebind).err().unwrap();
-        assert_eq!(error.to_string(), "AST000_COMPACTION_WITH_PENDING_CALLS");
+        let error = state
+            .prepare(&compact, NativeToolBindingMode::Rebind)
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "NATIVE_BINDING_COMPACTION_WITH_PENDING_CALLS"
+        );
 
         // Neither a result of the wrong native kind nor a server result can
         // discharge the client search merely by reusing its call ID.
@@ -566,18 +684,25 @@ fn native_client_search_must_finish_before_incremental_compaction() {
         ] {
             let mut request = compact.clone();
             request["input"].as_array_mut().unwrap().insert(0, wrong);
-            assert!(state.clone().prepare(&request, Ast000::Rebind).is_err());
+            assert!(
+                state
+                    .clone()
+                    .prepare(&request, NativeToolBindingMode::Rebind)
+                    .is_err()
+            );
         }
 
         compact["input"]
             .as_array_mut()
             .unwrap()
             .insert(0, client_search_output("search"));
-        let prepared = state.prepare(&compact, Ast000::Rebind).unwrap();
+        let prepared = state
+            .prepare(&compact, NativeToolBindingMode::Rebind)
+            .unwrap();
         assert_eq!(prepared.evidence["pending_tool_calls"], 0);
         native_completed(&mut state, "compacted");
         let continued = state
-            .prepare(&delta("compacted", vec![]), Ast000::Rebind)
+            .prepare(&delta("compacted", vec![]), NativeToolBindingMode::Rebind)
             .unwrap();
         assert_eq!(continued.body["input"][0]["tools"][0]["name"], "current");
     }
@@ -614,7 +739,7 @@ fn malformed_client_search_pairs_cannot_authorize_compaction() {
         let request = compact_with_search(vec![call.clone(), malformed]);
         assert!(
             Connection::default()
-                .prepare(&request, Ast000::Rebind)
+                .prepare(&request, NativeToolBindingMode::Rebind)
                 .is_err()
         );
     }
@@ -629,7 +754,7 @@ fn malformed_client_search_pairs_cannot_authorize_compaction() {
     ] {
         assert!(
             Connection::default()
-                .prepare(&compact_with_search(items), Ast000::Rebind)
+                .prepare(&compact_with_search(items), NativeToolBindingMode::Rebind)
                 .is_err()
         );
     }
@@ -649,13 +774,16 @@ fn malformed_native_client_search_calls_reject_input_and_response() {
         }
         assert!(
             Connection::default()
-                .prepare(&compact_with_search(vec![call.clone()]), Ast000::Rebind)
+                .prepare(
+                    &compact_with_search(vec![call.clone()]),
+                    NativeToolBindingMode::Rebind
+                )
                 .is_err()
         );
         for streamed in [false, true] {
             let mut state = Connection::default();
             state
-                .prepare(&full("current", vec![]), Ast000::Rebind)
+                .prepare(&full("current", vec![]), NativeToolBindingMode::Rebind)
                 .unwrap();
             let event = if streamed {
                 json!({"type":"response.output_item.done","output_index":0,"item":call})
@@ -677,16 +805,22 @@ fn server_tool_search_does_not_require_a_client_result() {
         Connection::default()
             .prepare(
                 &compact_with_search(vec![call.clone(), output.clone()]),
-                Ast000::Rebind
+                NativeToolBindingMode::Rebind
             )
             .is_ok()
     );
     let mut state = Connection::default();
     let mut initial = full("current", vec![]);
     metadata(&mut initial, "turn");
-    state.prepare(&initial, Ast000::Rebind).unwrap();
+    state
+        .prepare(&initial, NativeToolBindingMode::Rebind)
+        .unwrap();
     state.observe_response(&json!({"type":"response.completed","response":{"id":"server-search","output":[call,output]}})).unwrap();
     let mut compact = delta("server-search", vec![json!({"type":"compaction_trigger"})]);
     metadata(&mut compact, "compaction");
-    assert!(state.prepare(&compact, Ast000::Rebind).is_ok());
+    assert!(
+        state
+            .prepare(&compact, NativeToolBindingMode::Rebind)
+            .is_ok()
+    );
 }

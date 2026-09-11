@@ -1,5 +1,5 @@
 use crate::{
-    config::{Ast000, CompactionBackend, Config, Mode},
+    config::{CompactionBackend, Config, Mode, NativeToolBindingMode},
     engine::{self, Lane},
     hash, now_ms, policy,
     store::Store,
@@ -83,7 +83,7 @@ impl App {
 
 pub fn router(app: App) -> Router {
     let limit = app.config.max_body_bytes;
-    let compatibility = app.config.ast000_compat != Ast000::Disabled;
+    let compatibility = app.config.native_tool_binding != NativeToolBindingMode::Disabled;
     let mut router = Router::new()
         .route(
             "/healthz",
@@ -105,7 +105,7 @@ pub fn router(app: App) -> Router {
             "/v1/responses",
             "/backend-api/codex/responses",
         ] {
-            router = router.route(path, get(crate::ast000_ws::handle));
+            router = router.route(path, get(crate::native_transport::handle));
         }
     }
     router.layer(DefaultBodyLimit::max(limit)).with_state(app)
@@ -311,16 +311,17 @@ async fn handle(
     let compressed = headers
         .get("content-encoding")
         .is_some_and(|v| v != "identity");
-    if app.config.ast000_compat != Ast000::Disabled {
+    if app.config.native_tool_binding != NativeToolBindingMode::Disabled {
         let prepared = if compressed {
             Err(anyhow::anyhow!(
-                "AST000_COMPRESSED_HTTP_UNSUPPORTED: disable features.enable_request_compression for HTTP"
+                "NATIVE_BINDING_COMPRESSED_HTTP_UNSUPPORTED: disable features.enable_request_compression for HTTP"
             ))
         } else {
             serde_json::from_slice::<Value>(&body)
-                .map_err(|_| anyhow::anyhow!("AST000_INVALID_JSON"))
+                .map_err(|_| anyhow::anyhow!("NATIVE_BINDING_INVALID_JSON"))
                 .and_then(|value| {
-                    crate::ast000::Connection::default().prepare(&value, app.config.ast000_compat)
+                    crate::native_binding::Connection::default()
+                        .prepare(&value, app.config.native_tool_binding)
                 })
         };
         let outgoing = match prepared {
@@ -330,12 +331,12 @@ async fn handle(
                 } else {
                     body.to_vec()
                 };
-                app.store.record(&json!({"kind":"ast000_request","transport":"http","bytes_in":body.len(),"bytes_out":outgoing.len(),"ts_ms":now_ms(),"evidence":p.evidence})).await;
+                app.store.record(&json!({"kind":"native_binding_request","transport":"http","bytes_in":body.len(),"bytes_out":outgoing.len(),"ts_ms":now_ms(),"evidence":p.evidence})).await;
                 outgoing
             }
             Err(e) => {
-                app.store.record(&json!({"kind":"ast000_rejected","transport":"http","mode":app.config.ast000_compat,"code":e.to_string(),"ts_ms":now_ms()})).await;
-                if app.config.ast000_compat != Ast000::Observe {
+                app.store.record(&json!({"kind":"native_binding_rejected","transport":"http","mode":app.config.native_tool_binding,"code":e.to_string(),"ts_ms":now_ms()})).await;
+                if app.config.native_tool_binding != NativeToolBindingMode::Observe {
                     return error(StatusCode::BAD_REQUEST, &e.to_string());
                 }
                 body.to_vec()
@@ -348,7 +349,7 @@ async fn handle(
             body.len(),
             &suffix,
             None,
-            "ast000_passthrough",
+            "native_binding_passthrough",
             request_stream,
         )
         .await;

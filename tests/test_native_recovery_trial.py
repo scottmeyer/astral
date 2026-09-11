@@ -2,7 +2,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-spec = importlib.util.spec_from_file_location("ast000_trial", Path(__file__).parents[1] / "scripts/ast000_trial.py")
+spec = importlib.util.spec_from_file_location("native_recovery_trial", Path(__file__).parents[1] / "scripts/native_recovery_trial.py")
 trial = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trial)
 

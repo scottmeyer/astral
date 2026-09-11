@@ -1,7 +1,7 @@
-# AST-000 reviewed integration
+# Native recovery reviewed integration
 
 Date: 2026-09-11. This is a **new local verification pass**, distinct from the
-[repair session's live lifecycle evidence](ast000-lifecycle.md). The original
+[repair session's live lifecycle evidence](native-recovery-lifecycle.md). The original
 workspace was clean at the historical baseline before integration; the repair
 worktree contained the uncommitted adapter, lifecycle tests and context bootstrap.
 

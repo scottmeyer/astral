@@ -4,6 +4,6 @@ id = "project-context"
 purpose = "Git-native project context, projections, and work tracking"
 readme = "README.md"
 rules = ["rules/context-contract.md"]
-decisions = ["decisions/0001-bootstrap-scope.md", "decisions/0002-read-only-resolution.md"]
+decisions = ["decisions/0001-bootstrap-scope.md", "decisions/0002-read-only-resolution.md", "decisions/0003-launcher-interface.md"]
 work_items = ["AST-001", "AST-002", "AST-003", "AST-004", "AST-005", "AST-008", "AST-009"]
 projection = "git-native-context-bootstrap"

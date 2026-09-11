@@ -29,7 +29,7 @@ All native items from its checkpoint onward were accounted for in order, allowin
 the installed client's documented-in-source serialization normalization. Its
 original canary appears in readable history and is not an opaque-only probe.
 Detailed records and runtime identities are private. See
-[current lifecycle verification](../../../docs/ast000-lifecycle.md).
+[current lifecycle verification](../../../docs/native-recovery-lifecycle.md).
 
 ## Historical evidence
 
