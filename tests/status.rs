@@ -30,6 +30,7 @@ fn put(root: &Path, name: &str, body: &str) {
 fn git(root: &Path, args: &[&str]) {
     let output = Command::new("git")
         .current_dir(root)
+        .args(["-c", "maintenance.auto=false", "-c", "gc.auto=0"])
         .args(args)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")

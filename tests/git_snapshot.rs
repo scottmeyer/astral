@@ -19,6 +19,7 @@ fn put(root: &Path, path: &str, body: impl AsRef<[u8]>) {
 fn command(root: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.current_dir(root)
+        .args(["-c", "maintenance.auto=false", "-c", "gc.auto=0"])
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_COUNT", "1")
