@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::git_context::{require_committed_context, revision};
+use astral::git_context::{require_committed_context, revision};
 use std::os::unix::fs::PermissionsExt;
 use std::{fs, path::Path, process::Command};
 

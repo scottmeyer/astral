@@ -13,6 +13,13 @@ astral project --work AST-33ydmjdkmx4k -- --sandbox read-only
 astral project --inspect
 ```
 
+Inspection previews use readable summaries by default. Add `--json` for
+structured previews and Astral command errors. For `project` and `init`, the flag
+belongs to Astral before the first literal `--`, and to Codex after it; for
+example, `astral project --inspect --json -- --json` previews forwarding Codex's
+JSON event option. Launch progress on stderr and Codex's own process streams
+retain their existing formats; `--json` does not wrap them.
+
 Without `--work`, a fresh launch creates a new local thread in the current
 checkout. The printed thread ID can later be resumed directly with Codex.
 `--work ID` includes the selected record and creates or reopens a bound branch,

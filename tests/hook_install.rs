@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::hooks::install::{self, Action, GIT_EVENTS, Target};
+use astral::hooks::install::{self, Action, GIT_EVENTS, Target};
 use serde_json::Value;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::{fs, path::PathBuf, process::Command};
@@ -242,10 +242,9 @@ fn codex_preserves_foreign_groups_raw_unknown_numbers_and_prior_bytes() {
         next["hooks"]["SessionStart"][0]["hooks"][0]["command"],
         "astral hook codex"
     );
-    let backup = f.state().join(format!(
-        "codex-backup-{}.json",
-        ostk_gpt_cache::hash(original)
-    ));
+    let backup = f
+        .state()
+        .join(format!("codex-backup-{}.json", astral::hash(original)));
     assert_eq!(fs::read(backup).unwrap(), original);
     f.apply(Target::Codex, Action::Install);
     assert_eq!(fs::read(f.codex()).unwrap(), installed);

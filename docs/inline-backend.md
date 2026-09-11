@@ -16,7 +16,7 @@ The client keeps sending its complete original history, including every output i
 
 ## Scheduling and ownership
 
-Astral uses the existing size, cooldown, and safe new-user-boundary checks to decide which requests may compact. On an eligible request, it injects `context_management` with the configured token threshold. The provider decides whether its rendered context crosses that threshold and emits any native compaction item in the response stream. `x-ostk-roll: 1` bypasses Astral's size and cooldown gates; it does not bypass the provider's token threshold.
+Astral uses the existing size, cooldown, and safe new-user-boundary checks to decide which requests may compact. On an eligible request, it injects `context_management` with the configured token threshold. The provider decides whether its rendered context crosses that threshold and emits any native compaction item in the response stream. `x-astral-roll: 1` bypasses Astral's size and cooldown gates; it does not bypass the provider's token threshold.
 
 `--inline-tool-boundaries` additionally allows an eligible request ending with
 the last outstanding external tool result. All known calls must have exactly

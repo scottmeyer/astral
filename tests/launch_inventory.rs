@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::launch_state::{
+use astral::launch_state::{
     LaunchContinuation, LaunchInventory, LaunchObservation, LaunchOwnership, LaunchState,
     MAX_INVENTORY_ENTRIES, MAX_RECEIPT_BYTES,
 };

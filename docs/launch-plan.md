@@ -16,7 +16,8 @@ the version and protocol limits in [the lifecycle receipt](native-recovery-lifec
 ## Accepted behavior
 
 - `astral project` selects `project-context`; an explicit name selects another
-  subsystem or projection. `--inspect` prints indented JSON without launching.
+  subsystem or projection. `--inspect` prints a readable preview without launching;
+  add `--json` for indented machine-readable output.
 - User-authorized native exports can be committed through Git. Explicit save
   writes a durable bundle; it does not automatically commit or share it. Runtime
   credentials, executable connections, permissions and machine/thread bindings

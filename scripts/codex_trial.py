@@ -203,7 +203,7 @@ def command(args, proxy, lane, session, prompt):
     else:
         provider["env_key"] = "OPENAI_API_KEY"
     inline = ",".join(f"{k}={json.dumps(v)}" for k, v in provider.items())
-    inline += ',http_headers={"x-ostk-session-id"=' + json.dumps(lane) + "}"
+    inline += ',http_headers={"x-astral-session-id"=' + json.dumps(lane) + "}"
     settings = {
         "model_provider": '"trial"', "model_providers.trial": "{" + inline + "}",
         "sandbox_mode": json.dumps(args.sandbox), "model_reasoning_effort": '"low"',

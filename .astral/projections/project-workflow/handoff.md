@@ -10,6 +10,12 @@ opt-in Git/Codex advisory hooks are implemented. Hook setup supports same-comman
 terminal confirmation, `--yes`, `--dry-run` and the retained `--apply HASH` mode.
 Recovery and completion still use separate preview and `--apply PLAN_SHA256`.
 
+Commands show human-readable summaries and next actions by default. Use global
+`--json` for scripts. In `project`/`init`, an argument after the first literal
+`--` is forwarded to Codex, including Codex's own `--json`. The standalone proxy
+uses `.astral-runtime/`, `ASTRAL_UPSTREAM` and `x-astral-*`; private state in an
+existing directory remains available through explicit `--state-dir`.
+
 Use the [subsystem overview](../../core/project-context/README.md) for current
 scope and open work, [run guide](../../core/RUN.md) for commands, and
 [test guide](../../core/TEST.md) for checks. Inspect current source and local

@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::{
+use astral::{
     hash,
     native_bundle::NativeBundle,
     project::Project,
@@ -372,6 +372,7 @@ fn invalid_context_and_foreign_project_are_not_acknowledged() {
 fn recovery_cli_emits_formatted_plan_and_rejects_invalid_apply() {
     let f = Fixture::new();
     let result = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .args(["--root"])
         .arg(&f.root)
         .args(["recover", "--work", WORK])

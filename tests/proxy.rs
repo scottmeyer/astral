@@ -1,3 +1,7 @@
+use astral::{
+    config::{CompactionBackend, Config, Mode},
+    proxy::{App, router},
+};
 use axum::{
     Router,
     body::{Body, Bytes},
@@ -7,10 +11,6 @@ use axum::{
     routing::post,
 };
 use clap::Parser;
-use ostk_gpt_cache::{
-    config::{CompactionBackend, Config, Mode},
-    proxy::{App, router},
-};
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
@@ -215,7 +215,7 @@ impl Fixture {
         reqwest::Client::new()
             .post(&self.url)
             .header("authorization", "Bearer test-only")
-            .header("x-ostk-session-id", session)
+            .header("x-astral-session-id", session)
             .header("accept", "text/event-stream")
     }
     fn records(&self, compact: bool) -> Vec<Record> {
@@ -276,7 +276,7 @@ async fn rolling_reuses_entire_projection_and_preserves_main_response() {
     assert!(
         !f.records(false)[0]
             .headers
-            .contains_key("x-ostk-session-id")
+            .contains_key("x-astral-session-id")
     );
     r["input"].as_array_mut().unwrap().extend([
         json!({"role":"assistant","content":"ok"}),
@@ -298,6 +298,12 @@ async fn rolling_reuses_entire_projection_and_preserves_main_response() {
             .starts_with(first["input"].as_array().unwrap())
     );
     assert_eq!(first["prompt_cache_key"], second["prompt_cache_key"]);
+    assert!(
+        first["prompt_cache_key"]
+            .as_str()
+            .unwrap()
+            .starts_with("astral:")
+    );
     assert_eq!(f.records(true).len(), 1);
     assert_eq!(f.snapshots().await.len(), 1);
 }
@@ -390,7 +396,7 @@ async fn true_passthrough_preserves_request_bytes_even_with_force_header() {
     let f = Fixture::new(Mode::Passthrough).await;
     let raw = b"{ \"model\" : \"gpt-5.6\", \"input\": [ {\"role\":\"user\",\"content\":\"<system-reminder>keep</system-reminder>\"} ] }\n";
     f.request("one")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .body(raw.as_slice())
         .send()
         .await
@@ -459,7 +465,7 @@ async fn lanes_are_isolated_by_credentials_and_session_not_request_id() {
     for (session, credential) in [("one", "key-a"), ("two", "key-a"), ("one", "key-b")] {
         reqwest::Client::new()
             .post(&f.url)
-            .header("x-ostk-session-id", session)
+            .header("x-astral-session-id", session)
             .header("authorization", credential)
             .header("x-client-request-id", "same-request-id")
             .json(&input())
@@ -503,7 +509,7 @@ async fn same_lane_serializes_while_different_lanes_run_concurrently() {
 
 #[tokio::test]
 async fn persistence_survives_restart_and_process_lock_prevents_two_writers() {
-    use ostk_gpt_cache::{engine::Lane, store::Store};
+    use astral::{engine::Lane, store::Store};
     let root = tempfile::tempdir().unwrap();
     let id = "a".repeat(64);
     let lane = Lane {
@@ -884,7 +890,7 @@ async fn scheduled_inline_maps_original_history_across_two_checkpoints_and_resta
     r["prompt_cache_options"] = json!({"mode":"explicit","ttl":"30m"});
     let bytes = f
         .request("inline")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -903,7 +909,7 @@ async fn scheduled_inline_maps_original_history_across_two_checkpoints_and_resta
     ];
     r["input"].as_array_mut().unwrap().extend(active.clone());
     f.request("inline")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -920,7 +926,7 @@ async fn scheduled_inline_maps_original_history_across_two_checkpoints_and_resta
         json!({"role":"user","content":"Next"}),
     ]);
     f.request("inline")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -988,7 +994,7 @@ async fn inline_truncation_or_missing_output_indices_cannot_advance_checkpoint()
         f.mock.inline_mode.store(mode, Ordering::SeqCst);
         let returned = f
             .request("inline-fail")
-            .header("x-ostk-roll", "1")
+            .header("x-astral-roll", "1")
             .json(&r)
             .send()
             .await
@@ -1001,7 +1007,7 @@ async fn inline_truncation_or_missing_output_indices_cannot_advance_checkpoint()
     }
     f.mock.inline_mode.store(1, Ordering::SeqCst);
     f.request("inline-fail")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -1067,7 +1073,7 @@ async fn edited_replayed_inline_checkpoint_resets_to_authoritative_client_histor
         .unwrap()
         .push(json!({"role":"user","content":"next"}));
     f.request("inline-edit")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -1096,7 +1102,7 @@ async fn inline_tool_boundary_requires_all_results_and_preserves_native_items() 
         {"type":"function_call","call_id":"b","name":"read","arguments":"{}"},
         {"type":"function_call_output","call_id":"a","output":"first"}]});
     f.request("tool-boundary")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -1111,7 +1117,7 @@ async fn inline_tool_boundary_requires_all_results_and_preserves_native_items() 
         .unwrap()
         .push(json!({"type":"function_call_output","call_id":"b","output":"X".repeat(5000)}));
     f.request("tool-boundary")
-        .header("x-ostk-roll", "1")
+        .header("x-astral-roll", "1")
         .json(&r)
         .send()
         .await
@@ -1136,8 +1142,8 @@ async fn economic_gate_defers_unprofitable_roll_and_accepts_valid_positive_estim
     let r = input();
     let mut estimate = json!({"remaining_calls":1,"saved_input_per_call":1.0,"checkpoint_cost":10.0,"lost_cache_cost":1.0,"recovery_cost":1.0});
     f.request("economics")
-        .header("x-ostk-roll", "1")
-        .header("x-ostk-roll-estimate", estimate.to_string())
+        .header("x-astral-roll", "1")
+        .header("x-astral-roll-estimate", estimate.to_string())
         .json(&r)
         .send()
         .await
@@ -1153,8 +1159,8 @@ async fn economic_gate_defers_unprofitable_roll_and_accepts_valid_positive_estim
     );
     estimate["remaining_calls"] = json!(100);
     f.request("economics")
-        .header("x-ostk-roll", "1")
-        .header("x-ostk-roll-estimate", estimate.to_string())
+        .header("x-astral-roll", "1")
+        .header("x-astral-roll-estimate", estimate.to_string())
         .json(&r)
         .send()
         .await
@@ -1171,14 +1177,20 @@ async fn economic_gate_defers_unprofitable_roll_and_accepts_valid_positive_estim
     assert!(
         !f.records(false)[1]
             .headers
-            .contains_key("x-ostk-roll-estimate")
+            .contains_key("x-astral-roll-estimate")
     );
     let response = f
         .request("economics")
-        .header("x-ostk-roll-estimate", "invalid")
+        .header("x-astral-roll-estimate", "invalid")
         .json(&r)
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let failure: Value = response.json().await.unwrap();
+    assert_eq!(failure["error"]["type"], "astral_proxy_error");
+    assert_eq!(
+        failure["error"]["message"],
+        "invalid x-astral-roll-estimate"
+    );
 }

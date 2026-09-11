@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::{
+use astral::{
     git_snapshot::{GitSnapshot, MAX_ENTRIES, SnapshotKind},
     project::{Limits, Project},
 };
@@ -379,7 +379,7 @@ fn native_raw_bytes_and_number_spellings_survive_lazy_git_loading() {
     let f = Fixture::new(true, false);
     let payload=br#" [ {"type":"compaction","encrypted_content":"OPAQUE_SENTINEL","extension":123456789012345678901234567890,"fraction":1.2300e+02} ] "#;
     let manifest=serde_json::to_vec(&serde_json::json!({"schema_version":1,"format":"astral-codex-native",
-        "payload":{"file":"window.json","sha256":ostk_gpt_cache::hash(payload),"bytes":payload.len(),"item_count":1},
+        "payload":{"file":"window.json","sha256":astral::hash(payload),"bytes":payload.len(),"item_count":1},
         "compatibility":{"runtime":"codex","runtime_version":"0.154.0","protocol":"openai-responses-lite","provider":"openai","model":"gpt-6-astra","requires_tool_rebinding":true,"identity_scope":"same-account"},
         "source":{"project_id":"fixture","revision":null,"dirty":false,"selection_sha256":"a".repeat(64),"history_sha256":"b".repeat(64)},
         "capture":{"boundary":"completed-turn","history_complete":true,"last_checkpoint_index":0},"parents":[]})).unwrap();
@@ -403,7 +403,7 @@ fn native_raw_bytes_and_number_spellings_survive_lazy_git_loading() {
         ".astral/projections/saved/projection.toml",
         format!(
             "schema_version=1\nid=\"saved\"\nkind=\"native-checkpoint\"\nsubsystems=[\"web\"]\nhandoff=\"handoff.md\"\nnative_payload_in_repository=true\nsources=[]\n[native_bundle]\nmanifest=\"bundles/one/manifest.json\"\nsha256={:?}\n",
-            ostk_gpt_cache::hash(&manifest)
+            astral::hash(&manifest)
         ),
     );
     git(&f.root, &["add", ".astral"]);
@@ -423,7 +423,7 @@ fn native_raw_bytes_and_number_spellings_survive_lazy_git_loading() {
             .find(|s| s.path.ends_with("window.json"))
             .unwrap()
             .sha256,
-        ostk_gpt_cache::hash(payload)
+        astral::hash(payload)
     );
 }
 

@@ -1,4 +1,4 @@
-use ostk_gpt_cache::working::{Profile, Runtime, check_summary};
+use astral::working::{Profile, Runtime, check_summary};
 use serde_json::{Value, json};
 
 fn profile() -> Profile {
@@ -131,7 +131,7 @@ async fn an_interrupted_action_cannot_be_reexecuted_implicitly() {
     let request = json!({"op":"write_file","path":"app.txt","expected_sha256":null,"content":"unsafe replay","action_id":"uncertain"});
     let path = state.path().join("events.jsonl");
     let mut journal = std::fs::read_to_string(&path).unwrap();
-    let event = json!({"sequence":journal.lines().count()+1,"kind":"action","value":{"id":"uncertain","status":"started","request_sha256":ostk_gpt_cache::fingerprint(&request)}});
+    let event = json!({"sequence":journal.lines().count()+1,"kind":"action","value":{"id":"uncertain","status":"started","request_sha256":astral::fingerprint(&request)}});
     journal.push_str(&format!("{event}\n"));
     std::fs::write(path, journal).unwrap();
     let mut r = Runtime::open(root.path(), state.path(), profile(), true).unwrap();

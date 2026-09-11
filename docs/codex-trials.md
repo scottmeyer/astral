@@ -58,7 +58,7 @@ codex debug models --bundled > /tmp/astral-models.json
 # Add --catalog /tmp/astral-models.json to the trial command.
 ```
 
-The runner disables request compression, WebSockets, provider-managed context, apps, and plugins for these sessions. It keeps the full input-array contract and uses a stable `x-ostk-session-id` per arm. It supplies a provider override for each fresh or resumed invocation; it does not edit the user's Codex configuration. The CLI must support `exec resume`, `--ignore-user-config`, and the documented custom-provider settings used in the script.
+The runner disables request compression, WebSockets, provider-managed context, apps, and plugins for these sessions. It keeps the full input-array contract and uses a stable `x-astral-session-id` per arm. It supplies a provider override for each fresh or resumed invocation; it does not edit the user's Codex configuration. The CLI must support `exec resume`, `--ignore-user-config`, and the documented custom-provider settings used in the script.
 
 ## Reading results
 

@@ -75,7 +75,7 @@ pub(crate) async fn handle(
     }
     request
         .headers_mut()
-        .insert("x-ostk-gpt-hop", "1".parse().unwrap());
+        .insert("x-astral-hop", "1".parse().unwrap());
     let connector = match tls_connector(&app).await {
         Ok(c) => c,
         Err(_) => return error(StatusCode::BAD_GATEWAY, "NATIVE_BINDING_TLS_CONFIG_ERROR"),

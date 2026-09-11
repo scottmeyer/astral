@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::launch_state::{LaunchState, MAX_RECEIPT_BYTES};
+use astral::launch_state::{LaunchState, MAX_RECEIPT_BYTES};
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
@@ -43,7 +43,7 @@ impl Fixture {
         )
         .unwrap()
     }
-    fn resume(&self, id: &str) -> ostk_gpt_cache::project::Result<LaunchState> {
+    fn resume(&self, id: &str) -> astral::project::Result<LaunchState> {
         LaunchState::resume_in(
             &self.store,
             id,
@@ -68,7 +68,7 @@ impl Fixture {
     }
 }
 
-fn code(result: ostk_gpt_cache::project::Result<LaunchState>) -> &'static str {
+fn code(result: astral::project::Result<LaunchState>) -> &'static str {
     result.err().expect("operation must fail").code
 }
 

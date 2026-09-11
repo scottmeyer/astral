@@ -1,4 +1,4 @@
-use ostk_gpt_cache::hooks::codex::{
+use astral::hooks::codex::{
     self, Audience, Event, EventKind, MAX_INPUT_BYTES, MAX_NOTICE_CHARS, SessionSource,
 };
 use serde_json::{Value, json};

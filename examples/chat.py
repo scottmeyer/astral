@@ -23,7 +23,7 @@ while True:
         continue
     history.append({"role": "user", "content": text})
     payload = {"model": args.model, "store": False, "input": history}
-    headers = {"Content-Type": "application/json", "x-ostk-session-id": args.session}
+    headers = {"Content-Type": "application/json", "x-astral-session-id": args.session}
     if os.environ.get("OPENAI_API_KEY"):
         headers["Authorization"] = "Bearer " + os.environ["OPENAI_API_KEY"]
     request = urllib.request.Request(args.url, json.dumps(payload).encode(), headers)

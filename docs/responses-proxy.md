@@ -22,7 +22,7 @@ export OPENAI_API_KEY='your-api-key'
 python3 examples/chat.py --model gpt-5.5
 ```
 
-The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defaults to `https://api.openai.com/v1`. Set `--upstream` to a base URL that already includes the API version or backend path; the proxy appends `/responses` and, by default, `/responses/compact`. `--compact-path` overrides only the latter path for both autonomous and caller-initiated compaction. Changing the path opens new state lanes. An alternate route must still return the native compact contract; an ordinary generation, even with encrypted reasoning, cannot replace history.
+The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defaults to `https://api.openai.com/v1`. Set `ASTRAL_UPSTREAM` or `--upstream` to a base URL that already includes the API version or backend path; the proxy appends `/responses` and, by default, `/responses/compact`. `--compact-path` overrides only the latter path for both autonomous and caller-initiated compaction. Changing the path opens new state lanes. An alternate route must still return the native compact contract; an ordinary generation, even with encrypted reasoning, cannot replace history.
 
 Model discovery uses `GET /models`, `/v1/models`, or `/backend-api/codex/models`.
 Each forwards to the configured upstream's `/models` with the original query,
@@ -37,20 +37,20 @@ For a managed upstream with a private CA, the proxy adds certificates from `SSL_
 
 ## Client contract
 
-Send a stable `x-ostk-session-id` header and the **complete original input array**, including replayable output items from earlier responses. The proxy also recognizes `session_id` and `openai-session-id`, in that priority order after the explicit header. A changing request ID is not a session identifier.
+Send a stable `x-astral-session-id` header and the **complete original input array**, including replayable output items from earlier responses. The proxy also recognizes `session_id` and `openai-session-id`, in that priority order after the explicit header. A changing request ID is not a session identifier.
 
 ```sh
 curl http://127.0.0.1:8088/v1/responses \
   -H 'Content-Type: application/json' \
-  -H 'x-ostk-session-id: project-a-thread-1' \
+  -H 'x-astral-session-id: project-a-thread-1' \
   -d '{"model":"gpt-5.5","store":false,"input":[{"role":"user","content":"Inspect the design."}]}'
 ```
 
-The example uses the proxy's environment credential. A client's `Authorization`, `api-key`, or `x-api-key` header takes precedence. Raw credentials are never written into lane files or the ledger. Internal `x-ostk-*` headers are removed before forwarding.
+The example uses the proxy's environment credential. A client's `Authorization`, `api-key`, or `x-api-key` header takes precedence. Raw credentials are never written into lane files or the ledger. Internal `x-astral-*` headers are removed before forwarding.
 
 Requests with no session identity, a string input, item references, `previous_response_id`, `conversation`, `context_management`, or `background:true` pass through without projection or cache-parameter mutation. These forms do not give this proxy ownership of a complete explicit conversation. It never expands server-side history or competes with a caller's compactor.
 
-For SDK callers, set the base URL to the proxy and attach `x-ostk-session-id` as a default header for each conversation. Keep your original history on the client; **do not replace it with a proxy-internal projection**. The proxy doesn't alter response IDs, usage, output items, reasoning, or assistant phase.
+For SDK callers, set the base URL to the proxy and attach `x-astral-session-id` as a default header for each conversation. Keep your original history on the client; **do not replace it with a proxy-internal projection**. The proxy doesn't alter response IDs, usage, output items, reasoning, or assistant phase.
 
 ## What rolls, and when
 
@@ -60,7 +60,7 @@ By default, rolls happen only on requests whose final input item is a new user m
 
 An accepted roll requires a nonempty canonical output containing an encrypted compaction item and at least `--min-savings` wire-size reduction. If compaction times out, fails, returns malformed output, or does not reduce the prefix enough, the existing projection and full remaining history are used. There are no automatic retries of the main generation request.
 
-`x-ostk-roll: 1` forces an attempt at the next eligible boundary, bypassing size and cooldown checks. It does not bypass tool-pair safety, an enabled economic gate or the output acceptance gate. `--idle-roll-seconds` enables an optional inactivity heuristic; it is disabled by default. Time is never used to assert that an upstream cache has expired. The optional [economic decision hook](working-state.md#roll-only-when-the-boundary-and-estimate-allow-it) accounts for caller-estimated checkpoint, cache and recovery costs.
+`x-astral-roll: 1` forces an attempt at the next eligible boundary, bypassing size and cooldown checks. It does not bypass tool-pair safety, an enabled economic gate or the output acceptance gate. `--idle-roll-seconds` enables an optional inactivity heuristic; it is disabled by default. Time is never used to assert that an upstream cache has expired. The optional [economic decision hook](working-state.md#roll-only-when-the-boundary-and-estimate-allow-it) accounts for caller-estimated checkpoint, cache and recovery costs.
 
 ```sh
 ./target/release/astral proxy \
@@ -99,12 +99,14 @@ Only a successful HTTP response with a completed response object/event and clean
 
 On restart, snapshots load lazily. Matching full history resumes the previous projection. Edited, truncated, or branched history resets to the caller's new history. Changes to instructions, tools, model settings, or other prompt contract fields also reset it. Stream settings and metadata are excluded from this fingerprint. Corrupt snapshots produce an error instead of silently dropping history.
 
-The default directory is `.ostk-gpt/`. This legacy standalone-proxy name remains
-an actual runtime default; it is separate from Git-tracked `.astral/` project
-context. Managed project proxies supply private binding/receipt paths instead.
-Use `--state-dir` to choose another private directory; changing the path does not
-migrate existing snapshots. `OSTK_GPT_UPSTREAM` and the documented `x-ostk-*`
-headers also retain their compatibility names.
+The default directory is `.astral-runtime/`, separate from Git-tracked `.astral/`
+project context. Managed project proxies supply private binding/receipt paths
+instead. Use `--state-dir /absolute/private/existing-state` to keep using an
+existing state directory; changing the default does not move or delete previous
+snapshots. The upstream environment override is `ASTRAL_UPSTREAM`. Configure
+clients with the `x-astral-*` names in this guide; earlier environment/header
+names no longer configure Astral. Generated cache keys now start with `astral:`, so
+the name change does not preserve the previous generated cache-key prefix.
 
 The standalone directory contains:
 
@@ -119,8 +121,8 @@ Projection files can contain provider-retained user text as well as encrypted st
 ## Baseline and accounting
 
 ```sh
-./target/release/astral proxy --mode passthrough --state-dir .ostk-gpt-baseline
-./target/release/stats --ledger .ostk-gpt/ledger.jsonl
+./target/release/astral proxy --mode passthrough --state-dir .astral-runtime-baseline
+./target/release/stats --ledger .astral-runtime/ledger.jsonl
 ```
 
 Passthrough performs **no request-body rewrite** when `--native-tool-binding` is disabled

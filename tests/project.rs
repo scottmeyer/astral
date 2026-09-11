@@ -1,14 +1,14 @@
 #[cfg(not(unix))]
 #[test]
 fn inspection_explicitly_rejects_unsupported_platforms() {
-    let error = ostk_gpt_cache::project::Project::load(".").err().unwrap();
+    let error = astral::project::Project::load(".").err().unwrap();
     assert_eq!(error.code, "UNSUPPORTED_PLATFORM");
 }
 
 #[cfg(unix)]
 mod unix {
 
-    use ostk_gpt_cache::project::{Limits, Project};
+    use astral::project::{Limits, Project};
     use serde_json::{Value, json};
     use std::fs;
     use std::path::Path;
@@ -189,7 +189,7 @@ verification = "Historical only"
         assert_eq!(record["record_id"], "AST-001");
         assert_eq!(
             record["sha256"],
-            ostk_gpt_cache::hash(item("AST-001", &["AST-002"]).to_string().as_bytes())
+            astral::hash(item("AST-001", &["AST-002"]).to_string().as_bytes())
         );
         assert!(
             !selected
@@ -594,6 +594,7 @@ verification = "Historical only"
         let root = fixture();
         let binary = env!("CARGO_BIN_EXE_astral");
         let output = Command::new(binary)
+            .arg("--json")
             .args([
                 "--root",
                 root.path().to_str().unwrap(),
@@ -614,6 +615,7 @@ verification = "Historical only"
         assert_eq!(json["native_binding"]["launch"], false);
         assert!(output.stderr.is_empty());
         let output = Command::new(binary)
+            .arg("--json")
             .args(["--root", "/nonexistent", "project", "web", "--proxy"])
             .output()
             .unwrap();
@@ -625,6 +627,7 @@ verification = "Historical only"
         );
         for args in [["context", "validate"], ["context", "list"]] {
             let output = Command::new(binary)
+                .arg("--json")
                 .current_dir(root.path())
                 .args(args)
                 .output()
@@ -632,7 +635,10 @@ verification = "Historical only"
             assert!(output.status.success());
             serde_json::from_slice::<Value>(&output.stdout).unwrap();
         }
-        let output = Command::new(binary).arg("--unknown").output().unwrap();
+        let output = Command::new(binary)
+            .args(["--json", "--unknown"])
+            .output()
+            .unwrap();
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
             "CLI_USAGE"
@@ -652,6 +658,7 @@ verification = "Historical only"
         assert_eq!(error.code, "PATH_UNAVAILABLE");
         assert!(error.message.len() <= 512);
         let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+            .arg("--json")
             .args([
                 "--root",
                 root.path().to_str().unwrap(),
@@ -710,13 +717,10 @@ verification = "Historical only"
         );
         for doc in &fresh.documents {
             assert_eq!(doc.source.bytes, doc.text.len());
-            assert_eq!(doc.source.sha256, ostk_gpt_cache::hash(doc.text.as_bytes()));
+            assert_eq!(doc.source.sha256, astral::hash(doc.text.as_bytes()));
         }
         assert_eq!(work.source.bytes, work.text.len());
-        assert_eq!(
-            work.source.sha256,
-            ostk_gpt_cache::hash(work.text.as_bytes())
-        );
+        assert_eq!(work.source.sha256, astral::hash(work.text.as_bytes()));
         assert_eq!(project.inspect("web", Some("AST-001")).unwrap(), inspected);
         assert!(
             project

@@ -28,17 +28,23 @@ For scripts or captured shell commands:
 ```sh
 astral hooks install git --yes              # apply without prompting
 astral hooks install codex --yes
-astral hooks install git --dry-run          # formatted JSON preview only
-astral hooks uninstall codex --dry-run
+astral hooks install git --dry-run          # human-readable preview only
+astral hooks uninstall codex --dry-run --json # machine-readable preview only
 astral hooks install git --apply PLAN_SHA256 # retain an explicitly reviewed plan
 ```
 
-Without terminal stdin and stderr, the default command remains a JSON preview
-and prints a hint to use `--yes`; piped input does not count as confirmation.
-`--dry-run` always previews. `--yes` and `--apply` return formatted JSON results;
-normal terminal confirmation uses a concise human summary. These three flags are
-mutually exclusive. `--yes` skips the prompt, while all existing hook ownership,
-conflict and stale-plan checks still run. Codex runtime trust remains separate.
+Without terminal stdin and stderr, the default command remains a read-only
+preview and prints a hint to use `--yes`; piped input does not count as
+confirmation. `--dry-run` always previews. Plans and results use concise human
+summaries by default; add `--json` for indented machine-readable output. In JSON
+mode, install and uninstall preview without prompting unless `--yes` or an
+explicit `--apply` hash is supplied. `--dry-run`, `--yes` and `--apply` are mutually
+exclusive. `--yes` skips the prompt, while all existing hook ownership, conflict
+and stale-plan checks still run. Codex runtime trust remains separate.
+
+`lifecycle check` and `hooks status` also use readable summaries by default;
+request `--json` when consuming their structured reports. Hook callback output
+retains its Git/Codex protocol and is unaffected by this display choice.
 
 The plan hash identifies its exact repository, target, executable path and
 observed hook/configuration state. Astral retains it internally while you review

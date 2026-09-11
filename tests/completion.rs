@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::{
+use astral::{
     completion::{self, FinishRequest, FinishState},
     project::Project,
     workspace::{WorkerMetadata, WorktreeBinding},
@@ -324,11 +324,11 @@ fn native(root: &Path, id: &str, opaque: &str) {
     let payload =
         serde_json::to_vec(&json!([{"type":"compaction","encrypted_content":opaque}])).unwrap();
     let manifest=serde_json::to_vec(&json!({"schema_version":1,"format":"astral-codex-native",
-        "payload":{"file":"window.json","sha256":ostk_gpt_cache::hash(&payload),"bytes":payload.len(),"item_count":1},
+        "payload":{"file":"window.json","sha256":astral::hash(&payload),"bytes":payload.len(),"item_count":1},
         "compatibility":{"runtime":"codex","runtime_version":"0.154.0","protocol":"openai-responses-lite","provider":"openai","model":"gpt-6-astra","requires_tool_rebinding":true,"identity_scope":"same-account"},
         "source":{"project_id":"fixture","revision":null,"dirty":false,"selection_sha256":"a".repeat(64),"history_sha256":"b".repeat(64)},
         "capture":{"boundary":"completed-turn","history_complete":true,"last_checkpoint_index":0},"parents":[]})).unwrap();
-    let digest = ostk_gpt_cache::hash(&manifest);
+    let digest = astral::hash(&manifest);
     put(
         root,
         &format!(".astral/projections/{id}/bundles/{digest}/manifest.json"),

@@ -1,8 +1,8 @@
-use clap::{CommandFactory, Parser};
-use ostk_gpt_cache::{
+use astral::{
     config::{Config, NativeToolBindingMode},
     native_binding::Connection,
 };
+use clap::{CommandFactory, Parser};
 use serde_json::{Value, json};
 
 fn prefix(name: &str) -> Value {
@@ -24,7 +24,7 @@ fn completed(state: &mut Connection, id: &str) {
         .observe_response(&json!({"type":"response.completed","response":{"id":id}}))
         .unwrap();
 }
-fn apply(body: &Value) -> ostk_gpt_cache::native_binding::Prepared {
+fn apply(body: &Value) -> astral::native_binding::Prepared {
     Connection::default()
         .prepare(body, NativeToolBindingMode::Rebind)
         .unwrap()

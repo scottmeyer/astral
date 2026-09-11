@@ -10,9 +10,13 @@ Inspect the checked-in project context without a proxy:
 ./target/release/astral project projection:project-workflow --inspect
 ```
 
-These commands return JSON and leave Git and runtime state untouched. `project`
+These commands print readable summaries and leave Git and runtime state untouched.
+Add global `--json` for structured output, such as `astral --json context list`.
+Help/version are plain text by default; command errors go to stderr. `project`
 defaults to the `project-context` selection when no name is supplied. An explicit
 name goes immediately after `project`; use `--` to forward a prompt without a name.
+For `project` and `init`, `--json` before that separator belongs to Astral; after
+it, `--json` belongs to Codex. Child process streams keep their own format.
 `astral proxy` runs the server. Bare `astral` and direct proxy flags also start it
 for compatibility with existing runners. `astral project` launches a fresh Codex
 session from selected documents in the current checkout. `astral init` starts
@@ -57,7 +61,7 @@ merges remain supported. See [branch completion](../../docs/branch-completion.md
 the default scope is `worktree`, with committed/staged/working comparisons in
 every report. `astral hooks install git` and `astral hooks install codex` show a
 plan and ask for confirmation in a terminal. Use `--yes` for unattended application
-or `--dry-run` for a JSON preview. `--apply PLAN_SHA256` remains available for an
+or `--dry-run` for a preview; add `--json` for scripts. `--apply PLAN_SHA256` remains available for an
 explicitly separate review; interactive setup retains and checks that hash itself.
 `hooks uninstall TARGET` uses the same choices. Git shims are retained but disabled;
 Codex removal preserves other groups and previous bytes. `astral commit -- -am
@@ -70,8 +74,10 @@ Codex overrides and shutdown. Do not manually start a recovery proxy for ordinar
 with Astral rolling disabled. A fresh launch without `--work` does not support
 `--proxy`; use a bound worker when that route is needed.
 
-`astral proxy` separately runs the standalone Responses server. Its legacy
-default state path is `.ostk-gpt/`; use `--state-dir` for another private location.
+`astral proxy` separately runs the standalone Responses server. Its default
+state path is `.astral-runtime/`; use `--state-dir` to keep an existing private
+location. Astral does not migrate or delete old directories. Set `ASTRAL_UPSTREAM`
+for an environment upstream override; client controls use `x-astral-*` headers.
 See the [proxy guide](../../docs/responses-proxy.md) for client identity headers,
 roll policies and accounting. `.astral/` is the portable project context, not
 the standalone proxy's runtime store.

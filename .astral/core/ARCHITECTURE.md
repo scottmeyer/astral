@@ -26,17 +26,22 @@ same-account, version, filesystem, and ownership limits.
 
 The unified binary is `astral`; `astral proxy` starts the server, `context` and
 `project --inspect` inspect context, `project` launches fresh/native selections,
-and `init` initializes missing indexes. The internal Rust crate remains
-`ostk-gpt-cache`. `src/server.rs` owns startup and shutdown; `src/proxy.rs` owns HTTP
+and `init` initializes missing indexes. The Cargo package and Rust crate are
+both `astral`. `src/server.rs` owns startup and shutdown; `src/proxy.rs` owns HTTP
 routing and inference flow. `src/proxy/http.rs` shares header policy, request
 construction, response metadata and bounded-body handling across inference,
 compaction and model discovery. Catalog GETs have no conversation state.
 `engine.rs`, `store.rs`, and `policy.rs` implement the existing projection,
 persistence, and cache policies. `working.rs` supports the optional explicit host.
-The standalone proxy retains `.ostk-gpt/`, `OSTK_GPT_UPSTREAM` and `x-ostk-*`
-compatibility names. They are separate from portable `.astral/` documents and
-from managed project proxies' private state paths. See
+The standalone proxy uses `.astral-runtime/`, `ASTRAL_UPSTREAM` and `x-astral-*`
+headers. These are separate from portable `.astral/` documents and managed
+project proxies' private state paths. Existing private directories remain
+untouched; select one explicitly with `--state-dir`. See
 [names and storage](project-context/README.md#names-and-storage).
+
+CLI summaries, help/version and errors are human-readable by default. Global
+`--json` selects structured Astral output; callback and helper wire protocols
+remain independent of terminal presentation.
 
 `native_binding.rs` validates Responses Lite inputs and reasserts current runtime tool
 declarations after the effective native checkpoint. `native_transport.rs` owns one

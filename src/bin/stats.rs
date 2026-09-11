@@ -1,5 +1,5 @@
+use astral::usage::Usage;
 use clap::Parser;
-use ostk_gpt_cache::usage::Usage;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -13,7 +13,7 @@ use std::{
     about = "Aggregate observed response and compaction usage separately; no inferred dollar savings"
 )]
 struct Args {
-    #[arg(long, default_value = ".ostk-gpt/ledger.jsonl")]
+    #[arg(long, default_value = ".astral-runtime/ledger.jsonl")]
     ledger: PathBuf,
 }
 

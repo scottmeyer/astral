@@ -131,7 +131,7 @@ impl Fixture {
         fs::write(path, bytes).unwrap();
     }
     fn status(&self) -> Value {
-        let out = self.run(&["hooks", "status"], b"");
+        let out = self.run(&["hooks", "status", "--json"], b"");
         assert!(
             out.status.success(),
             "{}",
@@ -444,7 +444,7 @@ fn blockers_report_without_prompt_or_mutation() {
 }
 
 #[test]
-fn piped_yes_is_only_a_json_preview_with_a_hint() {
+fn piped_yes_is_only_a_human_preview_with_a_hint() {
     for target in ["git", "codex"] {
         let fixture = Fixture::new();
         let before = fixture.snapshot();
@@ -454,10 +454,10 @@ fn piped_yes_is_only_a_json_preview_with_a_hint() {
             "{}",
             String::from_utf8_lossy(&out.stderr)
         );
-        let plan: Value = serde_json::from_slice(&out.stdout).unwrap();
-        assert_eq!(plan["target"], target);
-        assert_eq!(plan["action"], "install");
-        assert_eq!(plan["plan_sha256"].as_str().unwrap().len(), 64);
+        let plan = String::from_utf8(out.stdout).unwrap();
+        assert!(plan.to_lowercase().contains(target), "{plan}");
+        assert!(plan.to_lowercase().contains("install"), "{plan}");
+        assert!(plan.contains("--apply"), "{plan}");
         assert!(!out.stderr.is_empty());
         assert!(!String::from_utf8_lossy(&out.stderr).contains(PROMPT));
         assert_eq!(fixture.snapshot(), before);
@@ -471,8 +471,8 @@ fn terminal_stdin_with_redirected_stderr_is_still_a_preview() {
     let child = Pty::start(&fixture, &["hooks", "install", "git"], false);
     let (status, stdout, transcript) = child.finish();
     assert!(status.success(), "{transcript}");
-    let plan: Value = serde_json::from_slice(&stdout).unwrap();
-    assert_eq!(plan["target"], "git");
+    let plan = String::from_utf8(stdout).unwrap();
+    assert!(plan.to_lowercase().contains("git"), "{plan}");
     assert!(!transcript.contains(PROMPT));
     assert_eq!(fixture.snapshot(), before);
 }
@@ -482,7 +482,7 @@ fn explicit_yes_installs_and_uninstalls_both_targets_without_prompt() {
     for target in ["git", "codex"] {
         let fixture = Fixture::new();
         for action in ["install", "uninstall"] {
-            let out = fixture.run(&["hooks", action, target, "--yes"], b"");
+            let out = fixture.run(&["hooks", action, target, "--yes", "--json"], b"");
             assert!(
                 out.status.success(),
                 "{}",
@@ -498,11 +498,11 @@ fn explicit_yes_installs_and_uninstalls_both_targets_without_prompt() {
 }
 
 #[test]
-fn dry_run_in_a_terminal_is_json_only_and_never_prompts_or_writes() {
+fn explicit_json_in_a_terminal_never_prompts_or_writes() {
     for target in ["git", "codex"] {
         let fixture = Fixture::new();
         let before = fixture.snapshot();
-        let child = Pty::start(&fixture, &["hooks", "install", target, "--dry-run"], true);
+        let child = Pty::start(&fixture, &["hooks", "install", target, "--json"], true);
         let (status, stdout, transcript) = child.finish();
         assert!(status.success(), "{transcript}");
         let plan: Value = serde_json::from_slice(&stdout).unwrap();
@@ -538,11 +538,11 @@ fn legacy_exact_hash_apply_still_works_without_confirmation() {
     for target in ["git", "codex"] {
         let fixture = Fixture::new();
         for action in ["install", "uninstall"] {
-            let preview = fixture.run(&["hooks", action, target, "--dry-run"], b"");
+            let preview = fixture.run(&["hooks", action, target, "--dry-run", "--json"], b"");
             assert!(preview.status.success());
             let plan: Value = serde_json::from_slice(&preview.stdout).unwrap();
             let hash = plan["plan_sha256"].as_str().unwrap();
-            let out = fixture.run(&["hooks", action, target, "--apply", hash], b"");
+            let out = fixture.run(&["hooks", action, target, "--apply", hash, "--json"], b"");
             assert!(
                 out.status.success(),
                 "{}",

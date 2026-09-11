@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::workspace::{BindingStatus, OwnershipObservation, WorktreeBinding};
+use astral::workspace::{BindingStatus, OwnershipObservation, WorktreeBinding};
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -87,7 +87,7 @@ impl Fixture {
         )
         .unwrap();
     }
-    fn preview(&self) -> ostk_gpt_cache::workspace::RecoveryPreview {
+    fn preview(&self) -> astral::workspace::RecoveryPreview {
         WorktreeBinding::recovery_preview_with_root(&self.source, "fixture", WORK, None).unwrap()
     }
     fn incomplete(&self, proof: bool, state: &str) -> PathBuf {
@@ -114,11 +114,11 @@ impl Fixture {
         self.write(&receipt);
         root
     }
-    fn recover(&self, expected: &str) -> ostk_gpt_cache::project::Result<WorktreeBinding> {
+    fn recover(&self, expected: &str) -> astral::project::Result<WorktreeBinding> {
         WorktreeBinding::recover_creation_with_root(&self.source, "fixture", WORK, expected, None)
     }
 }
-fn code<T>(result: ostk_gpt_cache::project::Result<T>) -> &'static str {
+fn code<T>(result: astral::project::Result<T>) -> &'static str {
     result.err().expect("must fail").code
 }
 #[test]
@@ -173,7 +173,7 @@ fn proven_preparing_and_failed_creation_recover_without_touching_dirty_checkout(
         fs::write(root.join("tracked.txt"), "local edits stay\n").unwrap();
         fs::write(root.join("untracked.txt"), "untracked stays\n").unwrap();
         let before = fixture.bytes();
-        let hash = ostk_gpt_cache::hash(&before);
+        let hash = astral::hash(&before);
         let preview = fixture.preview();
         assert_eq!(preview.receipt_sha256.as_deref(), Some(hash.as_str()));
         assert!(preview.creation_recoverable, "{preview:?}");
@@ -214,7 +214,7 @@ fn proven_preparing_and_failed_creation_recover_without_touching_dirty_checkout(
 fn recorded_creation_promotion_records_plan_in_the_same_receipt_write() {
     let fixture = Fixture::new();
     fixture.incomplete(true, "preparing");
-    let digest = ostk_gpt_cache::hash(&fixture.bytes());
+    let digest = astral::hash(&fixture.bytes());
     let plan = "a".repeat(64);
     let binding = WorktreeBinding::recover_creation_recorded_with_root(
         &fixture.source,
@@ -250,7 +250,7 @@ fn legacy_unproven_creation_is_diagnostic_only() {
             .any(|e| e.code == "WORKSPACE_RECOVERY_UNPROVEN")
     );
     assert_eq!(
-        code(fixture.recover(&ostk_gpt_cache::hash(&before))),
+        code(fixture.recover(&astral::hash(&before))),
         "WORKSPACE_RECOVERY_UNPROVEN"
     );
     assert_eq!(fixture.bytes(), before);
@@ -261,7 +261,7 @@ fn changed_receipt_branch_or_checkout_identity_is_never_adopted() {
     for change in ["receipt", "branch", "directory"] {
         let fixture = Fixture::new();
         let root = fixture.incomplete(true, "preparing");
-        let digest = ostk_gpt_cache::hash(&fixture.bytes());
+        let digest = astral::hash(&fixture.bytes());
         match change {
             "receipt" => {
                 let mut receipt = fixture.receipt();
@@ -306,7 +306,7 @@ fn ownership_blocks_apply_and_uncertain_staging_cannot_be_reset_as_creation() {
     fixture.write(&receipt);
     let before = fixture.bytes();
     assert_eq!(
-        code(fixture.recover(&ostk_gpt_cache::hash(&before))),
+        code(fixture.recover(&astral::hash(&before))),
         "WORKSPACE_METADATA"
     );
     assert_eq!(fixture.bytes(), before);
@@ -401,7 +401,7 @@ fn legacy_receipt_digest_and_archive_preserve_original_formatting_and_omitted_de
     original.push(b'\n');
     fs::write(fixture.directory().join("receipt.json"), &original).unwrap();
     let mut binding = fixture.acquire();
-    let digest = ostk_gpt_cache::hash(&original);
+    let digest = astral::hash(&original);
     assert_eq!(binding.receipt_digest().unwrap(), digest);
     let mut metadata = binding.worker_metadata().clone();
     metadata.context_initialized = true;
@@ -424,7 +424,7 @@ fn inventory_is_bounded_without_creating_any_binding_or_inspecting_runtime_data(
     let fixture = Fixture::new();
     drop(fixture.acquire());
     let store = fixture.directory().parent().unwrap().to_path_buf();
-    for index in 0..ostk_gpt_cache::workspace::MAX_BINDING_INVENTORY {
+    for index in 0..astral::workspace::MAX_BINDING_INVENTORY {
         let directory = store.join(format!("AST-orphan-{index:04}"));
         fs::create_dir(&directory).unwrap();
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();

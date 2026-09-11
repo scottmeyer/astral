@@ -44,7 +44,7 @@ fn start_fixture_proxy(
         .arg("--state-dir")
         .arg(directory.path().join("proxy-state"))
         .env_remove("SSL_CERT_FILE")
-        .env_remove("OSTK_GPT_UPSTREAM")
+        .env_remove("ASTRAL_UPSTREAM")
         .current_dir(directory.path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -80,7 +80,6 @@ fn start_fixture_proxy(
         banner.starts_with(&prefix),
         "unexpected fixture banner: {banner}"
     );
-    assert!(!banner.contains("ostk-gpt-cache"));
     let address: SocketAddr = banner
         .trim()
         .strip_prefix(&prefix)
@@ -138,30 +137,45 @@ fn renamed_binary_serves_proxy_subcommand_and_direct_proxy_options() {
     }
 }
 
-fn help(args: &[&str]) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+fn run(args: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_astral"))
         .args(args)
+        .env("NO_COLOR", "1")
+        .env_remove("ASTRAL_UPSTREAM")
+        .stdin(Stdio::null())
         .output()
-        .unwrap();
+        .unwrap()
+}
+
+fn help(args: &[&str]) -> String {
+    let output = run(args);
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stderr.is_empty());
-    let output: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(output["status"], "help");
-    output["message"].as_str().unwrap().to_owned()
+    assert!(serde_json::from_slice::<Value>(&output.stdout).is_err());
+    String::from_utf8(output.stdout).unwrap()
+}
+
+fn pretty_json(bytes: &[u8]) -> Value {
+    let value: Value = serde_json::from_slice(bytes).unwrap();
+    assert_eq!(
+        bytes,
+        format!("{}\n", serde_json::to_string_pretty(&value).unwrap()).as_bytes()
+    );
+    value
 }
 
 #[test]
-fn unified_help_describes_commands_and_default_project_context() {
+fn unified_help_is_plain_and_describes_commands_and_default_context() {
     let global = help(&["--help"]);
     for command in ["proxy", "context", "project", "work", "init"] {
         assert!(global.contains(command), "missing {command}: {global}");
     }
     assert!(global.contains("astral"));
-    assert!(!global.contains("ostk-gpt-cache"));
+    assert!(global.contains("--json"));
     let project = help(&["project", "--help"]);
     assert!(project.contains("--non-interactive"));
     assert!(project.contains("--resume"));
@@ -172,8 +186,67 @@ fn unified_help_describes_commands_and_default_project_context() {
     let proxy = help(&["proxy", "--help"]);
     assert!(proxy.contains("--listen"));
     assert!(proxy.contains("--upstream"));
+    assert!(proxy.contains("ASTRAL_UPSTREAM"));
+    assert!(proxy.contains(".astral-runtime"));
     assert_eq!(
         help(&["--version"]).trim(),
         format!("astral {}", env!("CARGO_PKG_VERSION"))
     );
+}
+
+#[test]
+fn json_help_and_version_are_explicit_pretty_envelopes() {
+    for args in [
+        vec!["--json", "--help"],
+        vec!["--help", "--json"],
+        vec!["--json", "project", "--help"],
+        vec!["project", "--json", "--help"],
+        vec!["project", "--help", "--json"],
+        vec!["proxy", "--help", "--json"],
+        vec!["--json", "--version"],
+    ] {
+        let output = run(&args);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        assert!(output.stderr.is_empty());
+        let value = pretty_json(&output.stdout);
+        assert_eq!(value["status"], "help");
+        let message = value["message"].as_str().unwrap();
+        assert!(message.contains("astral"), "{args:?}: {message}");
+        if args.contains(&"--version") {
+            assert_eq!(
+                message.trim(),
+                format!("astral {}", env!("CARGO_PKG_VERSION"))
+            );
+        }
+    }
+}
+
+#[test]
+fn typo_error_keeps_clap_suggestion_and_usage_in_plain_stderr() {
+    let output = run(&["proxy", "--upstrean", "http://127.0.0.1:1"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(serde_json::from_slice::<Value>(&output.stderr).is_err());
+    let text = String::from_utf8(output.stderr).unwrap();
+    assert!(text.contains("--upstrean"), "{text}");
+    assert!(text.contains("similar argument"), "{text}");
+    assert!(text.contains("--upstream"), "{text}");
+    assert!(text.contains("Usage:"), "{text}");
+}
+
+#[test]
+fn json_usage_errors_preserve_machine_code_and_full_suggestion() {
+    for args in [
+        vec!["--json", "proxy", "--upstrean", "http://127.0.0.1:1"],
+        vec!["proxy", "--json", "--upstrean", "http://127.0.0.1:1"],
+    ] {
+        let output = run(&args);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let value = pretty_json(&output.stderr);
+        assert_eq!(value["error"]["code"], "CLI_USAGE");
+        let message = value["error"]["message"].as_str().unwrap();
+        assert!(message.contains("similar argument"), "{message}");
+        assert!(message.contains("--upstream"), "{message}");
+    }
 }

@@ -1,4 +1,4 @@
-use ostk_gpt_cache::launcher::{
+use astral::launcher::{
     DEFAULT_CONTEXT, MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, ProjectArguments, ProxyBinding, Route,
     project_request,
 };
@@ -38,7 +38,7 @@ fn direct_default_adds_no_flags_or_environment_overrides() {
 
 #[test]
 fn headless_and_owned_resume_options_stop_at_the_literal_separator() {
-    use ostk_gpt_cache::launcher::initialization_request;
+    use astral::launcher::initialization_request;
     let id = "0123456789abcdef0123456789abcdef";
     let req = request(&[
         "web",
@@ -575,6 +575,7 @@ fn cli_inspection_previews_requested_route_but_never_claims_launch() {
     for proxy in [false, true] {
         let mut command = Command::new(env!("CARGO_BIN_EXE_astral"));
         command
+            .arg("--json")
             .arg("--root")
             .arg(root.path())
             .args(["project", "web", "--inspect"]);
@@ -612,6 +613,7 @@ fn cli_inspection_previews_requested_route_but_never_claims_launch() {
         assert_eq!(result["native_binding"]["state"], "UNBOUND");
     }
     let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .args([
             "--root",
             "/unavailable",
@@ -637,6 +639,7 @@ fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
     project_fixture(root.path());
     for options in [vec!["--inspect"], vec!["--proxy", "--inspect"]] {
         let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+            .arg("--json")
             .arg("--root")
             .arg(root.path())
             .arg("project")
@@ -678,6 +681,7 @@ fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
         assert_eq!(result["launch_request"]["executed"], false);
     }
     let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .arg("--root")
         .arg(root.path())
         .arg("project")
@@ -737,6 +741,7 @@ fn whole_inspection_output_is_bounded_after_argv_preview_is_added() {
     fs::write(source, text).unwrap();
     let long_arg = "\u{0001}".repeat(60_000);
     let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .arg("--root")
         .arg(root.path())
         .args(["project", "web", "--inspect", "--"])

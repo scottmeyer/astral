@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::{
+use astral::{
     project::Project,
     status,
     workspace::{WorkerMetadata, WorktreeBinding},

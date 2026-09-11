@@ -40,7 +40,7 @@ pub struct Config {
     /// API base including its version/path, without the /responses suffix.
     #[arg(
         long,
-        env = "OSTK_GPT_UPSTREAM",
+        env = "ASTRAL_UPSTREAM",
         default_value = "https://api.openai.com/v1"
     )]
     pub upstream: String,
@@ -59,7 +59,7 @@ pub struct Config {
     /// Allow native inline checkpoints after complete external tool results.
     #[arg(long)]
     pub inline_tool_boundaries: bool,
-    /// Honor x-ostk-roll-estimate when supplied; otherwise retain byte scheduling.
+    /// Honor x-astral-roll-estimate when supplied; otherwise retain byte scheduling.
     #[arg(long)]
     pub economic_roll_policy: bool,
     #[arg(long, value_enum, default_value = "rolling")]
@@ -67,7 +67,7 @@ pub struct Config {
     /// Native checkpoint tool binding. Observe is an unmodified transport control.
     #[arg(long, alias = "ast000-compat", value_enum, default_value = "disabled")]
     pub native_tool_binding: NativeToolBindingMode,
-    #[arg(long, default_value = ".ostk-gpt")]
+    #[arg(long, default_value = ".astral-runtime")]
     pub state_dir: PathBuf,
     /// Explicit opt-in to native compaction on a compatible upstream.
     #[arg(long)]

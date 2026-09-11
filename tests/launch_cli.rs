@@ -84,6 +84,7 @@ fn fixture(path: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
 
 fn invoke(root: &Path, bin: &Path, log: &Path, args: &[&str], mode: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .args(["--root"])
         .arg(root)
         .args(args)
@@ -96,10 +97,8 @@ fn invoke(root: &Path, bin: &Path, log: &Path, args: &[&str], mode: &str) -> Out
 
 fn error(output: &Output) -> String {
     let text = String::from_utf8_lossy(&output.stderr);
-    text.lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .next_back()
-        .unwrap()["error"]["code"]
+    let start = text.rfind("{\n  \"error\":").expect("JSON diagnostic");
+    serde_json::from_str::<Value>(&text[start..]).unwrap()["error"]["code"]
         .as_str()
         .unwrap()
         .to_owned()
@@ -955,14 +954,14 @@ fn native_fixture(root: &Path, bin: &Path, log: &Path) {
     let payload = br#"[{"type":"compaction","encrypted_content":"SYNTHETIC_NATIVE_OPAQUE"},{"type":"message","role":"user","content":[{"type":"input_text","text":"HISTORICAL_NATIVE_TAIL"}]}]"#;
     let manifest = serde_json::to_vec(&serde_json::json!({
         "schema_version":1,"format":"astral-codex-native",
-        "payload":{"file":"window.json","sha256":ostk_gpt_cache::hash(payload),"bytes":payload.len(),"item_count":2},
+        "payload":{"file":"window.json","sha256":astral::hash(payload),"bytes":payload.len(),"item_count":2},
         "compatibility":{"runtime":"codex","runtime_version":"0.154.0","protocol":"openai-responses-lite","provider":"openai","model":"gpt-6-astra","requires_tool_rebinding":true,"identity_scope":"same-account"},
         "source":{"project_id":"project","revision":null,"dirty":false,"selection_sha256":"a".repeat(64),"history_sha256":"b".repeat(64)},
         "capture":{"boundary":"completed-turn","history_complete":true,"last_checkpoint_index":0},"parents":[]
     })).unwrap();
     fs::write(bundle.join("manifest.json"), &manifest).unwrap();
     fs::write(bundle.join("window.json"), payload).unwrap();
-    fs::write(projection.join("projection.toml"), format!("schema_version=1\nid='initial-project-context'\nkind='native-checkpoint'\nsubsystems=['project-context']\nhandoff='handoff.md'\nnative_payload_in_repository=true\nsources=[]\n[native_bundle]\nmanifest='bundles/demo/manifest.json'\nsha256='{}'\n", ostk_gpt_cache::hash(&manifest))).unwrap();
+    fs::write(projection.join("projection.toml"), format!("schema_version=1\nid='initial-project-context'\nkind='native-checkpoint'\nsubsystems=['project-context']\nhandoff='handoff.md'\nnative_payload_in_repository=true\nsources=[]\n[native_bundle]\nmanifest='bundles/demo/manifest.json'\nsha256='{}'\n", astral::hash(&manifest))).unwrap();
 }
 
 fn invoke_native(
@@ -974,6 +973,7 @@ fn invoke_native(
     mode: &str,
 ) -> Output {
     Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .arg("--root")
         .arg(root)
         .args(args)

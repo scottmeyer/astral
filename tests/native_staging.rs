@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::{
+use astral::{
     codex::{StagingOptions, stage_fresh, stage_native, stage_worker},
     native_bundle::NativeBundle,
 };
@@ -52,7 +52,7 @@ fn bundle(payload: &str) -> NativeBundle {
     let items: Value = serde_json::from_str(payload).unwrap();
     let manifest = json!({
         "schema_version":1,"format":"astral-codex-native",
-        "payload":{"file":"window.json","sha256":ostk_gpt_cache::hash(payload.as_bytes()),"bytes":payload.len(),"item_count":items.as_array().unwrap().len()},
+        "payload":{"file":"window.json","sha256":astral::hash(payload.as_bytes()),"bytes":payload.len(),"item_count":items.as_array().unwrap().len()},
         "compatibility":{"runtime":"codex","runtime_version":"0.154.0","protocol":"openai-responses-lite","provider":"openai","model":"gpt-6-astra","requires_tool_rebinding":true,"identity_scope":"same-account"},
         "source":{"project_id":"fixture","revision":null,"dirty":false,"selection_sha256":"a".repeat(64),"history_sha256":"b".repeat(64)},
         "capture":{"boundary":"completed-turn","history_complete":true,"last_checkpoint_index":0},"parents":[]
@@ -442,9 +442,7 @@ fn import_gate_rejects_fields_codex_would_drop_without_changing_bundle_availabil
         let b = bundle(payload);
         assert_eq!(b.payload_bytes(), payload.as_bytes());
         assert_eq!(
-            ostk_gpt_cache::native_import::validate(&b)
-                .unwrap_err()
-                .code,
+            astral::native_import::validate(&b).unwrap_err().code,
             "NATIVE_IMPORT_UNSUPPORTED"
         );
     }
@@ -463,7 +461,7 @@ fn import_gate_rejects_lossy_numeric_values_inside_opaque_tool_search_json() {
         );
         let b = bundle(&payload);
         assert_eq!(
-            ostk_gpt_cache::native_import::validate(&b).is_ok(),
+            astral::native_import::validate(&b).is_ok(),
             accepted,
             "{number}"
         );
@@ -485,7 +483,7 @@ fn import_gate_rejects_reasoning_content_that_codex_omits() {
             r#"[{{"type":"compaction","encrypted_content":"opaque"}},{{"type":"reasoning","summary":[],"content":{content}}}]"#
         );
         assert_eq!(
-            ostk_gpt_cache::native_import::validate(&bundle(&payload)).is_ok(),
+            astral::native_import::validate(&bundle(&payload)).is_ok(),
             accepted
         );
     }

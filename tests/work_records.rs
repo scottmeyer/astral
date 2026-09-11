@@ -1,5 +1,5 @@
-use ostk_gpt_cache::project::WorkStatus;
-use ostk_gpt_cache::work_records::{self, ConflictKind, MAX_FILE_BYTES, MergeResult, parse};
+use astral::project::WorkStatus;
+use astral::work_records::{self, ConflictKind, MAX_FILE_BYTES, MergeResult, parse};
 use serde_json::{Value, json};
 
 fn item(id: &str, dependencies: &[&str]) -> Value {
@@ -39,7 +39,7 @@ fn cli_merge_returns_usable_jsonl_and_nonzero_explicit_conflicts_without_editing
     }
     let invoke = || {
         std::process::Command::new(env!("CARGO_BIN_EXE_astral"))
-            .args(["work", "merge", "--base"])
+            .args(["--json", "work", "merge", "--base"])
             .arg(&paths[0])
             .arg("--ours")
             .arg(&paths[1])
@@ -117,7 +117,7 @@ fn parsing_reuses_models_retains_historical_ids_and_hashes_exact_lines() {
     assert_eq!(records[1].item.id, "legacy-ticket");
     assert_eq!(
         records[1].digest,
-        ostk_gpt_cache::hash(format!(" {first} ").as_bytes())
+        astral::hash(format!(" {first} ").as_bytes())
     );
     assert_eq!(serde_json::to_value(&records[0].item).unwrap(), second);
     assert!(parse(b"").unwrap().is_empty());
@@ -284,7 +284,7 @@ fn identical_edits_and_formatting_only_changes_merge_semantically() {
         WorkStatus::Complete
     ));
     let reordered = serde_json::to_string(
-        &serde_json::from_value::<ostk_gpt_cache::project::WorkItem>(original.clone()).unwrap(),
+        &serde_json::from_value::<astral::project::WorkItem>(original.clone()).unwrap(),
     )
     .unwrap();
     assert_ne!(
@@ -393,7 +393,7 @@ fn merged_output_must_also_fit_limits() {
 #[cfg(unix)]
 mod persistence {
     use super::*;
-    use ostk_gpt_cache::project::Project;
+    use astral::project::Project;
     use std::fs;
     use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
@@ -445,7 +445,7 @@ mod persistence {
         assert_eq!(original.path, ".astral/tasks/register.jsonl");
         assert_eq!(
             original.digest,
-            ostk_gpt_cache::hash(&fs::read(work_path(&root)).unwrap())
+            astral::hash(&fs::read(work_path(&root)).unwrap())
         );
         fs::set_permissions(work_path(&root), fs::Permissions::from_mode(0o640)).unwrap();
         let old_inode = fs::metadata(work_path(&root)).unwrap().ino();

@@ -207,7 +207,7 @@ class Session:
                 body["context_management"] = [{"type": "compaction", "compact_threshold": config["threshold"]}]
             if config["cache_mode"] == "implicit":
                 body["prompt_cache_options"] = {"mode": "implicit", "ttl": "30m"}
-            headers = {"Content-Type": "application/json", "x-ostk-session-id": self.data["lane"]}
+            headers = {"Content-Type": "application/json", "x-astral-session-id": self.data["lane"]}
             if self.auth == "api-key":
                 headers["Authorization"] = "Bearer " + os.environ["OPENAI_API_KEY"]
             request = urllib.request.Request(self.base_url.rstrip("/") + "/responses", data=json.dumps(body).encode(), headers=headers)

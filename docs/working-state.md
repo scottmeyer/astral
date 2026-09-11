@@ -174,7 +174,7 @@ native checkpoint and the fresh state snapshot. Very low thresholds can trigger
 another compaction immediately after adding a snapshot, with substantial cost.
 A cooldown limits retry frequency; it does not establish economic benefit.
 
-The optional `--economic-roll-policy` accepts `x-ostk-roll-estimate`:
+The optional `--economic-roll-policy` accepts `x-astral-roll-estimate`:
 
 ```json
 {"remaining_calls":5,"saved_input_per_call":10,"checkpoint_cost":20,"lost_cache_cost":10,"recovery_cost":5}

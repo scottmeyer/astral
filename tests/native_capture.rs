@@ -1,5 +1,5 @@
-use ostk_gpt_cache::hash;
-use ostk_gpt_cache::native_capture::{MAX_ROLLOUT_BYTES, capture_bytes};
+use astral::hash;
+use astral::native_capture::{MAX_ROLLOUT_BYTES, capture_bytes};
 use serde_json::{Value, json};
 
 const THREAD: &str = "01a08e8f-c4af-77a3-9643-7c474187c260";
@@ -77,9 +77,7 @@ impl Fixture {
         bytes.extend(encode(&self.suffix, self.paginated, 4));
         bytes
     }
-    fn result(
-        &self,
-    ) -> ostk_gpt_cache::project::Result<ostk_gpt_cache::native_capture::CapturedWindow> {
+    fn result(&self) -> astral::project::Result<astral::native_capture::CapturedWindow> {
         capture_bytes(&self.before, &self.after(), THREAD, TURN, ITEM)
     }
     fn reject(&self) {
@@ -337,7 +335,7 @@ fn limits_and_no_native_checkpoint_reject_without_payload_diagnostics() {
 #[cfg(unix)]
 mod files {
     use super::*;
-    use ostk_gpt_cache::native_capture::{capture, read_snapshot};
+    use astral::native_capture::{capture, read_snapshot};
     use std::fs;
     use std::os::unix::fs::symlink;
 

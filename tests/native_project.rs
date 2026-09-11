@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::project::{Limits, Project};
+use astral::project::{Limits, Project};
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -63,7 +63,7 @@ fn write_bundle(root: &Path, id: &str, subsystem: &str, project: &str, opaque: &
     let manifest = serde_json::to_vec(&json!({
         "schema_version": 1,
         "format": "astral-codex-native",
-        "payload": {"file": "window.json", "sha256": ostk_gpt_cache::hash(&payload), "bytes": payload.len(), "item_count": 2},
+        "payload": {"file": "window.json", "sha256": astral::hash(&payload), "bytes": payload.len(), "item_count": 2},
         "compatibility": {"runtime": "codex", "runtime_version": "0.154.0", "protocol": "openai-responses-lite", "provider": "openai", "model": "gpt-6-astra", "requires_tool_rebinding": true, "identity_scope": "same-account"},
         "source": {"project_id": project, "revision": null, "dirty": false, "selection_sha256": "a".repeat(64), "history_sha256": "b".repeat(64)},
         "capture": {"boundary": "completed-turn", "history_complete": true, "last_checkpoint_index": 0},
@@ -76,7 +76,7 @@ fn write_bundle(root: &Path, id: &str, subsystem: &str, project: &str, opaque: &
         &projection_path(id),
         format!(
             "schema_version = 1\nid = {id:?}\nkind = \"native-checkpoint\"\nsubsystems = [{subsystem:?}]\nhandoff = \"handoff.md\"\nnative_payload_in_repository = true\nsources = []\n[native_bundle]\nmanifest = \"bundles/demo/manifest.json\"\nsha256 = {:?}\n",
-            ostk_gpt_cache::hash(&manifest)
+            astral::hash(&manifest)
         ),
     );
     put(
@@ -172,6 +172,7 @@ fn native_ids(inspection: &Value) -> Vec<&str> {
 
 fn command(root: &Path, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .arg("--root")
         .arg(root)
         .args(arguments)
@@ -198,7 +199,7 @@ fn inspection_exposes_integrity_metadata_without_native_or_tail_contents() {
         ] {
             let bytes = fs::read(root.path().join(&path)).unwrap();
             assert_eq!(artifact[field]["path"], path);
-            assert_eq!(artifact[field]["sha256"], ostk_gpt_cache::hash(&bytes));
+            assert_eq!(artifact[field]["sha256"], astral::hash(&bytes));
             assert_eq!(artifact[field]["bytes"], bytes.len());
             assert!(
                 selected["sources"]
@@ -275,6 +276,7 @@ fn valid_native_selection_is_never_substituted_with_readable_launch_context() {
             "NATIVE_CONTEXT_REQUIRES_STAGING"
         );
         let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+            .arg("--json")
             .arg("--root")
             .arg(root.path())
             .args(["project", selector])

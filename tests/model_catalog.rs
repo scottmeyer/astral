@@ -1,3 +1,7 @@
+use astral::{
+    config::{Config, Mode, NativeToolBindingMode},
+    proxy::{App, router},
+};
 use axum::{
     Router,
     body::{Body, Bytes},
@@ -7,10 +11,6 @@ use axum::{
     routing::get,
 };
 use clap::Parser;
-use ostk_gpt_cache::{
-    config::{Config, Mode, NativeToolBindingMode},
-    proxy::{App, router},
-};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -77,7 +77,7 @@ async fn models(
         .header("x-catalog-metadata", "second")
         .header("connection", "x-upstream-hop")
         .header("x-upstream-hop", "remove")
-        .header("x-ostk-internal", "remove")
+        .header("x-astral-internal", "remove")
         .body(body)
         .unwrap()
 }
@@ -191,7 +191,7 @@ async fn discovery_preserves_query_identity_bytes_and_provider_metadata_in_both_
                 .header("x-client-request-id", "synthetic-request")
                 .header("connection", "x-client-hop")
                 .header("x-client-hop", "remove")
-                .header("x-ostk-session-id", "internal-only")
+                .header("x-astral-session-id", "internal-only")
                 .send()
                 .await
                 .unwrap();
@@ -208,7 +208,7 @@ async fn discovery_preserves_query_identity_bytes_and_provider_metadata_in_both_
             );
             assert!(!response.headers().contains_key("connection"));
             assert!(!response.headers().contains_key("x-upstream-hop"));
-            assert!(!response.headers().contains_key("x-ostk-internal"));
+            assert!(!response.headers().contains_key("x-astral-internal"));
             assert_eq!(response.bytes().await.unwrap().as_ref(), CATALOG);
         }
         let seen = f.state.seen.lock().unwrap();
@@ -227,10 +227,10 @@ async fn discovery_preserves_query_identity_bytes_and_provider_metadata_in_both_
             assert_eq!(request.headers["openai-project"], "synthetic-project");
             assert_eq!(request.headers["if-none-match"], "W/\"previous\"");
             assert_eq!(request.headers["x-client-request-id"], "synthetic-request");
-            assert_eq!(request.headers["x-ostk-gpt-hop"], "1");
+            assert_eq!(request.headers["x-astral-hop"], "1");
             assert_eq!(request.headers["accept-encoding"], "identity");
             assert!(!request.headers.contains_key("x-client-hop"));
-            assert!(!request.headers.contains_key("x-ostk-session-id"));
+            assert!(!request.headers.contains_key("x-astral-session-id"));
             assert!(request.body.is_empty());
         }
         f.no_conversation_state();
@@ -314,7 +314,7 @@ async fn duplicate_identity_loops_and_unrelated_routes_do_not_reach_upstream() {
     }
     assert_eq!(
         f.get("/models")
-            .header("x-ostk-gpt-hop", "1")
+            .header("x-astral-hop", "1")
             .send()
             .await
             .unwrap()

@@ -23,6 +23,12 @@ relying on a historical conversation or test receipt.
 - Git and Codex hooks provide opt-in offline advice. Setup confirms a plan in a
   terminal; `--yes` and `--dry-run` support scripts. `astral commit` forwards to Git.
 
+CLI output is readable and actionable by default. Use global `--json` for
+machine-readable reports, help/version or errors; scripts must request it
+explicitly. For `project` and `init`, only arguments before the first literal
+`--` belong to Astral. A later `--json` is forwarded unchanged to Codex. Proxy
+logs, helper JSONL and hook callbacks keep their protocol formats.
+
 Model-catalog forwarding, module reorganization and the initial finish/resume
 milestones are complete. Read [RUN](../RUN.md), [TEST](../TEST.md) and the
 [workflow guide](../../../docs/finish-resume.md) for commands and limits.
@@ -57,14 +63,16 @@ into that worker branch through Git before the worker can observe it.
 | `~/.local/state/astral/launches/` | Default private unbound native launch receipts; override with `ASTRAL_LAUNCH_STATE_DIR` |
 | Git common directory: `astral-hooks/` | Private hook registration and advisory metadata |
 | `.codex/hooks.json` | Opt-in configuration for this checkout; Codex manages runtime trust |
-| `.ostk-gpt/` | Actual legacy default for standalone `astral proxy --state-dir`; not the portable context tree |
-| `OSTK_GPT_UPSTREAM`, `x-ostk-*` | Retained standalone proxy environment/wire identifiers |
-| `ostk-gpt-cache` / `ostk_gpt_cache` | Internal Cargo package / Rust crate names, not the CLI command |
+| `.astral-runtime/` | Default standalone proxy state directory; not the portable context tree |
+| `ASTRAL_UPSTREAM`, `x-astral-*` | Standalone proxy environment and wire identifiers |
+| `astral` | Cargo package and Rust crate name as well as the executable |
+| `astral:` | Generated prompt-cache key prefix |
 
-Changing documentation does not migrate existing runtime storage or protocol
-names. Use `--state-dir` to choose private standalone proxy storage; keep it out
-of Git. Managed project proxies supply their own private state paths. See the
-[proxy guide](../../../docs/responses-proxy.md) for the actual client contract.
+Use `--state-dir /absolute/private/existing-state` to keep an existing standalone
+proxy state directory; Astral does not move or delete previous private data.
+Update callers to the current environment and header names; earlier names are
+not aliases. Managed project proxies supply their own private state paths. See
+the [proxy guide](../../../docs/responses-proxy.md) for the actual client contract.
 
 ## Current and historical projections
 

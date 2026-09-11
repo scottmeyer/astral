@@ -146,7 +146,9 @@ astral context validate
 ```
 
 Creation uses short random IDs. Updates compare the exact observed record digest
-and retain other fields. Merge returns JSON containing merged JSONL, or explicit
+and retain other fields. Commands summarize results by default; add `--json` for
+structured output. In particular, `astral work merge --json --base base.jsonl
+--ours ours.jsonl --theirs theirs.jsonl` returns the merged JSONL, or explicit
 record-ID conflicts without a partial result (exit status 1). Independent additions combine;
 different concurrent edits, different additions under the same ID, and edit/delete
 disagreements conflict. The merged dependency graph is validated. After applying a merged file,

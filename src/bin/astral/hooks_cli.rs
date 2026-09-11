@@ -1,10 +1,10 @@
 //! Hook setup's interactive presentation; mutation and stale-plan checks stay in
 //! the installer shared by interactive and scripted invocations.
-use clap::{Args, Subcommand};
-use ostk_gpt_cache::{
+use astral::{
     hooks::install::{self, Action, Plan, Target},
     project::{Error, Result},
 };
+use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, IsTerminal, Read, Write},
@@ -22,7 +22,7 @@ pub(super) enum HooksCommand {
 
 #[derive(Args)]
 #[command(
-    after_help = "A terminal invocation shows the plan and asks for confirmation. Without terminal input and stderr, the default is a JSON preview. Use --yes for unattended application, --dry-run for a JSON preview, or --apply HASH for a previously reviewed plan. All application modes retain the same stale-plan and ownership checks."
+    after_help = "A terminal invocation shows the plan and asks for confirmation. Without a terminal, or with --json, the default is a preview. Use --yes for unattended application, --dry-run for a preview, or --apply HASH for a previously reviewed plan. Add --json for formatted JSON. All application modes retain the same stale-plan and ownership checks."
 )]
 pub(super) struct Change {
     #[arg(value_parser = ["git", "codex"])]
@@ -33,7 +33,7 @@ pub(super) struct Change {
     /// Apply the current plan without prompting; conflicts still block changes.
     #[arg(long, conflicts_with = "dry_run")]
     yes: bool,
-    /// Print a formatted JSON plan and make no changes.
+    /// Preview the plan and make no changes; add --json for structured output.
     #[arg(long)]
     dry_run: bool,
 }
@@ -91,9 +91,9 @@ fn confirm(input: &mut impl BufRead, output: &mut impl Write) -> Result<bool> {
     )
 }
 
-pub(super) fn run(root: &Path, command: HooksCommand) -> Result<Option<Value>> {
+pub(super) fn run(root: &Path, command: HooksCommand, json: bool) -> Result<Option<Value>> {
     let (change, action) = match command {
-        HooksCommand::Status => return super::print_workflow(&install::status(root)?),
+        HooksCommand::Status => return super::print_output(&install::status(root)?, json, root),
         HooksCommand::Install(change) => (change, Action::Install),
         HooksCommand::Uninstall(change) => (change, Action::Uninstall),
     };
@@ -107,31 +107,27 @@ pub(super) fn run(root: &Path, command: HooksCommand) -> Result<Option<Value>> {
         message: "current executable unavailable".into(),
     })?;
     if let Some(expected) = change.apply {
-        return super::print_workflow(&install::apply(
+        return super::print_output(
+            &install::apply(root, &executable, target, action, &expected)?,
+            json,
             root,
-            &executable,
-            target,
-            action,
-            &expected,
-        )?);
+        );
     }
     let plan = install::plan(root, &executable, target, action)?;
-    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    let interactive = !json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
     if change.dry_run || (!change.yes && !interactive) {
-        super::print_workflow(&json!(plan))?;
-        if !change.dry_run {
+        super::print_output(&json!(plan), json, root)?;
+        if !change.dry_run && !json {
             writeln!(std::io::stderr().lock(), "Preview only: run in a terminal to review and confirm, or use --yes to apply this setup without prompting.").map_err(io_error)?;
         }
         return Ok(None);
     }
     if change.yes {
-        return super::print_workflow(&install::apply(
+        return super::print_output(
+            &install::apply(root, &executable, target, action, &plan.plan_sha256)?,
+            json,
             root,
-            &executable,
-            target,
-            action,
-            &plan.plan_sha256,
-        )?);
+        );
     }
     let mut output = std::io::stderr().lock();
     show_plan(&plan, &mut output).map_err(io_error)?;

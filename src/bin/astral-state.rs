@@ -1,6 +1,6 @@
 //! Local JSON-lines host adapter. Profiles are operator-owned, never model-generated.
+use astral::working::{Profile, Runtime};
 use clap::Parser;
-use ostk_gpt_cache::working::{Profile, Runtime};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, Read, Write},

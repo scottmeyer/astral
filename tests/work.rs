@@ -1,4 +1,4 @@
-use ostk_gpt_cache::work::{MAX_OCCUPIED_IDS, WorkIdError, generate_id};
+use astral::work::{MAX_OCCUPIED_IDS, WorkIdError, generate_id};
 
 #[test]
 fn os_generated_proposal_has_the_documented_shape_and_preserves_legacy_ids() {

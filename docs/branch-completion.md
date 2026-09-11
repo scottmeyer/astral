@@ -20,10 +20,11 @@ Use a real work ID. `--context` selects the reviewed next starting context; it
 neither rewrites a projection nor changes the original worker's binding. Omit it
 to use the worker's stored selector when the native choice is unambiguous.
 
-The plan is bounded JSON. It includes both committed revisions, their merge base,
-path changes grouped as code, readable context/manifests, work records or native
-artifacts, record-level three-way conflicts, retained artifact object IDs and the
-chosen context's source handles. Source documents and opaque payload bodies are
+The default plan summarizes the integration state, blockers and next action.
+Add `--json` for the bounded structured plan, including both committed revisions,
+their merge base, path changes grouped as code, readable context/manifests, work
+records or native artifacts, record-level three-way conflicts, retained artifact
+object IDs and the chosen context's source handles. Source documents and opaque payload bodies are
 not printed. All declared project inputs, including unselected contexts and
 native data, must be tracked regular files whose committed bytes exactly match
 the confined reader's observations. A declared ignored bundle is not portable

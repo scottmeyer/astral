@@ -33,7 +33,9 @@ astral --root /path/to/repository project project-context --inspect --work AST-0
 astral --root /path/to/repository project git-native-context-bootstrap --inspect
 ```
 
-These commands return JSON; `--inspect` uses two-space indentation. The final
+These commands print readable summaries by default. Add the global `--json`
+flag for machine-readable output with two-space indentation, for example
+`astral --json context list` or `astral project --inspect --json`. The final
 output limit includes formatting and its trailing newline. Inspection with
 `--work` observes the proposed or existing binding without creating a branch,
 worktree, thread or reservation. Omitting `--inspect` launches the selected
@@ -60,16 +62,16 @@ astral project project-context --inspect -- --dangerously-bypass-approvals-and-s
 ```
 
 Before the first literal `--`, Astral consumes `--root`, `--work`, `--inspect`,
-`--proxy`, `--non-interactive`, and `--resume`; remaining arguments retain their
-original order. After the separator,
-everything belongs to Codex. Use it when a Codex option name or an option's value
+`--proxy`, `--non-interactive`, `--resume`, and `--json`; remaining arguments retain
+their original order. After the separator, everything belongs to Codex, including
+its own `--json` option. The same `--json` boundary applies to `astral init`. Use it when a Codex option name or an option's value
 could resemble an Astral option. Astral does not need to recognize every Codex
 flag. An explicitly supplied permission flag remains unchanged; none is added
 by default. The argument is passed as written, with Codex responsible for its
 validity and behavior.
 
 The process builder uses raw OS argument strings and `std::process::Command`,
-never a shell. Inspection requires UTF-8 for an exact JSON preview; it fails
+never a shell. Inspection requires UTF-8 for an exact argument preview; it fails
 instead of displaying a lossy replacement. The low-level process API preserves
 non-UTF-8 arguments on platforms that support them. Limits are 1,024 arguments,
 64 KiB per argument and 256 KiB aggregate argument bytes; final inspection output

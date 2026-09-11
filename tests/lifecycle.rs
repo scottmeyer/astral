@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use ostk_gpt_cache::{
+use astral::{
     lifecycle::{self, Scope},
     project::Project,
     workspace::{WorkerMetadata, WorktreeBinding},
@@ -122,7 +122,7 @@ impl Fixture {
         binding
     }
     fn install_git(&self) {
-        use ostk_gpt_cache::hooks::install::{self, Action, Target};
+        use astral::hooks::install::{self, Action, Target};
         let executable = Path::new(env!("CARGO_BIN_EXE_astral"));
         let plan = install::plan(&self.root, executable, Target::Git, Action::Install).unwrap();
         assert!(plan.blockers.is_empty(), "{:?}", plan.blockers);

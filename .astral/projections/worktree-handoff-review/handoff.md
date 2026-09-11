@@ -11,12 +11,13 @@ completion, Git/Codex advisory hooks and terminal hook confirmation were also
 implemented afterward. Use the [current subsystem overview](../../core/project-context/README.md)
 and work register to select remaining work.
 
-The saved window includes historical document copies and old names such as
-`.ostk-gpt`. Those bytes are part of the immutable export and have not been
-rewritten. Native launch appends the currently selected repository documents;
-they provide updated project guidance alongside the historical conversation.
-The standalone proxy still uses that legacy directory name, as explained in the
+The saved window includes historical document copies and earlier runtime names.
+Those bytes are part of the immutable export and have not been rewritten. Native
+launch appends the currently selected repository documents; they provide updated
+project guidance alongside the historical conversation. The standalone proxy now
+uses `.astral-runtime/`, `ASTRAL_UPSTREAM` and `x-astral-*`; see the
 [current naming and storage contract](../../core/project-context/README.md#names-and-storage).
+Current CLI summaries are human-readable by default; scripts must request `--json`.
 
 ## Saved review provenance
 

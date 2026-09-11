@@ -9,9 +9,10 @@ astral status --work AST-EXAMPLE
 astral recover --work AST-EXAMPLE
 ```
 
-`recover` prints an indented JSON plan with the classification, evidence, exact
-proposed metadata, diagnostics and `plan_sha256`. Review the bound checkout and
-the proposed repair, then supply that full hash:
+`recover` prints a readable plan with its classification, diagnostics and next
+action. Add `--json` for the full structured evidence, proposed metadata and
+`plan_sha256`, for example `astral recover --work AST-EXAMPLE --json`. Review the
+bound checkout and proposed repair, then supply the full plan hash:
 
 ```sh
 astral recover --work AST-EXAMPLE --apply PLAN_SHA256

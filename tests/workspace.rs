@@ -1,9 +1,7 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::project::Result;
-use ostk_gpt_cache::workspace::{
-    BindingStatus, MAX_BINDING_BYTES, WorkerMetadata, WorktreeBinding,
-};
+use astral::project::Result;
+use astral::workspace::{BindingStatus, MAX_BINDING_BYTES, WorkerMetadata, WorktreeBinding};
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
@@ -85,10 +83,7 @@ impl Fixture {
             None,
         )
     }
-    fn inspect(
-        &self,
-        work: &str,
-    ) -> ostk_gpt_cache::project::Result<ostk_gpt_cache::workspace::WorkspacePlan> {
+    fn inspect(&self, work: &str) -> astral::project::Result<astral::workspace::WorkspacePlan> {
         WorktreeBinding::inspect_with_root(&self.root, "fixture", "project-context", work, None)
     }
     fn state_dir(&self) -> PathBuf {

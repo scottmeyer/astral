@@ -1,7 +1,7 @@
 #[cfg(unix)]
 #[test]
 fn embedded_initialization_templates_form_a_valid_empty_work_project() {
-    use ostk_gpt_cache::project::Project;
+    use astral::project::Project;
     use std::collections::BTreeSet;
     use std::fs;
 

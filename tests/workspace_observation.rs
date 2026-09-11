@@ -1,8 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::workspace::{
-    BindingObservation, BindingStatus, OwnershipObservation, WorktreeBinding,
-};
+use astral::workspace::{BindingObservation, BindingStatus, OwnershipObservation, WorktreeBinding};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;

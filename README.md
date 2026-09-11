@@ -82,6 +82,26 @@ For Astral development, keep the installed executable separate from
 `target/release`. Git hooks should reference a stable installed path; promote
 verified builds between worker sessions. See [hook setup](docs/lifecycle-integration.md#commands).
 
+## Terminal output and scripts
+
+Commands print readable summaries and next steps by default. Help and version
+output are plain text; errors go to stderr and return exit status 2. Add the
+global `--json` flag for indented machine-readable output, including help,
+version and errors:
+
+```sh
+astral context list
+astral --json context list
+astral project --inspect --json
+astral --json --help
+```
+
+Scripts that parse Astral output must request `--json`. For `project` and `init`,
+`--json` before the first literal `--` belongs to Astral; after it, the argument
+is forwarded unchanged to Codex. Proxy logs, helper JSONL protocols and hook
+callbacks retain their protocol formats. Interactive Codex and Git subprocesses
+retain their own output; `--json` does not wrap those streams.
+
 ## Context lives in your repository
 
 ```text
@@ -123,12 +143,14 @@ Readable documents, work records and explicit exports travel through Git.
 Credentials, local thread bindings and proxy state stay outside tracked context.
 See the [manifest and selection contract](docs/project-context.md#manifest-and-selection-contract).
 
-The old `.ostk-gpt/` name is still the standalone proxy's default state directory;
-it is not `.astral/` project context. `OSTK_GPT_UPSTREAM`, `x-ostk-*` headers and the
-internal `ostk-gpt-cache` crate also remain compatibility names. Managed project
-proxies use private binding/receipt paths instead. The
-[names and storage reference](.astral/core/project-context/README.md#names-and-storage)
-distinguishes these locations. Old names inside an exported native window remain
+The standalone proxy stores private state in `.astral-runtime/`, separately
+from Git-tracked `.astral/` context. Its upstream environment variable is
+`ASTRAL_UPSTREAM`, and its control headers use the `x-astral-*` prefix. The Cargo
+package and Rust crate are both `astral`. Managed project proxies use private
+binding/receipt paths instead. To keep using an existing private state directory,
+pass its path explicitly with `--state-dir`; Astral does not move or delete it.
+The [names and storage reference](.astral/core/project-context/README.md#names-and-storage)
+distinguishes these locations. Names inside an exported native window remain
 historical; editable handoffs and selected current documents provide updated guidance.
 
 ## Start a task, then pick it up again
@@ -227,8 +249,9 @@ astral commit -- -am 'Update code and context'
 ```
 
 Hook setup shows a plan and asks for confirmation in a terminal. `--yes` supports
-automation; `--dry-run` prints a formatted JSON preview. Git and Codex are
-independent opt-ins, and Codex runtime trust is managed separately.
+automation; `--dry-run` previews without applying. Add `--json` when a script
+needs a machine-readable plan or result. Git and Codex are independent opt-ins,
+and Codex runtime trust is managed separately.
 
 Hooks give bounded offline advice about context drift and retained work. A
 commit does not save a native checkpoint or verify tests. `astral commit`

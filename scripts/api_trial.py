@@ -75,7 +75,7 @@ def completed_response(raw):
 
 
 def call(args, proxy, body, lane, destination):
-    headers = {"Content-Type": "application/json", "Accept": "text/event-stream", "x-ostk-session-id": lane}
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream", "x-astral-session-id": lane}
     if args.auth == "api-key":
         headers["Authorization"] = "Bearer " + os.environ["OPENAI_API_KEY"]
     client = urllib.request.build_opener(urllib.request.ProxyHandler({}))

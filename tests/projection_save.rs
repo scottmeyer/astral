@@ -1,8 +1,8 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::native_bundle::NativeBundle;
-use ostk_gpt_cache::project::Project;
-use ostk_gpt_cache::projection_save::{carry_work_file, publish, validate_target};
+use astral::native_bundle::NativeBundle;
+use astral::project::Project;
+use astral::projection_save::{carry_work_file, publish, validate_target};
 use serde_json::json;
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -91,7 +91,7 @@ fn bundle(opaque: &str) -> NativeBundle {
             .unwrap();
     let manifest = serde_json::to_vec(&json!({
         "schema_version":1,"format":"astral-codex-native",
-        "payload":{"file":"window.json","sha256":ostk_gpt_cache::hash(&payload),"bytes":payload.len(),"item_count":1},
+        "payload":{"file":"window.json","sha256":astral::hash(&payload),"bytes":payload.len(),"item_count":1},
         "compatibility":{"runtime":"codex","runtime_version":"0.154.0","protocol":"openai-responses-lite","provider":"openai","model":"gpt-6-astra","requires_tool_rebinding":true,"identity_scope":"same-account"},
         "source":{"project_id":"save-fixture","revision":null,"dirty":true,"selection_sha256":"a".repeat(64),"history_sha256":"b".repeat(64)},
         "capture":{"boundary":"completed-turn","history_complete":true,"last_checkpoint_index":0},"parents":[]
@@ -252,13 +252,10 @@ fn new_projection_publishes_complete_native_artifacts_and_keeps_preview_outside_
         fs::read(root.path().join(&receipt.payload.path)).unwrap(),
         native.payload_bytes()
     );
-    assert_eq!(
-        receipt.payload.sha256,
-        ostk_gpt_cache::hash(native.payload_bytes())
-    );
+    assert_eq!(receipt.payload.sha256, astral::hash(native.payload_bytes()));
     assert_eq!(
         receipt.bundle_manifest.sha256,
-        ostk_gpt_cache::hash(native.manifest_bytes())
+        astral::hash(native.manifest_bytes())
     );
     assert!(receipt.bundle_manifest.path.contains(&format!(
         "bundles/{}/manifest.json",
@@ -441,7 +438,7 @@ fn immutable_conflict_retains_the_old_reference_and_private_failed_preview() {
     let old = publish(root.path(), "start", &scope(), &bundle("old"), None).unwrap();
     let before = fs::read(root.path().join(&old.projection_manifest.path)).unwrap();
     let candidate = bundle("candidate");
-    let digest = ostk_gpt_cache::hash(candidate.manifest_bytes());
+    let digest = astral::hash(candidate.manifest_bytes());
     let dir = format!(".astral/projections/start/bundles/{digest}");
     put(
         root.path(),

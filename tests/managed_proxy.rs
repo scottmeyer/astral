@@ -1,4 +1,4 @@
-use ostk_gpt_cache::managed_proxy::ManagedProxy;
+use astral::managed_proxy::ManagedProxy;
 use serde_json::Value;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -45,7 +45,7 @@ async fn released(address: SocketAddr) {
     .expect("owned listener must release its port");
 }
 
-async fn start_error(state: &Path) -> ostk_gpt_cache::project::Error {
+async fn start_error(state: &Path) -> astral::project::Error {
     match ManagedProxy::start(state).await {
         Ok(proxy) => {
             proxy.stop().await.unwrap();

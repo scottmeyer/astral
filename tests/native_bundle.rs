@@ -1,5 +1,5 @@
-use ostk_gpt_cache::hash;
-use ostk_gpt_cache::native_bundle::{
+use astral::hash;
+use astral::native_bundle::{
     MAX_ITEMS, MAX_JSON_DEPTH, MAX_JSON_NODES, MAX_MANIFEST_BYTES, MAX_PARENTS, MAX_PAYLOAD_BYTES,
     NativeBundle,
 };
@@ -20,7 +20,7 @@ fn manifest(payload: &[u8], last: usize) -> Value {
     })
 }
 
-fn validate(payload: &str, last: usize) -> ostk_gpt_cache::project::Result<NativeBundle> {
+fn validate(payload: &str, last: usize) -> astral::project::Result<NativeBundle> {
     let manifest = serde_json::to_vec(&manifest(payload.as_bytes(), last)).unwrap();
     NativeBundle::validate(&manifest, payload.as_bytes())
 }

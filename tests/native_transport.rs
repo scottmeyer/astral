@@ -1,3 +1,7 @@
+use astral::{
+    config::{Config, Mode, NativeToolBindingMode},
+    proxy::{App, router},
+};
 use axum::{
     Router,
     body::Bytes,
@@ -8,10 +12,6 @@ use axum::{
 };
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
-use ostk_gpt_cache::{
-    config::{Config, Mode, NativeToolBindingMode},
-    proxy::{App, router},
-};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;

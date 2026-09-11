@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::{hash, native_bundle::NativeBundle, project::Project, projection_save};
+use astral::{hash, native_bundle::NativeBundle, project::Project, projection_save};
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -109,11 +109,9 @@ fn checked(out: Output) -> Value {
 
 fn error(out: Output) -> String {
     assert!(!out.status.success());
-    String::from_utf8_lossy(&out.stderr)
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .next_back()
-        .unwrap()["error"]["code"]
+    let text = String::from_utf8_lossy(&out.stderr);
+    let start = text.rfind("{\n  \"error\":").expect("JSON diagnostic");
+    serde_json::from_str::<Value>(&text[start..]).unwrap()["error"]["code"]
         .as_str()
         .unwrap()
         .to_owned()
@@ -232,7 +230,8 @@ impl Fixture {
 
     fn invoke(&self, args: &[&str], fail: bool) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_astral"));
-        cmd.arg("--root")
+        cmd.arg("--json")
+            .arg("--root")
             .arg(&self.root)
             .args(args)
             .env("ASTRAL_CODEX_BIN", &self.bin)
@@ -409,6 +408,7 @@ fn lost_save_context_injection_acknowledgement_blocks_blind_retry() {
         "Changed save context.\n",
     );
     let out = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--json")
         .arg("--root")
         .arg(&f.root)
         .args([

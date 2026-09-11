@@ -9,7 +9,7 @@ use axum::{
 use futures_util::StreamExt;
 use std::sync::atomic::Ordering;
 
-const HOP: &str = "x-ostk-gpt-hop";
+const HOP: &str = "x-astral-hop";
 
 pub(crate) fn effective_headers(
     mut headers: HeaderMap,
@@ -24,10 +24,10 @@ pub(crate) fn effective_headers(
         "chatgpt-account-id",
         "openai-organization",
         "openai-project",
-        "x-ostk-session-id",
+        "x-astral-session-id",
         "session_id",
         "openai-session-id",
-        "x-ostk-roll-estimate",
+        "x-astral-roll-estimate",
     ] {
         if headers.get_all(name).iter().count() > 1 {
             return Err((StatusCode::BAD_REQUEST, "duplicate identity header"));
@@ -64,7 +64,7 @@ pub(crate) fn strip_header(name: &str, headers: &HeaderMap) -> bool {
             | "upgrade"
             | "content-length"
             | "accept-encoding"
-    ) || name.starts_with("x-ostk-")
+    ) || name.starts_with("x-astral-")
         || headers
             .get_all("connection")
             .iter()

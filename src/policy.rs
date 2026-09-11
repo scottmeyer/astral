@@ -43,7 +43,7 @@ pub fn apply(
         if !obj.contains_key("prompt_cache_key") {
             obj.insert(
                 "prompt_cache_key".into(),
-                json!(format!("ostk-gpt:{}", &lane[..32])),
+                json!(format!("astral:{}", &lane[..32])),
             );
         }
     }
@@ -90,6 +90,17 @@ pub fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn generated_cache_keys_use_the_astral_namespace() {
+        let mut request = json!({"model":"gpt-6-astra"});
+        let lane = "a".repeat(64);
+        apply(&mut request, false, Retention::ProviderDefault, Some(&lane)).unwrap();
+        assert_eq!(
+            request["prompt_cache_key"],
+            format!("astral:{}", "a".repeat(32))
+        );
+    }
+
     #[test]
     fn legacy_modern_and_unknown_have_distinct_controls() {
         for (model, expected) in [

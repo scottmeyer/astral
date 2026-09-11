@@ -1,5 +1,5 @@
 /target/
-/.ostk-gpt/
+/.astral-runtime/
 /.astral-trials/
 __pycache__/
 *.pyc

@@ -120,14 +120,14 @@ pub fn router(app: App) -> Router {
 pub(crate) fn error(status: StatusCode, message: &str) -> Response {
     (
         status,
-        axum::Json(json!({"error":{"type":"ostk_proxy_error", "message":message}})),
+        axum::Json(json!({"error":{"type":"astral_proxy_error", "message":message}})),
     )
         .into_response()
 }
 
 fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
     // Request IDs and cache routing keys are NOT conversation identities.
-    let session = ["x-ostk-session-id", "session_id", "openai-session-id"]
+    let session = ["x-astral-session-id", "session_id", "openai-session-id"]
         .iter()
         .find_map(|h| {
             headers
@@ -325,17 +325,17 @@ async fn handle(
         guard.as_ref().unwrap(),
         now_ms(),
         &app.config,
-        headers.get("x-ostk-roll").is_some_and(|v| v == "1"),
+        headers.get("x-astral-roll").is_some_and(|v| v == "1"),
     );
     if app.config.economic_roll_policy {
-        if let Some(raw) = headers.get("x-ostk-roll-estimate") {
+        if let Some(raw) = headers.get("x-astral-roll-estimate") {
             let estimate = raw
                 .to_str()
                 .ok()
                 .and_then(|s| serde_json::from_str::<crate::economics::RollEstimate>(s).ok());
             let net = match estimate.as_ref().map(|e| e.net_savings()) {
                 Some(Ok(net)) => net,
-                _ => return error(StatusCode::BAD_REQUEST, "invalid x-ostk-roll-estimate"),
+                _ => return error(StatusCode::BAD_REQUEST, "invalid x-astral-roll-estimate"),
             };
             if net <= 0.0 && plan.compact_input.is_some() {
                 plan.compact_input = None;

@@ -1,14 +1,19 @@
-use clap::{Parser, Subcommand, error::ErrorKind};
-use ostk_gpt_cache::config::Config;
-use ostk_gpt_cache::launcher::{
+use astral::config::Config;
+use astral::launcher::{
     DEFAULT_CONTEXT, ProjectArguments, initialization_request, project_request,
 };
-use ostk_gpt_cache::project::{Error, Project};
+use astral::project::{Error, Project};
+use clap::{Parser, Subcommand, error::ErrorKind};
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
+#[path = "astral/arguments.rs"]
+mod arguments;
 #[path = "astral/hooks_cli.rs"]
 mod hooks_cli;
+#[path = "astral/output.rs"]
+mod output;
 
 #[derive(Parser)]
 #[command(
@@ -20,6 +25,9 @@ mod hooks_cli;
 struct Cli {
     #[arg(long, global = true, default_value = ".")]
     root: PathBuf,
+    /// Emit formatted JSON for Astral results and diagnostics.
+    #[arg(long, global = true)]
+    json: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -93,22 +101,18 @@ enum Command {
     Status {
         #[arg(long)]
         work: Option<String>,
-        #[arg(long)]
-        json: bool,
         #[arg(long, default_value_t = 0)]
         offset: usize,
-        #[arg(long, default_value_t = ostk_gpt_cache::status::DEFAULT_PAGE_SIZE)]
+        #[arg(long, default_value_t = astral::status::DEFAULT_PAGE_SIZE)]
         limit: usize,
     },
     /// Diagnose local resume blockers; exit 1 when the inspected page needs attention.
     Doctor {
         #[arg(long)]
         work: Option<String>,
-        #[arg(long)]
-        json: bool,
         #[arg(long, default_value_t = 0)]
         offset: usize,
-        #[arg(long, default_value_t = ostk_gpt_cache::status::DEFAULT_PAGE_SIZE)]
+        #[arg(long, default_value_t = astral::status::DEFAULT_PAGE_SIZE)]
         limit: usize,
     },
     /// Compact and explicitly export a stopped bound worker for Git handoff.
@@ -138,6 +142,7 @@ enum Command {
         #[command(flatten)]
         config: Box<Config>,
     },
+    /// List or validate the repository's available contexts.
     Context {
         #[command(subcommand)]
         command: ContextCommand,
@@ -148,8 +153,9 @@ enum Command {
         command: WorkCommand,
     },
     #[command(
-        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect, --proxy, --non-interactive, and --resume before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. --non-interactive runs codex exec resume; use exec-supported Codex options, including -c sandbox_mode and -c approval_policy. --resume names a private Astral launch receipt."
+        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect, --json, --proxy, --non-interactive, and --resume before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. --non-interactive runs codex exec resume; use exec-supported Codex options, including -c sandbox_mode and -c approval_policy. --resume names a private Astral launch receipt."
     )]
+    /// Launch a context, resume a worker, or preview with --inspect.
     Project {
         #[arg(default_value = DEFAULT_CONTEXT)]
         name: String,
@@ -187,8 +193,8 @@ enum HookCommand {
     Codex,
 }
 
-fn lifecycle_scope(value: &str) -> ostk_gpt_cache::lifecycle::Scope {
-    use ostk_gpt_cache::lifecycle::Scope;
+fn lifecycle_scope(value: &str) -> astral::lifecycle::Scope {
+    use astral::lifecycle::Scope;
     match value {
         "index" => Scope::Index,
         "head" => Scope::Head,
@@ -198,7 +204,9 @@ fn lifecycle_scope(value: &str) -> ostk_gpt_cache::lifecycle::Scope {
 
 #[derive(Subcommand)]
 enum ContextCommand {
+    /// Check the index, documents, work records and native bundle references.
     Validate,
+    /// Show available context selectors and how to launch them.
     List,
 }
 
@@ -224,7 +232,7 @@ enum WorkCommand {
         #[arg(long)]
         expected: String,
     },
-    /// Three-way merge by ID. Returns JSON with merged JSONL or explicit conflicts.
+    /// Three-way merge by ID; use --json to retrieve merged JSONL or conflicts.
     Merge {
         #[arg(long)]
         base: PathBuf,
@@ -239,20 +247,20 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     match cli.command {
         Command::Lifecycle {
             command: LifecycleCommand::Check { scope, work },
-        } => print_workflow(&json!(ostk_gpt_cache::lifecycle::check(
+        } => Ok(Some(json!(astral::lifecycle::check(
             &cli.root,
             lifecycle_scope(&scope),
             work.as_deref()
-        )?)),
-        Command::Hooks { command } => hooks_cli::run(&cli.root, command),
+        )?))),
+        Command::Hooks { command } => hooks_cli::run(&cli.root, command, cli.json),
         Command::Hook { command } => {
             match command {
                 HookCommand::Git {
                     event,
                     manual,
                     args: _,
-                } => ostk_gpt_cache::hooks::git_callback(&cli.root, &event, manual),
-                HookCommand::Codex => ostk_gpt_cache::hooks::codex_callback(),
+                } => astral::hooks::git_callback(&cli.root, &event, manual),
+                HookCommand::Codex => astral::hooks::codex_callback(),
             }
             Ok(None)
         }
@@ -263,15 +271,19 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             claimed_session,
             require_git_registration,
             force_notice,
-        } => print_workflow(&json!(ostk_gpt_cache::hooks::check_callback(
+        } => print_output(
+            &json!(astral::hooks::check_callback(
+                &cli.root,
+                lifecycle_scope(&scope),
+                &audience,
+                &session_scope,
+                claimed_session.as_deref(),
+                require_git_registration,
+                force_notice
+            )?),
+            true,
             &cli.root,
-            lifecycle_scope(&scope),
-            &audience,
-            &session_scope,
-            claimed_session.as_deref(),
-            require_git_registration,
-            force_notice
-        )?)),
+        ),
         Command::Commit { git_args } => {
             let mut command = std::process::Command::new("git");
             command
@@ -312,18 +324,13 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
                     });
                 }
                 match apply {
-                    Some(expected) => ostk_gpt_cache::recovery::apply(&cli.root, &work, &expected)?,
-                    None => json!(ostk_gpt_cache::recovery::plan(&cli.root, &work)?),
+                    Some(expected) => astral::recovery::apply(&cli.root, &work, &expected)?,
+                    None => json!(astral::recovery::plan(&cli.root, &work)?),
                 }
             } else {
-                ostk_gpt_cache::recovery::inventory(
-                    &cli.root,
-                    launch_state_root.as_deref(),
-                    offset,
-                    limit,
-                )?
+                astral::recovery::inventory(&cli.root, launch_state_root.as_deref(), offset, limit)?
             };
-            print_workflow(&value)
+            Ok(Some(value))
         }
         Command::Finish {
             work,
@@ -331,37 +338,35 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             context,
             apply,
         } => {
-            let request = ostk_gpt_cache::completion::FinishRequest {
+            let request = astral::completion::FinishRequest {
                 root: cli.root,
                 work,
                 into,
                 context,
             };
             let value = match apply {
-                Some(expected) => json!(ostk_gpt_cache::completion::apply(&request, &expected)?),
-                None => json!(ostk_gpt_cache::completion::plan(&request)?),
+                Some(expected) => json!(astral::completion::apply(&request, &expected)?),
+                None => json!(astral::completion::plan(&request)?),
             };
-            print_workflow(&value)
+            Ok(Some(value))
         }
         Command::Status {
             work,
-            json,
             offset,
             limit,
-        } => run_status(&cli.root, work.as_deref(), json, offset, limit, false),
+        } => run_status(&cli.root, work.as_deref(), cli.json, offset, limit, false),
         Command::Doctor {
             work,
-            json,
             offset,
             limit,
-        } => run_status(&cli.root, work.as_deref(), json, offset, limit, true),
+        } => run_status(&cli.root, work.as_deref(), cli.json, offset, limit, true),
         Command::Save {
             name,
             work,
             context,
             proxy,
             codex_args,
-        } => ostk_gpt_cache::save::save(ostk_gpt_cache::save::SaveArguments {
+        } => astral::save::save(astral::save::SaveArguments {
             root: cli.root,
             name,
             context,
@@ -383,7 +388,7 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
                     inspect,
                     non_interactive,
                     resume: None,
-                    route: ostk_gpt_cache::launcher::Route::Direct,
+                    route: astral::launcher::Route::Direct,
                     codex_args: Vec::new(),
                 },
                 non_interactive,
@@ -401,15 +406,13 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             command: WorkCommand::Id,
         } => {
             let project = Project::load(&cli.root)?;
-            let id =
-                ostk_gpt_cache::work::generate_id(project.work_ids()).map_err(|error| Error {
-                    code: error.code(),
-                    message: error.to_string(),
-                })?;
-            println!("{id}");
-            Ok(None)
+            let id = astral::work::generate_id(project.work_ids()).map_err(|error| Error {
+                code: error.code(),
+                message: error.to_string(),
+            })?;
+            Ok(Some(json!({"id":id})))
         }
-        Command::Work { command } => run_work(&cli.root, command).map(Some),
+        Command::Work { command } => run_work(&cli.root, command, cli.json).map(Some),
         Command::Project {
             name,
             work,
@@ -426,9 +429,9 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
                 non_interactive,
                 resume,
                 route: if proxy {
-                    ostk_gpt_cache::launcher::Route::Proxy
+                    astral::launcher::Route::Proxy
                 } else {
-                    ostk_gpt_cache::launcher::Route::Direct
+                    astral::launcher::Route::Direct
                 },
                 codex_args: Vec::new(),
             })
@@ -441,7 +444,7 @@ fn inspect_project(request: ProjectArguments) -> Result<Value, Error> {
     let preview = request.preview()?;
     let project = Project::load(&request.root)?;
     if let Some(work) = &request.work {
-        let binding = match ostk_gpt_cache::workspace::WorktreeBinding::inspect(
+        let binding = match astral::workspace::WorktreeBinding::inspect(
             &request.root,
             project.project_id(),
             &request.name,
@@ -472,8 +475,8 @@ fn inspect_project(request: ProjectArguments) -> Result<Value, Error> {
     Ok(output)
 }
 
-fn run_work(root: &std::path::Path, command: WorkCommand) -> Result<Value, Error> {
-    use ostk_gpt_cache::work_records as records;
+fn run_work(root: &std::path::Path, command: WorkCommand, json: bool) -> Result<Value, Error> {
+    use astral::work_records as records;
     let convert = |e: records::Error| Error {
         code: e.code,
         message: e.to_string(),
@@ -537,7 +540,7 @@ fn run_work(root: &std::path::Path, command: WorkCommand) -> Result<Value, Error
                     json!({"outcome":"merged", "jsonl":String::from_utf8(bytes).expect("validated UTF-8")}),
                 ),
                 conflicts => {
-                    println!("{}", render_output(json!(conflicts))?);
+                    print_output(&json!(conflicts), json, root)?;
                     std::process::exit(1);
                 }
             }
@@ -550,7 +553,7 @@ async fn run_project(request: ProjectArguments) -> Result<Option<Value>, Error> 
     if request.inspect {
         return inspect_project(request).map(Some);
     }
-    let code = ostk_gpt_cache::launch::project(request).await?;
+    let code = astral::launch::project(request).await?;
     std::process::exit(code);
 }
 
@@ -560,17 +563,16 @@ async fn run_init(
 ) -> Result<Option<Value>, Error> {
     if request.inspect {
         return Ok(Some(
-            json!({"mode": "inspect", "operation": "initialize", "prompt_version": ostk_gpt_cache::launch::INIT_PROMPT_VERSION, "prompt": ostk_gpt_cache::launch::INIT_PROMPT, "non_interactive": non_interactive, "launch_request": request.preview()?}),
+            json!({"mode": "inspect", "operation": "initialize", "prompt_version": astral::launch::INIT_PROMPT_VERSION, "prompt": astral::launch::INIT_PROMPT, "non_interactive": non_interactive, "launch_request": request.preview()?}),
         ));
     }
     let code =
-        ostk_gpt_cache::launch::initialize(&request.root, &request.codex_args, non_interactive)
-            .await?;
+        astral::launch::initialize(&request.root, &request.codex_args, non_interactive).await?;
     std::process::exit(code);
 }
 
 async fn run_proxy(config: Config) -> Result<Option<Value>, Error> {
-    ostk_gpt_cache::server::run(config)
+    astral::server::run(config)
         .await
         .map(|()| None)
         .map_err(|error| Error {
@@ -579,15 +581,14 @@ async fn run_proxy(config: Config) -> Result<Option<Value>, Error> {
         })
 }
 
-fn render_output(output: Value) -> Result<String, Error> {
-    let text = if output.get("mode").and_then(Value::as_str) == Some("inspect") {
-        serde_json::to_string_pretty(&output)
+fn render_output(value: &Value, json: bool, root: &Path) -> Result<String, Error> {
+    let text = if json {
+        serde_json::to_string_pretty(value).expect("JSON Value serializes")
     } else {
-        serde_json::to_string(&output)
-    }
-    .expect("JSON Value serializes");
+        output::render_in(value, root)?
+    };
     // Bound the actual emitted bytes, including indentation and the final newline.
-    if text.len().saturating_add(1) > ostk_gpt_cache::project::Limits::default().output_bytes {
+    if text.len().saturating_add(1) > astral::project::Limits::default().output_bytes {
         return Err(Error {
             code: "LIMIT_EXCEEDED",
             message: "output byte limit".into(),
@@ -596,14 +597,8 @@ fn render_output(output: Value) -> Result<String, Error> {
     Ok(text)
 }
 
-fn print_workflow(output: &Value) -> Result<Option<Value>, Error> {
-    let text = serde_json::to_string_pretty(output).expect("workflow JSON serializes");
-    if text.len().saturating_add(1) > ostk_gpt_cache::project::Limits::default().output_bytes {
-        return Err(Error {
-            code: "LIMIT_EXCEEDED",
-            message: "workflow output byte limit".into(),
-        });
-    }
+fn print_output(output: &Value, json: bool, root: &Path) -> Result<Option<Value>, Error> {
+    let text = render_output(output, json, root)?;
     println!("{text}");
     Ok(None)
 }
@@ -616,13 +611,13 @@ fn run_status(
     limit: usize,
     doctor: bool,
 ) -> Result<Option<Value>, Error> {
-    let report = ostk_gpt_cache::status::collect(root, work, offset, limit)?;
+    let report = astral::status::collect(root, work, offset, limit)?;
     let text = if json {
         serde_json::to_string_pretty(&report).expect("status report serializes")
     } else {
-        ostk_gpt_cache::status::render(&report)
+        astral::status::render(&report)
     };
-    if text.len().saturating_add(1) > ostk_gpt_cache::project::Limits::default().output_bytes {
+    if text.len().saturating_add(1) > astral::project::Limits::default().output_bytes {
         return Err(Error {
             code: "LIMIT_EXCEEDED",
             message: "status output byte limit".into(),
@@ -635,13 +630,25 @@ fn run_status(
     Ok(None)
 }
 
-fn finish(result: Result<Option<Value>, Error>) {
-    let result = result.and_then(|output| output.map(render_output).transpose());
+fn finish(result: Result<Option<Value>, Error>, json: bool, root: &Path) {
+    let result = result.and_then(|output| {
+        output
+            .map(|value| render_output(&value, json, root))
+            .transpose()
+    });
     match result {
         Ok(Some(output)) => println!("{output}"),
         Ok(None) => {}
         Err(error) => {
-            eprintln!("{}", json!({"error": error}));
+            if json {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({"error": error}))
+                        .expect("error serializes")
+                );
+            } else {
+                eprintln!("{}", output::error_in(&error, root));
+            }
             std::process::exit(2);
         }
     }
@@ -650,31 +657,34 @@ fn finish(result: Result<Option<Value>, Error>) {
 #[tokio::main]
 async fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    match initialization_request(&args) {
+    let (json, presentation_args) = arguments::presentation(&args);
+    match initialization_request(&presentation_args) {
         Ok(Some((request, non_interactive))) => {
-            finish(run_init(request, non_interactive).await);
+            let root = request.root.clone();
+            finish(run_init(request, non_interactive).await, json, &root);
             return;
         }
         Err(error) => {
-            finish(Err(error));
+            finish(Err(error), json, Path::new("."));
             return;
         }
         Ok(None) => {}
     }
-    match project_request(&args) {
+    match project_request(&presentation_args) {
         Ok(Some(request)) => {
-            finish(run_project(request).await);
+            let root = request.root.clone();
+            finish(run_project(request).await, json, &root);
             return;
         }
         Err(error) => {
-            finish(Err(error));
+            finish(Err(error), json, Path::new("."));
             return;
         }
         Ok(None) => {}
     }
     // Preserve the former proxy CLI's direct option form under its new name.
     let direct_proxy = args.is_empty()
-        || args.first().is_some_and(|arg| {
+        || presentation_args.first().is_some_and(|arg| {
             arg.as_encoded_bytes().starts_with(b"-")
                 && !["--help", "-h", "--version", "-V", "--root", "--"]
                     .iter()
@@ -682,12 +692,14 @@ async fn main() {
                 && !arg.as_encoded_bytes().starts_with(b"--root=")
         });
     let cli = if direct_proxy {
-        Config::try_parse().map(|config| Cli {
-            root: PathBuf::from("."),
-            command: Command::Proxy {
-                config: Box::new(config),
-            },
-        })
+        Config::try_parse_from(std::iter::once(OsString::from("astral")).chain(presentation_args))
+            .map(|config| Cli {
+                root: PathBuf::from("."),
+                json,
+                command: Command::Proxy {
+                    config: Box::new(config),
+                },
+            })
     } else {
         Cli::try_parse()
     };
@@ -695,17 +707,36 @@ async fn main() {
         Ok(cli) => cli,
         Err(e) => {
             if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
-                println!("{}", json!({"status": "help", "message": e.to_string()}));
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &json!({"status": "help", "message": e.to_string()})
+                        )
+                        .expect("help serializes")
+                    );
+                } else {
+                    print!("{e}");
+                }
                 return;
             }
-            eprintln!(
-                "{}",
-                json!({"error": {"code": "CLI_USAGE", "message": e.to_string().chars().take(1024).collect::<String>()}})
-            );
+            if json {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &json!({"error": {"code": "CLI_USAGE", "message": e.to_string()}})
+                    )
+                    .expect("error serializes")
+                );
+            } else {
+                eprint!("{e}");
+            }
             std::process::exit(2);
         }
     };
-    finish(run(cli).await);
+    let json = cli.json;
+    let root = cli.root.clone();
+    finish(run(cli).await, json, &root);
 }
 
 #[cfg(test)]
@@ -717,8 +748,13 @@ mod tests {
         let output = json!({"mode": "inspect", "rows": vec![0; 400_000]});
         assert!(
             serde_json::to_vec(&output).unwrap().len()
-                < ostk_gpt_cache::project::Limits::default().output_bytes
+                < astral::project::Limits::default().output_bytes
         );
-        assert_eq!(render_output(output).unwrap_err().code, "LIMIT_EXCEEDED");
+        assert_eq!(
+            render_output(&output, true, Path::new("."))
+                .unwrap_err()
+                .code,
+            "LIMIT_EXCEEDED"
+        );
     }
 }

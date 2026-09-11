@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use ostk_gpt_cache::codex::{StagingOptions, stage_fresh};
+use astral::codex::{StagingOptions, stage_fresh};
 use serde_json::{Value, json};
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -24,7 +24,7 @@ async fn cancelling_the_owned_child_wait_terminates_its_process() {
             "fixture",
         ])
         .arg(&marker);
-    let task = tokio::spawn(ostk_gpt_cache::codex::wait_interactive(command));
+    let task = tokio::spawn(astral::codex::wait_interactive(command));
     let pid: i32 = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Ok(value) = fs::read_to_string(&marker) {
