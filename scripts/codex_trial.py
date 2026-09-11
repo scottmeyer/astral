@@ -98,12 +98,14 @@ class Proxy:
         self.port = 0
         self.generation = 0
         self.exit_codes = []
+        self.request_counts = []
 
     def start(self):
         self.generation += 1
         log = self.folder / f"proxy-{self.generation}.stderr"
         command = [str(self.args.binary), "--listen", f"127.0.0.1:{self.port}",
                    "--upstream", self.args.upstream, "--mode", self.arm,
+                   "--compact-path", getattr(self.args, "compact_path", "/responses/compact"),
                    "--state-dir", str(self.state), "--roll-bytes", str(self.args.roll_bytes),
                    "--keep-recent-turns", "1", "--min-compact-bytes", "4096",
                    "--min-roll-seconds", "0",
@@ -111,8 +113,13 @@ class Proxy:
                    "--compact-timeout-seconds", str(self.args.timeout)]
         if self.args.allow_compatible_compaction:
             command.append("--allow-compatible-compaction")
+        process_env = os.environ.copy()
+        if getattr(self.args, "auth", None) == "gateway":
+            # Gateway routing is already authorized; do not forward a separate
+            # Platform key through the proxy's environment credential fallback.
+            process_env.pop("OPENAI_API_KEY", None)
         with log.open("wb") as stderr:
-            self.process = spawn(command, stdout=subprocess.DEVNULL, stderr=stderr)
+            self.process = spawn(command, stdout=subprocess.DEVNULL, stderr=stderr, env=process_env)
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
@@ -137,6 +144,12 @@ class Proxy:
 
     def close(self):
         if self.process:
+            try:
+                client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                with client.open(self.base_url + "/healthz", timeout=1) as response:
+                    self.request_counts.append(json.load(response).get("requests_received"))
+            except (OSError, ValueError):
+                self.request_counts.append(None)
             self.exit_codes.append(stop(self.process))
             self.process = None
 
@@ -281,7 +294,7 @@ def run_arm(args, arm, folder, prompts):
             "proxy_observed_completions": summary["response"]["completed"] >= 6,
             "recursive_rollover": summary["compact"]["accepted"] >= 2 if arm == "rolling"
                                   else summary["compact"]["requests"] == 0,
-            "projection_reused_after_restart": (len(before_restart or []) == 1 and
+            "projection_reused_after_restart": (len(before_restart or []) == 1 and before_restart[0]["cut"] > 0 and
                                                  before_restart == snapshot(proxy.state))
                                                 if arm == "rolling" else True,
             "all_generations_committed": summary["response"]["committed"] == summary["response"]["requests"]
@@ -296,6 +309,7 @@ def run_arm(args, arm, folder, prompts):
         proxy.close()
         result["seconds"] = round(time.monotonic() - started, 3)
         result["proxy_exit_codes"] = proxy.exit_codes
+        result["proxy_requests_received_by_process"] = proxy.request_counts
         try:
             result["usage"] = summarize_ledger(proxy.state / "ledger.jsonl")
         except (OSError, ValueError, KeyError):
@@ -312,6 +326,7 @@ def main():
     parser.add_argument("--upstream", required=True, help="Explicit API base, without /responses")
     parser.add_argument("--auth", choices=("chatgpt", "api-key"), required=True)
     parser.add_argument("--allow-compatible-compaction", action="store_true")
+    parser.add_argument("--compact-path", default="/responses/compact")
     parser.add_argument("--binary", type=Path, default=ROOT / "target/release/ostk-gpt-cache")
     parser.add_argument("--codex", type=Path, default=Path(shutil.which("codex") or "/opt/codex/bin/codex"))
     parser.add_argument("--catalog", type=Path, help="Optional Codex model catalog JSON (offline discovery)")

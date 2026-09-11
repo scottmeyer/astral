@@ -114,6 +114,7 @@ impl Fixture {
         let upstream_router = Router::new()
             .route("/v1/responses", post(mock_response))
             .route("/v1/responses/compact", post(mock_compact))
+            .route("/v1/compact", post(mock_compact))
             .with_state(mock.clone());
         let upstream = tokio::spawn(async move {
             axum::serve(listener, upstream_router).await.unwrap();
@@ -512,6 +513,15 @@ async fn ambiguous_authentication_is_rejected_before_upstream() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
     assert!(f.records(false).is_empty());
+    let health: Value = reqwest::Client::new()
+        .get(f.url.replace("/v1/responses", "/healthz"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(health["requests_received"], 1);
 }
 
 #[tokio::test]
@@ -642,6 +652,10 @@ async fn unusable_compaction_outputs_never_replace_history() {
     for (i, output) in [
         json!([]),
         json!([{"role":"assistant","content":"a prose summary is not native state"}]),
+        json!([
+            {"type":"reasoning","encrypted_content":"opaque-reasoning","summary":[]},
+            {"type":"message","role":"assistant","content":[{"type":"output_text","text":"ordinary generation"}]}
+        ]),
         json!([{"type":"compaction","encrypted_content":""}]),
         json!([{"type":"compaction","encrypted_content":"X".repeat(5000)}]),
     ]
@@ -664,6 +678,19 @@ async fn unusable_compaction_outputs_never_replace_history() {
         assert_eq!(state["cut"], 0);
         assert_eq!(state["epoch"], 0);
     }
+    let ledger = tokio::fs::read_to_string(f.root.path().join("state/ledger.jsonl"))
+        .await
+        .unwrap();
+    let rejections: Vec<Value> = ledger
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|event| event["kind"] == "compact")
+        .collect();
+    assert_eq!(rejections.len(), 5);
+    assert_eq!(
+        rejections[2]["rejection_reason"],
+        "compact output has no encrypted compaction item"
+    );
 }
 
 #[tokio::test]
@@ -730,4 +757,65 @@ async fn oauth_accounts_and_compatible_api_keys_have_independent_lanes() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
     assert_eq!(f.records(false).len(), 6);
+}
+
+#[tokio::test]
+async fn invalid_configured_ca_bundle_fails_startup_instead_of_disabling_tls_validation() {
+    let root = tempfile::tempdir().unwrap();
+    for (index, contents) in [
+        None,
+        Some(""),
+        Some("not a certificate"),
+        Some("-----BEGIN CERTIFICATE-----\ninvalid-base64\n-----END CERTIFICATE-----\n"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let path = root.path().join(format!("ca-{index}.pem"));
+        if let Some(contents) = contents {
+            tokio::fs::write(&path, contents).await.unwrap();
+        }
+        let mut cfg = Config::parse_from(["test"]);
+        cfg.state_dir = root.path().join(format!("state-{index}"));
+        cfg.upstream_ca_bundle = Some(path);
+        assert!(App::new(cfg).await.is_err());
+    }
+}
+
+#[tokio::test]
+async fn custom_compact_path_handles_autonomous_and_caller_compaction() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compact_path = "/compact".into();
+    })
+    .await;
+    f.request("custom-route")
+        .json(&input())
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(f.records(true).len(), 1);
+    assert!(f.snapshots().await[0]["cut"].as_u64().unwrap() > 0);
+    let raw = b"{ \"model\": \"gpt-6-astra\", \"input\": [] }";
+    let result = reqwest::Client::new()
+        .post(f.url.replace("/v1/responses", "/responses/compact"))
+        .header("content-type", "application/json")
+        .body(raw.as_slice())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(result.status(), StatusCode::OK);
+    result.bytes().await.unwrap();
+    assert_eq!(f.records(true)[1].body, raw);
+    for path in [
+        "https://other.example/compact",
+        "//other.example/compact",
+        "/compact?secret=value",
+    ] {
+        let mut cfg = f.config.clone();
+        cfg.compact_path = path.into();
+        assert!(cfg.validate().is_err());
+    }
 }

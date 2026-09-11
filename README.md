@@ -2,7 +2,7 @@
 
 A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. No `haystack` or other private dependencies.
 
-The crate and proxy executable are named `ostk-gpt-cache`. For fresh Codex sessions through the proxy, see [the trial runner](docs/codex-trials.md). The current [validation receipt](docs/validation.md) separates passing local checks from the blocked live trial and GitHub publication.
+The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for fresh Codex sessions and a standalone Responses client. The [validation receipt](docs/validation.md) records passing live generation and recall, a failed native-rollover gate on the available gateway, and blocked Codex startup and GitHub publication.
 
 The projection is the **complete native `/responses/compact` output**. The proxy maintains a mapping from the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. The client continues sending ordinary full-history requests.
 
@@ -22,9 +22,11 @@ export OPENAI_API_KEY='your-api-key'
 python3 examples/chat.py --model gpt-5.5
 ```
 
-The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defaults to `https://api.openai.com/v1`. Set `--upstream` to a base URL that already includes the API version or backend path; the proxy appends `/responses` and `/responses/compact`.
+The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defaults to `https://api.openai.com/v1`. Set `--upstream` to a base URL that already includes the API version or backend path; the proxy appends `/responses` and, by default, `/responses/compact`. `--compact-path` overrides only the latter path for both autonomous and caller-initiated compaction. Changing the path opens new state lanes. An alternate route must still return the native compact contract; an ordinary generation, even with encrypted reasoning, cannot replace history.
 
-`POST /responses`, `/v1/responses`, and `/backend-api/codex/responses` all map to the configured upstream's `/responses`. Corresponding `/compact` routes forward client-initiated compaction unchanged. `GET /healthz` checks the listener. Other routes are intentionally absent; this is a dedicated Responses proxy, not a file-upload proxy or WebSocket gateway.
+For a managed upstream with a private CA, the proxy adds certificates from `SSL_CERT_FILE` or the explicit `--upstream-ca-bundle /path/to/ca.pem` option to its trusted roots. Certificate verification stays enabled; an unreadable, empty, or invalid configured bundle fails startup.
+
+`POST /responses`, `/v1/responses`, and `/backend-api/codex/responses` all map to the configured upstream's `/responses`. Corresponding `/responses/compact` routes and the `/compact` alias forward caller compaction bodies unchanged. `GET /healthz` checks the listener and reports `requests_received`: entries into generation and caller-compaction handlers since process startup, including requests rejected by identity checks. Health probes and internal upstream compaction do not increment it. This counter distinguishes absent client traffic from traffic without a completed ledger entry. Other routes are intentionally absent; this is a dedicated Responses proxy, not a file-upload proxy or WebSocket gateway.
 
 ## Client contract
 
@@ -84,7 +86,7 @@ For compatible backends, `--allow-compatible-compaction` is an operator assertio
 
 ## Persistence and failure behavior
 
-Lanes are isolated by upstream, effective credentials (`Authorization`, `api-key`, and `x-api-key`), ChatGPT account (`chatgpt-account-id`), OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected. Backends with additional account-selection headers need those headers added to the identity contract before sharing state across accounts.
+Lanes are isolated by upstream, compact path, effective credentials (`Authorization`, `api-key`, and `x-api-key`), ChatGPT account (`chatgpt-account-id`), OpenAI project and organization, session, and model. Each lane is serialized for the complete upstream response lifecycle; distinct lanes run concurrently. Duplicate identity headers are rejected. Backends with additional account-selection headers need those headers added to the identity contract before sharing state across accounts.
 
 Only a successful HTTP response with a completed response object/event and clean EOF commits a candidate. A network failure, truncated SSE stream, incomplete response, or dropped downstream body leaves the previous snapshot in effect. Snapshots use atomic rename after file sync; Unix also syncs the containing directory. A process lock prevents two proxies writing the same directory.
 
@@ -109,7 +111,7 @@ Projection files can contain provider-retained user text as well as encrypted st
 
 Passthrough performs **no request-body rewrite**, including malformed JSON, force-roll headers, reminders, and existing cache controls. Normal HTTP hop-header handling still applies. Streaming response bytes are forwarded as received; a bounded observer reads completion and usage without rebuilding SSE frames.
 
-The stats binary groups generation and compaction calls separately. It reports inclusive input, cache reads, reported writes, output, and measured wire bytes. Cache hit rate is `cached_tokens / input_tokens`. Missing write counts remain unreported. It emits no fixed model prices or hypothetical dollar savings.
+The stats binary groups generation and compaction calls separately. It reports inclusive input, cache reads, reported writes, output, and measured wire bytes. Cache hit rate is `cached_tokens / input_tokens`. Missing write counts remain unreported. Rejected compact outputs include a `rejection_reason` in the ledger, without copying their contents. It emits no fixed model prices or hypothetical dollar savings.
 
 A client disconnect can prevent final usage from arriving. Such calls cannot be fully billed from this local ledger; use provider billing for reconciliation. Compaction calls that completed before cancellation remain separately recorded. `first_byte_ms` and generation elapsed time start after internal compaction; compaction latency has its own row. Neither is presented as total user-perceived latency.
 
@@ -122,6 +124,7 @@ cargo fmt --all --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 cargo build --release --locked --bins
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 Integration tests use real loopback HTTP servers with mocked Responses/compact payloads. They require no OpenAI credential and make no model calls. The CI workflow contains Linux, macOS, and Windows jobs; only Linux was executed during initial development.

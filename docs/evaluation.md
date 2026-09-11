@@ -26,4 +26,4 @@ Primary outcome: total verified spend per successfully completed task, alongside
 
 ## Suggested release gate
 
-Choose the allowed task-quality regression and minimum cost improvement before looking at results. Require no loss of active tool items, no state commits on failed or interrupted generations, and no cross-session projection reuse. The initial repository has no live acceptance receipt; promote it after collecting one on the intended client/backend.
+Choose the allowed task-quality regression and minimum cost improvement before looking at results. Require no loss of active tool items, no state commits on failed or interrupted generations, and no cross-session projection reuse. The current [live receipt](validation.md) verifies generation, tool execution, and full-history recall but fails native rollover on the available gateway. Promotion still requires an accepted recursive projection and its reuse after restart on the intended client/backend. An empty projection surviving restart does not satisfy that gate.

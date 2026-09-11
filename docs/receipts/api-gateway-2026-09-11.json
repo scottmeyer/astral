@@ -1,0 +1,213 @@
+{
+  "model": "gpt-6-astra",
+  "auth": "gateway",
+  "order": [
+    "rolling",
+    "passthrough"
+  ],
+  "seed": 731,
+  "roll_bytes": 64000,
+  "compact_path": "/compact",
+  "fixture_bytes": {
+    "config": 108084,
+    "audit": 108073
+  },
+  "cache_isolation": "Separate stable keys and a distinct instruction prefix per arm; gateways may override routing keys.",
+  "passed": false,
+  "arms": [
+    {
+      "arm": "rolling",
+      "status": "failed_gate",
+      "passed": false,
+      "turns": [
+        {
+          "turn": 1,
+          "seconds": 9.274,
+          "model_calls": 2,
+          "tool_calls": 1,
+          "text": "LOADED"
+        },
+        {
+          "turn": 2,
+          "seconds": 8.613,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "UPDATED"
+        },
+        {
+          "turn": 3,
+          "seconds": 5.813,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "{\"deployment_label\":\"helios-731\",\"region\":\"syd\",\"budget\":23,\"recovery_code\":\"copper-otter\"}",
+          "answer_correct": true
+        },
+        {
+          "turn": 4,
+          "seconds": 13.581,
+          "model_calls": 2,
+          "tool_calls": 1,
+          "text": "AUDITED"
+        },
+        {
+          "turn": 5,
+          "seconds": 8.502,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "{\"deployment_label\":\"helios-731\",\"region\":\"syd\",\"budget\":23,\"recovery_code\":\"copper-otter\",\"audit_code\":\"violet-409\"}",
+          "answer_correct": true
+        },
+        {
+          "turn": 6,
+          "seconds": 12.196,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "{\"deployment_label\":\"helios-731\",\"region\":\"syd\",\"budget\":23,\"recovery_code\":\"copper-otter\",\"audit_code\":\"violet-409\"}",
+          "answer_correct": true
+        }
+      ],
+      "checks": {
+        "recall": true,
+        "fixtures_loaded": true,
+        "all_responses_complete": true,
+        "recursive_rollover": false,
+        "projection_reused_after_restart": false,
+        "all_generations_committed": true
+      },
+      "seconds": 58.099,
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "proxy_requests_received_by_process": [
+        7,
+        1
+      ],
+      "usage": {
+        "response": {
+          "requests": 8,
+          "completed": 8,
+          "accepted": 0,
+          "committed": 8,
+          "usage_records": 8,
+          "input_tokens": 182419,
+          "cached_tokens": 0,
+          "output_tokens": 165,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 5,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 5,
+          "input_tokens": 127356,
+          "cached_tokens": 90879,
+          "output_tokens": 208,
+          "known_cache_write_tokens": 36363,
+          "missing_cache_write_records": 0
+        }
+      }
+    },
+    {
+      "arm": "passthrough",
+      "status": "passed",
+      "passed": true,
+      "turns": [
+        {
+          "turn": 1,
+          "seconds": 5.43,
+          "model_calls": 2,
+          "tool_calls": 1,
+          "text": "LOADED"
+        },
+        {
+          "turn": 2,
+          "seconds": 5.412,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "UPDATED"
+        },
+        {
+          "turn": 3,
+          "seconds": 6.665,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "{\"deployment_label\":\"helios-731\",\"region\":\"syd\",\"budget\":23,\"recovery_code\":\"copper-otter\"}",
+          "answer_correct": true
+        },
+        {
+          "turn": 4,
+          "seconds": 10.104,
+          "model_calls": 2,
+          "tool_calls": 1,
+          "text": "AUDITED"
+        },
+        {
+          "turn": 5,
+          "seconds": 3.832,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "{\"deployment_label\":\"helios-731\",\"region\":\"syd\",\"budget\":23,\"recovery_code\":\"copper-otter\",\"audit_code\":\"violet-409\"}",
+          "answer_correct": true
+        },
+        {
+          "turn": 6,
+          "seconds": 4.118,
+          "model_calls": 1,
+          "tool_calls": 0,
+          "text": "{\"deployment_label\":\"helios-731\",\"region\":\"syd\",\"budget\":23,\"recovery_code\":\"copper-otter\",\"audit_code\":\"violet-409\"}",
+          "answer_correct": true
+        }
+      ],
+      "checks": {
+        "recall": true,
+        "fixtures_loaded": true,
+        "all_responses_complete": true,
+        "recursive_rollover": true,
+        "projection_reused_after_restart": true,
+        "all_generations_committed": true
+      },
+      "seconds": 35.675,
+      "proxy_exit_codes": [
+        0,
+        0
+      ],
+      "proxy_requests_received_by_process": [
+        7,
+        1
+      ],
+      "usage": {
+        "response": {
+          "requests": 8,
+          "completed": 8,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 8,
+          "input_tokens": 182427,
+          "cached_tokens": 0,
+          "output_tokens": 165,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        },
+        "compact": {
+          "requests": 0,
+          "completed": 0,
+          "accepted": 0,
+          "committed": 0,
+          "usage_records": 0,
+          "input_tokens": 0,
+          "cached_tokens": 0,
+          "output_tokens": 0,
+          "known_cache_write_tokens": 0,
+          "missing_cache_write_records": 0
+        }
+      }
+    }
+  ],
+  "interpretation": "One synthetic matched trial, not a production quality or cost benchmark.",
+  "date": "2026-09-11",
+  "upstream": "https://chatgpt.com:18080/backend-api/codex",
+  "observed_compact_contract": "Alternate route returned ordinary generation, without a native compaction item; all attempts rejected. Full history retained."
+}

@@ -52,7 +52,7 @@ The lane stores SHA-256 hashes of all original request input items. Every later 
 
 The separate request-contract fingerprint contains every top-level field except `input`, `stream`, `stream_options`, and `metadata`. Thus tool definitions and ordering, response format, verbosity, reasoning parameters, instructions, cache settings, and model changes cannot silently reuse an old projection. Generated cache keys remain independent of epoch so a rollover does not gratuitously change the routing key as well as the context.
 
-The identity hash includes upstream, authorization, compatible `api-key`/`x-api-key` credentials, `chatgpt-account-id`, organization, project, session, and model. It is not derived from `prompt_cache_key` because callers may share that key across conversations. Authentication rotation opens another lane and can reduce reuse; it cannot mix two credential scopes. Duplicate credential and account headers are rejected before forwarding. A supplied API-key header also suppresses the `OPENAI_API_KEY` environment fallback.
+The identity hash includes upstream, compact path, authorization, compatible `api-key`/`x-api-key` credentials, `chatgpt-account-id`, organization, project, session, and model. It is not derived from `prompt_cache_key` because callers may share that key across conversations. Authentication rotation or a compact-path change opens another lane and can reduce reuse; neither can silently mix two scopes. Duplicate credential and account headers are rejected before forwarding. A supplied API-key header also suppresses the `OPENAI_API_KEY` environment fallback.
 
 ## Tool and reasoning boundary
 

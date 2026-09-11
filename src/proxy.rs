@@ -5,6 +5,7 @@ use crate::{
     store::Store,
     usage::{Observer, Usage},
 };
+use anyhow::Context;
 use axum::{
     Router,
     body::{Body, Bytes},
@@ -16,7 +17,10 @@ use axum::{
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 use std::{
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 use tokio::sync::OwnedMutexGuard;
@@ -29,6 +33,7 @@ pub struct App {
     pub config: Arc<Config>,
     client: reqwest::Client,
     pub store: Arc<Store>,
+    requests_received: Arc<AtomicU64>,
 }
 
 impl App {
@@ -42,15 +47,30 @@ impl App {
             )
             .await?,
         );
-        let client = reqwest::Client::builder()
+        let mut client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(15))
-            .timeout(Duration::from_secs(config.request_timeout_seconds))
-            .build()?;
+            .timeout(Duration::from_secs(config.request_timeout_seconds));
+        if let Some(path) = &config.upstream_ca_bundle {
+            let pem = tokio::fs::read(path)
+                .await
+                .context("cannot read upstream CA bundle")?;
+            let certificates = reqwest::Certificate::from_pem_bundle(&pem)
+                .context("invalid upstream CA bundle")?;
+            anyhow::ensure!(
+                !certificates.is_empty(),
+                "upstream CA bundle contains no certificates"
+            );
+            for certificate in certificates {
+                client = client.add_root_certificate(certificate);
+            }
+        }
+        let client = client.build()?;
         Ok(Self {
             config: Arc::new(config),
             client,
             store,
+            requests_received: Arc::new(AtomicU64::new(0)),
         })
     }
 }
@@ -60,8 +80,9 @@ pub fn router(app: App) -> Router {
     Router::new()
         .route(
             "/healthz",
-            get(|| async {
-                axum::Json(json!({"status":"ok", "version":env!("CARGO_PKG_VERSION")}))
+            get(|State(app): State<App>| async move {
+                axum::Json(json!({"status":"ok", "version":env!("CARGO_PKG_VERSION"),
+                    "requests_received":app.requests_received.load(Ordering::Relaxed)}))
             }),
         )
         .route("/v1/responses", post(handle))
@@ -69,6 +90,7 @@ pub fn router(app: App) -> Router {
         .route("/backend-api/codex/responses", post(handle))
         .route("/v1/responses/compact", post(direct_compact))
         .route("/responses/compact", post(direct_compact))
+        .route("/compact", post(direct_compact))
         .route("/backend-api/codex/responses/compact", post(direct_compact))
         .layer(DefaultBodyLimit::max(limit))
         .with_state(app)
@@ -186,6 +208,7 @@ fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
         })?;
     let parts = json!([
         app.config.upstream,
+        app.config.compact_path,
         headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
@@ -222,12 +245,14 @@ async fn direct_compact(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    app.requests_received.fetch_add(1, Ordering::Relaxed);
     let headers = match effective_headers(headers) {
         Ok(h) => h,
         Err((status, message)) => return error(status, message),
     };
     let suffix = format!(
-        "/responses/compact{}",
+        "{}{}",
+        app.config.compact_path,
         uri.query().map(|q| format!("?{q}")).unwrap_or_default()
     );
     forward(
@@ -249,6 +274,7 @@ async fn handle(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    app.requests_received.fetch_add(1, Ordering::Relaxed);
     let headers = match effective_headers(headers) {
         Ok(h) => h,
         Err((status, message)) => return error(status, message),
@@ -337,6 +363,7 @@ async fn handle(
             let mut compact_usage = None;
             let mut status = None;
             let mut output_bytes = None;
+            let mut rejection_reason = None;
             let outcome = match result {
                 Ok((code, reply)) => {
                     status = Some(code);
@@ -350,7 +377,8 @@ async fn handle(
                                 app.config.min_savings,
                             ) {
                                 Ok(()) => "accepted",
-                                Err(_) => {
+                                Err(error) => {
+                                    rejection_reason = Some(error.to_string());
                                     reason = "compact_rejected";
                                     "rejected_output"
                                 }
@@ -371,6 +399,7 @@ async fn handle(
             };
             app.store.record(&json!({"kind":"compact", "ts_ms":now_ms(), "lane":id, "outcome":outcome, "status":status,
                 "input_bytes":engine::bytes(&prefix), "output_bytes":output_bytes, "usage":compact_usage,
+                "rejection_reason":rejection_reason,
                 "elapsed_ms":start.elapsed().as_millis()})).await;
         } else {
             reason = "compatible_compaction_disabled";
@@ -402,7 +431,7 @@ async fn compact(app: &App, headers: &HeaderMap, body: &Value) -> anyhow::Result
     let r = request(
         app,
         headers,
-        "/responses/compact",
+        &app.config.compact_path,
         serde_json::to_vec(body)?,
         true,
     )
@@ -442,7 +471,11 @@ async fn forward(
         .await
     {
         Ok(r) => r,
-        Err(_) => {
+        Err(err) => {
+            eprintln!(
+                "upstream transport error: {:#}",
+                anyhow::Error::new(err.without_url())
+            );
             app.store.record(&json!({"kind":"response","ts_ms":now_ms(),"lane":lane,"reason":reason,"outcome":"transport_error","bytes_in":bytes_in,"bytes_out":bytes_out})).await;
             return error(
                 StatusCode::BAD_GATEWAY,

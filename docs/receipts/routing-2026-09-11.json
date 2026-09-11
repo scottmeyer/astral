@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-11",
+  "upstream": "https://chatgpt.com:18080/backend-api/codex",
+  "tls_before": {
+    "http_status": 502,
+    "transport_cause": "UnknownIssuer"
+  },
+  "tls_after": {
+    "http_status": 400,
+    "probe": "Empty generation request reached provider model validation"
+  },
+  "fix": "Add roots from SSL_CERT_FILE or --upstream-ca-bundle; keep certificate verification enabled.",
+  "generation_smoke": {
+    "case": "configured-local-gateway-model-smoke",
+    "authorization_header_supplied": false,
+    "status": 200,
+    "event_types": [
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.content_part.added",
+      "response.output_text.delta",
+      "response.output_text.delta",
+      "response.output_text.delta",
+      "response.output_text.delta",
+      "response.output_text.delta",
+      "response.metadata",
+      "response.output_text.done",
+      "response.content_part.done",
+      "response.output_item.done",
+      "response.completed"
+    ],
+    "text": "ASTRAL_LIVE_OK",
+    "completed": true,
+    "elapsed_seconds": 4.943,
+    "requests_received": [
+      1
+    ],
+    "proxy_exit_codes": [
+      0
+    ]
+  },
+  "standard_compact_route": {
+    "path": "/responses/compact",
+    "http_status": 404
+  },
+  "alternate_compact_route": {
+    "path": "/compact",
+    "http_status": 200,
+    "object": "response",
+    "output_types": [
+      "reasoning",
+      "message"
+    ],
+    "native_compaction_item_present": false
+  },
+  "native_rollover_verified": false
+}

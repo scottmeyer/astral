@@ -17,6 +17,8 @@ python3 scripts/codex_trial.py \
 
 Python 3.11+ and a recent Codex CLI are required for execution. The script intentionally accepts only `read-only` or `workspace-write` sandbox modes and preserves runtime requirements. It does not attempt to bypass a blocked nested runtime. The default is `read-only`; the task only reads its two fixture files.
 
+Use `--codex /absolute/path/to/codex` to choose an isolated CLI installation. This workspace installed the official npm package `@openai/codex@0.154.0` and verified its normal ChatGPT login without reading or copying authentication files.
+
 ## API-key trial
 
 Build the release binaries, set `OPENAI_API_KEY` through your normal secret-management method, and run:
@@ -47,6 +49,8 @@ python3 scripts/codex_trial.py \
 
 Backend availability and routing depend on the runtime. A managed installation may use a different configured upstream. The example is not a compatibility claim. ChatGPT OAuth does not activate API Platform retention controls.
 
+Set `--upstream` to the base URL actually configured for the runtime. A private upstream CA can be supplied through `SSL_CERT_FILE`; Astral keeps certificate verification enabled. `--compact-path` changes the native endpoint suffix, whose default is `/responses/compact`. Do not infer native compatibility from an HTTP 200 alone: the response must include the native encrypted `compaction` item. Ordinary `reasoning` items do not meet that contract.
+
 Some installations require an offline model catalog during nested startup:
 
 ```bash
@@ -58,10 +62,40 @@ The runner disables request compression, WebSockets, provider-managed context, a
 
 ## Reading results
 
-The output directory must be new. `report.json` contains arm order, pass/fail gates, end-to-end invocation time, and separate generation/compaction usage totals. Missing cache-write records remain explicitly unknown. `result.json` within each arm is also updated during the run. Raw CLI events, stderr, and private proxy state stay in that directory, which is excluded from git by default. No projection bodies or credentials are included in the report.
+The output directory must be new. `report.json` contains arm order, pass/fail gates, end-to-end invocation time, and separate generation/compaction usage totals. Missing cache-write records remain explicitly unknown. `result.json` within each arm is also updated during the run. The proxy's ingress counter is captured before each shutdown, so a client that never sends a request can be distinguished from an upstream failure. Raw CLI events, stderr, and private proxy state stay in that directory, which is excluded from git by default. No projection bodies or credentials are included in the report.
 
 Compare both arms and retain failed trials. A single successful fixture does not establish semantic equivalence, production cache-hit rates, or spending improvements. See [evaluation.md](evaluation.md) for a broader matched-task protocol.
 
 ## Current environment receipt
 
-On 2026-09-10/11, this workspace's nested Codex CLI stalled in its filesystem-helper startup before emitting its first request. A separate attempt to match the outer execution mode was rejected by the nested runtime's requirements. The bounded runner records this as a failure; no live model or compaction result is claimed. The local Rust HTTP tests exercise recursive rollover, complete tool-history preservation, snapshot restart, and the failure paths independently.
+On 2026-09-11, stable Codex CLI 0.154.0 reported an existing ChatGPT login and successful provider connectivity, but `codex exec` timed out after 45 seconds before emitting events or reaching Astral (`requests_received: 0`). Earlier alpha CLI attempts also stalled during nested startup; an attempt to match the outer execution mode was rejected by the nested runtime's requirements. No requirements were bypassed. The runner records timeout as failure even when the terminated child reports exit code 0.
+
+The standalone client subsequently completed all 16 generation calls and six recall checks across both arms, including restart. All five alternate-route compaction attempts were rejected, so recall used full history and the overall trial failed. The [validation receipt](validation.md) preserves both outcomes. A gateway implementing the native compact contract is still required to validate recursive projection on a live model.
+
+## Responses client independent of Codex startup
+
+`scripts/api_trial.py` runs a six-turn matched test with actual function calls and two synthetic tool results of approximately 108 KB each. It replays complete native output items, checks a corrected budget and older facts without tools, then checks again after proxy restart. It requires two accepted native projections and a nonempty projection reused after restart. The client also handles gateways that emit canonical items in `response.output_item.done` but leave the terminal response's output array empty.
+
+```bash
+python3 scripts/api_trial.py \
+  --model gpt-6-astra \
+  --auth api-key \
+  --upstream https://api.openai.com/v1 \
+  --output .astral-trials/api-client
+```
+
+The client launches each proxy together with its requests. Each arm receives a stable cache key and a distinct instruction prefix because a managed gateway may override the supplied cache key. The task and tools otherwise match. This reduces cross-arm prefix reuse without asserting control over the provider's cache.
+
+`--auth gateway` sends no credential and is only for an already authorized gateway that supplies its own routing. The routing diagnostic performed in this workspace was:
+
+```bash
+python3 scripts/api_trial.py \
+  --model gpt-6-astra \
+  --auth gateway \
+  --upstream https://chatgpt.com:18080/backend-api/codex \
+  --allow-compatible-compaction \
+  --compact-path /compact \
+  --output .astral-trials/gateway-diagnostic
+```
+
+That diagnostic **failed the rollover gate**. Generation worked, but this gateway's `/compact` returned ordinary generation output. Its standard `/responses/compact` route returned 404 in an earlier trial. Neither result establishes native compaction support, and `/compact` should not be treated as a working native replacement on this gateway.

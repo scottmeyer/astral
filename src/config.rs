@@ -26,11 +26,17 @@ pub struct Config {
         default_value = "https://api.openai.com/v1"
     )]
     pub upstream: String,
+    /// Additional trusted PEM certificates, including managed local proxy CAs.
+    #[arg(long, env = "SSL_CERT_FILE")]
+    pub upstream_ca_bundle: Option<PathBuf>,
+    /// Native compact route relative to the upstream base.
+    #[arg(long, default_value = "/responses/compact")]
+    pub compact_path: String,
     #[arg(long, value_enum, default_value = "rolling")]
     pub mode: Mode,
     #[arg(long, default_value = ".ostk-gpt")]
     pub state_dir: PathBuf,
-    /// Explicit opt-in to POST /responses/compact on a compatible upstream.
+    /// Explicit opt-in to native compaction on a compatible upstream.
     #[arg(long)]
     pub allow_compatible_compaction: bool,
     /// Preserve the provider/org default unless explicitly requested.
@@ -78,6 +84,12 @@ impl Config {
         anyhow::ensure!(
             url.query().is_none() && url.fragment().is_none(),
             "upstream cannot contain a query or fragment"
+        );
+        anyhow::ensure!(
+            self.compact_path.starts_with('/')
+                && !self.compact_path.starts_with("//")
+                && !self.compact_path.contains(['?', '#', '\\']),
+            "compact-path must be a path starting with one slash, without query or fragment"
         );
         anyhow::ensure!(
             self.keep_recent_turns > 0,
