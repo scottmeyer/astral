@@ -5,7 +5,7 @@ Inspect the checked-in project context without a proxy:
 
 ```sh
 ./target/release/astral context validate
-./target/release/astral context list
+./target/release/astral context list --plain
 ./target/release/astral project --inspect
 ./target/release/astral project projection:project-workflow --inspect
 ```
@@ -17,6 +17,12 @@ defaults to the `project-context` selection when no name is supplied. An explici
 name goes immediately after `project`; use `--` to forward a prompt without a name.
 For `project` and `init`, `--json` before that separator belongs to Astral; after
 it, `--json` belongs to Codex. Child process streams keep their own format.
+In a terminal, `astral context list` and `astral project --pick` open searchable
+context/work menus and a launch review. Type to filter, use arrows and Enter,
+Escape to go back, and Ctrl-C to cancel. Review details wrap and page with
+Page Up/Page Down. Existing workers preserve their recorded context/worktree;
+native history offers an explicit launch/resume action with `--proxy`. Browsing
+does not start a runtime. Plain, JSON and redirected lists remain reports.
 `astral proxy` runs the server. Bare `astral` and direct proxy flags also start it
 for compatibility with existing runners. `astral project` launches a fresh Codex
 session from selected documents in the current checkout. `astral init` starts

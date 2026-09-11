@@ -13,6 +13,13 @@ astral project --work AST-33ydmjdkmx4k -- --sandbox read-only
 astral project --inspect
 ```
 
+To browse before launching, run `astral context list` in a terminal or explicitly
+request `astral project --pick`. Choose a context, optionally choose a work item,
+then confirm the reviewed launch. Existing workers retain their recorded context.
+Escape goes back and Ctrl-C cancels; neither starts a runtime. Use `context list
+--plain` or `--json` for a report. See the [picker contract](project-context.md#interactive-context-and-work-selection)
+for filtering, route choices and incompatible options.
+
 Inspection previews use readable summaries by default. Add `--json` for
 structured previews and Astral command errors. For `project` and `init`, the flag
 belongs to Astral before the first literal `--`, and to Codex after it; for

@@ -14,6 +14,8 @@ mod arguments;
 mod hooks_cli;
 #[path = "astral/output.rs"]
 mod output;
+#[path = "astral/picker.rs"]
+mod picker;
 
 #[derive(Parser)]
 #[command(
@@ -28,6 +30,9 @@ struct Cli {
     /// Emit formatted JSON for Astral results and diagnostics.
     #[arg(long, global = true)]
     json: bool,
+    /// Print a report without opening the context picker.
+    #[arg(long, global = true, conflicts_with = "json")]
+    plain: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -153,12 +158,15 @@ enum Command {
         command: WorkCommand,
     },
     #[command(
-        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect, --json, --proxy, --non-interactive, and --resume before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. --non-interactive runs codex exec resume; use exec-supported Codex options, including -c sandbox_mode and -c approval_policy. --resume names a private Astral launch receipt."
+        after_help = "The context defaults to project-context when NAME is omitted. Use --pick to search contexts and issues, then review launch in a terminal. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect, --json, --plain, --pick, --proxy, --non-interactive, and --resume before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. --non-interactive runs codex exec resume; use exec-supported Codex options, including -c sandbox_mode and -c approval_policy. --resume names a private Astral launch receipt."
     )]
     /// Launch a context, resume a worker, or preview with --inspect.
     Project {
         #[arg(default_value = DEFAULT_CONTEXT)]
         name: String,
+        /// Search contexts and work items, then review launch interactively.
+        #[arg(long)]
+        pick: bool,
         #[arg(long)]
         inspect: bool,
         #[arg(long)]
@@ -206,7 +214,7 @@ fn lifecycle_scope(value: &str) -> astral::lifecycle::Scope {
 enum ContextCommand {
     /// Check the index, documents, work records and native bundle references.
     Validate,
-    /// Show available context selectors and how to launch them.
+    /// Pick a context in a terminal; use --plain or --json for a report.
     List,
 }
 
@@ -401,7 +409,13 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
         } => Project::load(&cli.root)?.validate().map(Some),
         Command::Context {
             command: ContextCommand::List,
-        } => Project::load(&cli.root)?.list().map(Some),
+        } => {
+            if !cli.json && !cli.plain && picker::available() {
+                picker::run(ProjectArguments::parse(cli.root, Vec::new())?).await
+            } else {
+                Project::load(&cli.root)?.list().map(Some)
+            }
+        }
         Command::Work {
             command: WorkCommand::Id,
         } => {
@@ -415,13 +429,14 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
         Command::Work { command } => run_work(&cli.root, command, cli.json).map(Some),
         Command::Project {
             name,
+            pick,
             work,
             proxy,
             inspect,
             non_interactive,
             resume,
         } => {
-            run_project(ProjectArguments {
+            let request = ProjectArguments {
                 root: cli.root,
                 name,
                 work,
@@ -434,8 +449,8 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
                     astral::launcher::Route::Direct
                 },
                 codex_args: Vec::new(),
-            })
-            .await
+            };
+            run_project_mode(request, pick, cli.json, cli.plain).await
         }
     }
 }
@@ -557,6 +572,22 @@ async fn run_project(request: ProjectArguments) -> Result<Option<Value>, Error> 
     std::process::exit(code);
 }
 
+async fn run_project_mode(
+    request: ProjectArguments,
+    pick: bool,
+    json: bool,
+    plain: bool,
+) -> Result<Option<Value>, Error> {
+    if pick {
+        if json || plain || request.inspect || request.non_interactive || request.resume.is_some() {
+            return Err(Error { code: "CLI_USAGE", message: "--pick cannot be combined with --json, --plain, --inspect, --non-interactive or --resume; use a direct astral project command for those modes".into() });
+        }
+        picker::run(request).await
+    } else {
+        run_project(request).await
+    }
+}
+
 async fn run_init(
     request: ProjectArguments,
     non_interactive: bool,
@@ -657,7 +688,19 @@ fn finish(result: Result<Option<Value>, Error>, json: bool, root: &Path) {
 #[tokio::main]
 async fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let (json, presentation_args) = arguments::presentation(&args);
+    let (presentation, presentation_args) = arguments::presentation(&args);
+    let json = presentation.json;
+    if json && presentation.plain {
+        finish(
+            Err(Error {
+                code: "CLI_USAGE",
+                message: "--plain cannot be combined with --json".into(),
+            }),
+            json,
+            Path::new("."),
+        );
+        return;
+    }
     match initialization_request(&presentation_args) {
         Ok(Some((request, non_interactive))) => {
             let root = request.root.clone();
@@ -673,7 +716,11 @@ async fn main() {
     match project_request(&presentation_args) {
         Ok(Some(request)) => {
             let root = request.root.clone();
-            finish(run_project(request).await, json, &root);
+            finish(
+                run_project_mode(request, presentation.pick, json, presentation.plain).await,
+                json,
+                &root,
+            );
             return;
         }
         Err(error) => {
@@ -696,6 +743,7 @@ async fn main() {
             .map(|config| Cli {
                 root: PathBuf::from("."),
                 json,
+                plain: presentation.plain,
                 command: Command::Proxy {
                     config: Box::new(config),
                 },

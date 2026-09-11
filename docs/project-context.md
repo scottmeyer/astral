@@ -27,15 +27,17 @@ The implemented read-only interface is:
 
 ```sh
 astral --root /path/to/repository context validate
-astral --root /path/to/repository context list
+astral --root /path/to/repository context list --plain
 astral --root /path/to/repository project --inspect
 astral --root /path/to/repository project project-context --inspect --work AST-001
 astral --root /path/to/repository project git-native-context-bootstrap --inspect
 ```
 
-These commands print readable summaries by default. Add the global `--json`
-flag for machine-readable output with two-space indentation, for example
-`astral --json context list` or `astral project --inspect --json`. The final
+These commands print readable summaries. `context list --plain` is always a
+report; without `--plain`, terminal input/output opens the picker described below.
+Redirected output remains a report. Add global `--json` for machine-readable
+output with two-space indentation, for example `astral --json context list` or
+`astral project --inspect --json`. The final
 output limit includes formatting and its trailing newline. Inspection with
 `--work` observes the proposed or existing binding without creating a branch,
 worktree, thread or reservation. Omitting `--inspect` launches the selected
@@ -48,6 +50,49 @@ name must be the first argument after `project`; after options or `--` begin,
 positional arguments belong to Codex. For example, `astral project --inspect --
 "Continue the work"` previews a prompt for the default context. A missing default
 context is reported as unavailable, never silently replaced with another context.
+
+## Interactive context and work selection
+
+```sh
+astral context list
+astral project --pick
+astral project web --pick --work AST-EXAMPLE
+astral project web --pick --proxy -- --model gpt-6-astra
+```
+
+`context list` opens **Choose a context** when stdin and stdout are terminals
+and the terminal supports the picker. `project --pick` requests it explicitly;
+otherwise `project` keeps its direct launch behavior. `--plain`, `--json`, or
+redirected list output suppress automatic interaction. An explicit picker request
+without a usable terminal returns an error rather than waiting for input.
+
+Use Up/Down and Enter, or type to filter. Context search includes its selector and
+purpose. The work screen includes **Continue without a work item**, then every
+local work record ordered by in-progress, open, blocked and complete status, with
+IDs sorting within each status. Search work by ID or title. Backspace revises a
+filter; no-match results cannot be selected. An explicit context name or `--work`
+sets the initial highlighted row rather than immediately launching it.
+
+**Review launch** shows the effective context, work item, branch, worktree, route
+and explicit Codex arguments. Existing workers use their recorded selector and
+checkout, even when a different context was chosen on the first screen. Busy or
+unavailable bindings show a diagnostic and Back instead of a launch action.
+A required native route is named in **Launch with --proxy** or **Resume with
+--proxy**; selecting it explicitly opts into the managed proxy. Other runtime,
+model, permissions and committed-context requirements remain unchanged.
+
+Escape returns to the previous screen and exits from the context screen.
+Ctrl-C cancels from any screen. Browsing and cancellation do not create bindings,
+branches, worktrees or runtime sessions. Terminal settings are restored before
+launch or exit. After the final action, Astral revalidates the context, Git state
+and binding; changes invalidate the review before launch.
+
+`project --pick` cannot be combined with Astral's `--json`, `--plain`, `--inspect`,
+`--non-interactive` or receipt `--resume`. `--proxy` is retained. Arguments after
+the first literal `--`, including Codex's own `--json`, remain literal child
+arguments and are shown on the review screen. Use Page Up/Page Down to read
+wrapped review details. For a new bound worker, omit Codex `--cd`/`-C` and let
+Astral choose the managed worktree directory.
 
 ## Launcher argument contract
 
@@ -62,8 +107,8 @@ astral project project-context --inspect -- --dangerously-bypass-approvals-and-s
 ```
 
 Before the first literal `--`, Astral consumes `--root`, `--work`, `--inspect`,
-`--proxy`, `--non-interactive`, `--resume`, and `--json`; remaining arguments retain
-their original order. After the separator, everything belongs to Codex, including
+`--proxy`, `--non-interactive`, `--resume`, `--pick`, `--plain`, and `--json`;
+remaining arguments retain their original order. After the separator, everything belongs to Codex, including
 its own `--json` option. The same `--json` boundary applies to `astral init`. Use it when a Codex option name or an option's value
 could resemble an Astral option. Astral does not need to recognize every Codex
 flag. An explicitly supplied permission flag remains unchanged; none is added

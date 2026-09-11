@@ -106,3 +106,9 @@ Use `ubs --staged --ci --no-cargo --format=json` for static staged-file checks;
 run Cargo in the complete checkout as above. A staged snapshot can omit required
 unchanged Rust modules. See [development checks](../../docs/development-checks.md)
 for the repaired scanner and honest interpretation of findings.
+
+`tests/context_picker.rs` uses real PTYs and an offline Codex stub to check
+navigation, cancellation, review drift, binding/route preservation, terminal
+restoration and literal arguments. See the dated
+[picker verification](../../docs/context-picker-verification.md); rerun current
+checks before treating those historical results as verification of later changes.

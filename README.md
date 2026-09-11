@@ -72,8 +72,10 @@ astral project
 
 `astral init` asks Codex to scan the repository and build a best-effort
 `.astral/` index. Review the generated documents and commit the context you want
-workers to inherit. If an index already exists, start with `context list`.
-Omitting the context name selects `project-context`.
+workers to inherit. If an index already exists, `astral context list` opens a
+picker when input and output are terminals. Choose a context, optionally choose
+work, and review the launch. Use `astral context list --plain` for a report.
+Without the picker, omitting the context name selects `project-context`.
 
 Fresh document contexts launch directly through Codex. The proxy is opt-in.
 Codex supplies authentication, executable tools and permission enforcement.
@@ -84,13 +86,14 @@ verified builds between worker sessions. See [hook setup](docs/lifecycle-integra
 
 ## Terminal output and scripts
 
-Commands print readable summaries and next steps by default. Help and version
-output are plain text; errors go to stderr and return exit status 2. Add the
-global `--json` flag for indented machine-readable output, including help,
-version and errors:
+Commands print readable summaries and next steps by default. In an interactive
+terminal, `context list` opens the context picker; `--plain` keeps it a report.
+Help and version output are plain text; errors go to stderr and return exit
+status 2. Add global `--json` for indented machine-readable output, including
+help, version and errors:
 
 ```sh
-astral context list
+astral context list --plain
 astral --json context list
 astral project --inspect --json
 astral --json --help
@@ -152,6 +155,28 @@ pass its path explicitly with `--state-dir`; Astral does not move or delete it.
 The [names and storage reference](.astral/core/project-context/README.md#names-and-storage)
 distinguishes these locations. Names inside an exported native window remain
 historical; editable handoffs and selected current documents provide updated guidance.
+
+## Choose context interactively
+
+```sh
+astral context list
+astral project --pick
+astral project web --pick --work AST-EXAMPLE -- --model gpt-6-astra
+```
+
+Use the arrow keys and Enter; type to filter contexts or work IDs/titles.
+The work screen starts with **Continue without a work item**, followed by local
+items ordered by status. The review shows the context, branch, worktree and route.
+An existing worker retains its recorded context and offers **Resume**. A native
+selection offers **Launch with --proxy** or **Resume with --proxy**; choosing that
+action explicitly enables the managed proxy.
+
+Escape goes back, and exits from the context screen. Ctrl-C cancels from any
+screen. Browsing and cancellation do not create a worker or start Codex. Astral
+rechecks the selected state after confirmation; changed context or bindings must
+be reviewed again. Redirected `context list`, `--plain` and `--json` remain reports.
+`project --pick` requires terminal input/output and cannot be combined with
+`--inspect`, `--non-interactive`, `--resume`, `--plain` or Astral's `--json`.
 
 ## Start a task, then pick it up again
 

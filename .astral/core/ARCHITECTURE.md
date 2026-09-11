@@ -67,12 +67,17 @@ valid stages of the workflow; the command does not infer test success.
 selected core, subsystem, projection and work-item sources. Its `schema` module
 defines the public manifest/output types and limits; its `reader` module owns
 bounded, confined filesystem reads. Public `project::*` paths stay stable.
-The `astral` binary provides `context validate`, `context list`, and
+The `astral` binary provides `context validate`, `context list --plain`, and
 `project NAME --inspect`. Inspection returns bounded repository-relative handles
 and hashes with native state UNBOUND.
 Explicit native bundles have separate validated artifact availability metadata.
 It reads confined regular files on Unix; inspection does not launch a runtime or
 execute documented commands. Source hashes observe declared inputs, not an atomic tree.
+
+The CLI's `picker` modules separate the bounded catalog/review model from terminal
+presentation. Interactive `context list` and `project --pick` select local context
+and work, preserve existing worker bindings, and revalidate review evidence before
+calling the existing launcher. Terminal restoration precedes runtime launch.
 
 `src/launch.rs` orchestrates fresh launch and initialization. `src/codex.rs` exposes
 the app-server adapter through three internal modules: `options` translates current

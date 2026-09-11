@@ -26,6 +26,7 @@ anyhow = "1"
 async-stream = "0.3"
 axum = { version = "0.8", features = ["ws"] }
 clap = { version = "4", features = ["derive", "env"] }
+crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 errno = "0.3"
 fs2 = "0.4"
 futures-util = { version = "0.3", features = ["sink"] }
