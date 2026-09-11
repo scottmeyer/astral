@@ -4,6 +4,7 @@
 //! or provider-equivalent context. Nothing here launches an agent or binds native
 //! checkpoint state. Source provenance is inert data, never executable authority.
 
+use crate::native_bundle::{BundleSummary, NativeBundle};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,6 +40,7 @@ fn error(code: &'static str, message: impl Into<String>) -> Error {
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
     pub file_bytes: usize,
+    pub native_payload_bytes: usize,
     pub total_bytes: usize,
     pub files: usize,
     pub entries: usize,
@@ -50,6 +52,7 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             file_bytes: 1_048_576,
+            native_payload_bytes: crate::native_bundle::MAX_PAYLOAD_BYTES,
             total_bytes: 16_777_216,
             files: 2_048,
             entries: 4_096,
@@ -123,7 +126,17 @@ pub struct ProjectionManifest {
     pub subsystems: Vec<String>,
     pub handoff: String,
     pub native_payload_in_repository: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_bundle: Option<NativeBundleReference>,
     pub sources: Vec<Provenance>,
+}
+
+/// Repository-relative immutable artifact reference, never an executable locator.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBundleReference {
+    pub manifest: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -164,6 +177,29 @@ pub struct SourceHandle {
     /// When present, the hash covers this exact JSONL record, without its line ending.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_id: Option<String>,
+}
+
+/// Validated bytes are available locally; destination runtime binding is separate.
+#[derive(Debug, Clone, Serialize)]
+pub struct NativeArtifact {
+    pub projection: String,
+    pub availability: NativeAvailability,
+    pub runtime_binding: NativeRuntimeBinding,
+    pub manifest: SourceHandle,
+    pub payload: SourceHandle,
+    pub bundle: BundleSummary,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeAvailability {
+    Validated,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeRuntimeBinding {
+    Unbound,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -219,6 +255,12 @@ struct Subsystem {
 struct Projection {
     manifest: ProjectionManifest,
     directory: String,
+    native: Option<LoadedNativeBundle>,
+}
+struct LoadedNativeBundle {
+    bundle: NativeBundle,
+    manifest_path: String,
+    payload_path: String,
 }
 struct WorkRecord {
     item: WorkItem,
@@ -359,8 +401,15 @@ impl Reader {
     }
 
     fn read(&mut self, path: &str) -> Result<Vec<u8>> {
+        self.read_limited(path, self.limits.file_bytes)
+    }
+
+    fn read_limited(&mut self, path: &str, file_limit: usize) -> Result<Vec<u8>> {
         relative(path)?;
         if let Some(bytes) = self.contents.get(path) {
+            if bytes.len() > file_limit {
+                return Err(error("LIMIT_EXCEEDED", format!("{path}: file byte limit")));
+            }
             return Ok(bytes.clone());
         }
         if self.contents.len() >= self.limits.files {
@@ -368,7 +417,7 @@ impl Reader {
         }
         let mut file = confined::open(&self.root, path, false)?;
         let remaining = self.limits.total_bytes.saturating_sub(self.total_bytes);
-        let limit = self.limits.file_bytes.min(remaining);
+        let limit = file_limit.min(remaining);
         if file
             .metadata()
             .map_err(|_| error("READ_FAILED", path))?
@@ -402,6 +451,143 @@ impl Reader {
         self.charge(names.len())?;
         Ok(names)
     }
+}
+
+fn load_native_bundle(
+    reader: &mut Reader,
+    directory: &str,
+    projection: &ProjectionManifest,
+    project_id: &str,
+) -> Result<Option<LoadedNativeBundle>> {
+    if projection.kind == "native-checkpoint" && projection.native_bundle.is_none() {
+        return Err(error(
+            "MISSING_NATIVE_BUNDLE",
+            "native-checkpoint projection requires a native_bundle reference",
+        ));
+    }
+    let Some(reference) = &projection.native_bundle else {
+        if projection.native_payload_in_repository {
+            return Err(error(
+                "INVALID_NATIVE_REFERENCE",
+                "native_payload_in_repository requires a native-checkpoint bundle reference",
+            ));
+        }
+        return Ok(None);
+    };
+    if projection.kind != "native-checkpoint" || !projection.native_payload_in_repository {
+        return Err(error(
+            "INVALID_NATIVE_REFERENCE",
+            "a native bundle requires kind=native-checkpoint and native_payload_in_repository=true",
+        ));
+    }
+    if reference.sha256.len() != 64
+        || !reference
+            .sha256
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(error(
+            "INVALID_NATIVE_REFERENCE",
+            "native bundle reference requires a lowercase SHA-256 digest",
+        ));
+    }
+    let manifest_path = join(directory, &reference.manifest)?;
+    let manifest_bytes = reader
+        .read_limited(
+            &manifest_path,
+            reader
+                .limits
+                .file_bytes
+                .min(crate::native_bundle::MAX_MANIFEST_BYTES),
+        )
+        .map_err(native_availability_error)?;
+    if crate::hash(&manifest_bytes) != reference.sha256 {
+        return Err(error(
+            "NATIVE_BUNDLE_DIGEST_MISMATCH",
+            "native manifest differs from its pinned digest",
+        ));
+    }
+    // The version-one payload name is fixed. Neither metadata nor a payload can
+    // redirect file reads outside this manifest's confined directory.
+    let (parent, _) = manifest_path
+        .rsplit_once('/')
+        .ok_or_else(|| error("UNSAFE_PATH", "native manifest has no parent directory"))?;
+    let payload_path = join(parent, "window.json")?;
+    let payload_bytes = reader
+        .read_limited(
+            &payload_path,
+            reader
+                .limits
+                .native_payload_bytes
+                .min(crate::native_bundle::MAX_PAYLOAD_BYTES),
+        )
+        .map_err(native_availability_error)?;
+    let bundle = NativeBundle::validate(&manifest_bytes, &payload_bytes)?;
+    if bundle.manifest().source.project_id != project_id {
+        return Err(error(
+            "NATIVE_PROJECT_MISMATCH",
+            "native bundle source project differs from the project index",
+        ));
+    }
+    Ok(Some(LoadedNativeBundle {
+        bundle,
+        manifest_path,
+        payload_path,
+    }))
+}
+
+fn native_availability_error(failure: Error) -> Error {
+    if failure.code == "PATH_UNAVAILABLE" {
+        error(
+            "NATIVE_BUNDLE_UNAVAILABLE",
+            "declared native bundle file is unavailable",
+        )
+    } else {
+        failure
+    }
+}
+
+fn validate_native_document_roles(
+    reader: &Reader,
+    core: &str,
+    subsystems: &BTreeMap<String, Subsystem>,
+    projections: &BTreeMap<String, Projection>,
+) -> Result<()> {
+    let mut native_hashes = BTreeSet::new();
+    for native in projections.values().filter_map(|p| p.native.as_ref()) {
+        native_hashes.insert(crate::hash(native.bundle.manifest_bytes()));
+        native_hashes.insert(crate::hash(native.bundle.payload_bytes()));
+    }
+    if native_hashes.is_empty() {
+        return Ok(());
+    }
+    let mut paths = BTreeSet::new();
+    for name in ["ARCHITECTURE.md", "RUN.md", "TEST.md"] {
+        paths.insert(join(core, name)?);
+    }
+    for subsystem in subsystems.values() {
+        for doc in std::iter::once(&subsystem.manifest.readme)
+            .chain(subsystem.manifest.rules.iter())
+            .chain(subsystem.manifest.decisions.iter())
+        {
+            paths.insert(join(&subsystem.directory, doc)?);
+        }
+    }
+    for projection in projections.values() {
+        paths.insert(join(&projection.directory, &projection.manifest.handoff)?);
+    }
+    // Comparing observed bytes also covers case aliases, hard links and exact
+    // copies. An unrelated native artifact must not become fresh text merely
+    // because another subsystem declares it as a README or handoff.
+    for path in paths {
+        if native_hashes.contains(&crate::hash(&reader.contents[&path])) {
+            return Err(error(
+                "NATIVE_DOCUMENT_CONFLICT",
+                "a readable document contains a declared native artifact; keep document and native roles separate",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -788,12 +974,7 @@ impl Project {
                 ));
             }
             nonempty(&m.kind, "projection.kind")?;
-            if m.native_payload_in_repository {
-                return Err(error(
-                    "UNSUPPORTED_NATIVE_BINDING",
-                    format!("{path}: native_payload_in_repository=true is not supported"),
-                ));
-            }
+            let native = load_native_bundle(&mut reader, &directory, &m, &manifest.id)?;
             distinct(&m.subsystems, "projection.subsystems")?;
             reader.charge(m.subsystems.len() + m.sources.len())?;
             for id in &m.subsystems {
@@ -823,6 +1004,7 @@ impl Project {
                 Projection {
                     manifest: m,
                     directory,
+                    native,
                 },
             );
         }
@@ -837,6 +1019,7 @@ impl Project {
                 ));
             }
         }
+        validate_native_document_roles(&reader, &core, &subsystems, &projections)?;
         let contents = reader.contents;
         let sources = contents
             .iter()
@@ -873,6 +1056,7 @@ impl Project {
             "schema_version": 1, "status": "valid", "project_id": self.manifest.id,
             "subsystems": self.subsystems.len(), "projections": self.projections.len(),
             "work_items": self.work.len(), "observed_files": self.sources.len(),
+            "native_artifacts": self.projections.values().filter(|p| p.native.is_some()).count(),
             "native_binding": native_binding(),
             "verification_scope": "Declared local inputs only; per-file observations, not an atomic tree snapshot, native recall, or execution verification"
         }))
@@ -964,6 +1148,20 @@ impl Project {
             paths.insert(join(&projection.directory, "projection.toml")?);
             document_paths.insert(join(&projection.directory, &projection.manifest.handoff)?);
         }
+        // Native artifacts are part of a selected subsystem's saved context as
+        // well as an explicit projection. Include every effective native source
+        // in the fingerprint, without treating its payload as a readable document.
+        for projection in projection.into_iter().chain(
+            selected
+                .iter()
+                .map(|id| &self.projections[&self.subsystems[id].manifest.projection]),
+        ) {
+            if let Some(native) = &projection.native {
+                paths.insert(join(&projection.directory, "projection.toml")?);
+                paths.insert(native.manifest_path.clone());
+                paths.insert(native.payload_path.clone());
+            }
+        }
         paths.extend(document_paths.iter().cloned());
         let mut sources: Vec<_> = paths
             .iter()
@@ -1010,8 +1208,55 @@ impl Project {
             "selection": resolved.selection, "sources": resolved.sources, "selection_digest": resolved.selection_digest,
             "fingerprint_scope": "Selected declared source bytes and exact selected JSONL record; no machine path, time, provider semantics, or atomic snapshot claim",
             "metadata": {"project": self.manifest, "subsystems": subsystem_metadata, "projection": resolved.projection.map(|p| &p.manifest)},
-            "work_item": resolved.work.map(|w| &w.item), "native_binding": native_binding()
+            "work_item": resolved.work.map(|w| &w.item), "native_binding": native_binding(),
+            "native_artifacts": self.selected_native_artifacts(&resolved)
         }))
+    }
+
+    /// Metadata only: no payload, instructions, credentials or executable settings.
+    pub fn native_artifacts(
+        &self,
+        selector: &str,
+        work_id: Option<&str>,
+    ) -> Result<Vec<NativeArtifact>> {
+        let resolved = self.resolve(selector, work_id)?;
+        let artifacts = self.selected_native_artifacts(&resolved);
+        if serde_json::to_vec(&artifacts)
+            .expect("artifact metadata serializes")
+            .len()
+            > self.limits.output_bytes
+        {
+            return Err(error(
+                "LIMIT_EXCEEDED",
+                "native artifact metadata output byte limit",
+            ));
+        }
+        Ok(artifacts)
+    }
+
+    fn selected_native_artifacts(&self, resolved: &ResolvedSelection<'_>) -> Vec<NativeArtifact> {
+        let mut artifacts = BTreeMap::new();
+        for projection in resolved.projection.into_iter().chain(
+            resolved
+                .selection
+                .subsystems
+                .iter()
+                .map(|id| &self.projections[&self.subsystems[id].manifest.projection]),
+        ) {
+            if let Some(native) = &projection.native {
+                artifacts
+                    .entry(projection.manifest.id.clone())
+                    .or_insert_with(|| NativeArtifact {
+                        projection: projection.manifest.id.clone(),
+                        availability: NativeAvailability::Validated,
+                        runtime_binding: NativeRuntimeBinding::Unbound,
+                        manifest: self.sources[&native.manifest_path].clone(),
+                        payload: self.sources[&native.payload_path].clone(),
+                        bundle: native.bundle.summary(),
+                    });
+            }
+        }
+        artifacts.into_values().collect()
     }
 
     /// Assemble cached readable context for a fresh session. Explicit and linked
@@ -1038,6 +1283,15 @@ impl Project {
                 .iter()
                 .map(|id| &self.projections[&self.subsystems[id].manifest.projection]),
         ) {
+            if projection.native.is_some() {
+                return Err(error(
+                    "NATIVE_LAUNCH_NOT_IMPLEMENTED",
+                    format!(
+                        "projection {} has a validated native bundle; destination staging and native launch are not implemented",
+                        projection.manifest.id
+                    ),
+                ));
+            }
             if !matches!(
                 projection.manifest.kind.as_str(),
                 "reviewable-design-context" | "reviewable" | "fresh-context"

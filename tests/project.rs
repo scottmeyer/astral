@@ -354,7 +354,7 @@ verification = "Historical only"
                 ".astral/projections/saved/projection.toml",
                 "native_payload_in_repository = false",
                 "native_payload_in_repository = true",
-                "UNSUPPORTED_NATIVE_BINDING",
+                "INVALID_NATIVE_REFERENCE",
             ),
         ] {
             let root = fixture();
@@ -852,6 +852,10 @@ verification = "Historical only"
                 "kind = \"reviewable-design-context\"",
                 &format!("kind = \"{kind}\""),
             );
+            if kind == "native-checkpoint" {
+                assert_eq!(failure(root.path()), "MISSING_NATIVE_BUNDLE");
+                continue;
+            }
             let project = Project::load(root.path()).unwrap();
             assert!(project.inspect("saved", None).is_ok());
             for selector in ["saved", "web", "authentication"] {
@@ -883,7 +887,7 @@ verification = "Historical only"
             "native_payload_in_repository = false",
             "native_payload_in_repository = true",
         );
-        assert_eq!(failure(root.path()), "UNSUPPORTED_NATIVE_BINDING");
+        assert_eq!(failure(root.path()), "INVALID_NATIVE_REFERENCE");
         let root = fixture();
         replace(
             root.path(),
@@ -895,7 +899,7 @@ verification = "Historical only"
     }
 
     #[test]
-    fn native_linked_projection_of_a_selected_dependency_is_not_bypassed() {
+    fn unknown_native_linked_projection_of_a_selected_dependency_is_not_bypassed() {
         let root = fixture();
         let saved = fs::read_to_string(
             root.path()
@@ -905,10 +909,9 @@ verification = "Historical only"
         put(
             root.path(),
             ".astral/projections/native/projection.toml",
-            &saved.replace("id = \"saved\"", "id = \"native\"").replace(
-                "kind = \"reviewable-design-context\"",
-                "kind = \"native-checkpoint\"",
-            ),
+            &saved
+                .replace("id = \"saved\"", "id = \"native\"")
+                .replace("kind = \"reviewable-design-context\"", "kind = \"native\""),
         );
         put(
             root.path(),

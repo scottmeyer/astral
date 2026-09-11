@@ -27,6 +27,14 @@ templates are checked by `tests/project_init_prompt.rs`. The dated
 disposable Codex execution, document recall and read-only denial independently;
 those checks do not establish native restoration or general repository discovery.
 
+`tests/native_bundle.rs` validates exact native bytes, supported item shapes,
+paired tool boundaries, bounded JSON, source metadata and format integrity.
+`tests/native_project.rs` covers confined artifact references, metadata-only
+inspection, scoped fingerprints and rejection of native/readable role overlap.
+These synthetic bundle tests establish local structural behavior, not provider
+decryptability, exporter completeness or successful destination import.
+See the dated [bundle verification receipt](../../docs/native-bundle-verification.md).
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

@@ -5,6 +5,7 @@ pub mod engine;
 pub mod launch;
 pub mod launcher;
 pub mod native_binding;
+pub mod native_bundle;
 mod native_transport;
 pub mod policy;
 pub mod project;

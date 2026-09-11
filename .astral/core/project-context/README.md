@@ -14,7 +14,9 @@ records provenance and unresolved work. The work register is
 The Rust context resolver now validates these files and exposes bounded read-only
 inspection through `astral context validate`, `astral context list`, and
 `astral project NAME --inspect`. Native bindings remain explicitly UNBOUND.
-The branch launcher, native artifact registry, and context merger remain pending.
+Explicit native bundle metadata and payload integrity can now be validated and
+inspected; see [native bundles](../../../docs/native-bundles.md). Capture, native
+launch, branch/worktree binding and context merging remain pending.
 Fresh document launch and embedded-prompt initialization are now implemented;
 see [fresh launch](../../../docs/fresh-launch.md) for usage and limits.
 See [the interface decision](decisions/0003-launcher-interface.md) for direct

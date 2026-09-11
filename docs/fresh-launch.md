@@ -60,9 +60,10 @@ Documents come from the same bounded file observations as their source hashes.
 They are not reread after resolution, and this is not an atomic repository
 snapshot. Fresh selection fingerprints also include linked projection manifests
 used to reject native or unknown kinds. Allowed readable kinds are
-`fresh-context`, `reviewable-design-context`, and `reviewable`. Unknown native
-references, missing declared files, or `native_payload_in_repository=true` fail;
-there is no plaintext fallback for a native checkpoint.
+`fresh-context`, `reviewable-design-context`, and `reviewable`. Explicit native
+bundles can be [validated and inspected](native-bundles.md), but selecting one for
+launch reports native launch as unimplemented. Unknown native references and
+missing declared files fail; there is no plaintext fallback for a native checkpoint.
 
 Codex owns authentication, execution and permission enforcement. Explicit model,
 config, feature, approval and sandbox choices are reflected during staging;

@@ -16,8 +16,8 @@ recovery. Historical commands require a current instruction before execution.
 Explicit native exports will be tracked in Git. A context without any saved
 checkpoint starts fresh from selected documents; repositories without `.astral/`
 can opt into a best-effort inference initializer using a prompt embedded in the
-binary. Fresh launch and initialization are implemented; native exports remain
-planned, as described in the milestone plan.
+binary. Fresh launch, initialization and the native bundle validation contract are
+implemented; capture/export commands remain planned in the milestone plan.
 
 ## Verified current structure
 
@@ -45,6 +45,7 @@ claims in `docs/` retain their original scope and dates.
 selected core, subsystem, projection and work-item sources. The `astral` binary
 provides `context validate`, `context list`, and `project NAME --inspect`. It
 returns bounded repository-relative handles and hashes with native state UNBOUND.
+Explicit native bundles have separate validated artifact availability metadata.
 It reads confined regular files on Unix; it does not launch a runtime or execute
 documented commands. Source hashes observe declared inputs, not an atomic tree.
 
@@ -60,7 +61,11 @@ options. Native checkpoint requirements must be reported before launch.
 A private availability map would locate native
 artifacts without putting machine paths, credentials, or thread IDs in portable
 identity fields. Explicit native exports will be committed through Git; their
-versioned bundle format and compatibility validation remain planned.
+versioned bundle format and structural compatibility validation are implemented in
+`src/native_bundle.rs`. It retains exact manifest/payload/item bytes, checks native
+tool boundaries, and exposes metadata without replaying imported instructions.
+See [native bundles](../../docs/native-bundles.md) for the narrow supported format,
+source-completeness attestations and destination binding limits.
 
 ## Open questions
 

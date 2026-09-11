@@ -2,8 +2,9 @@
 
 Launch is implemented in bounded milestones. The current executable validates
 context, inspects selected inputs, allocates work ID proposals, initializes new
-indexes and launches fresh document contexts in Codex. It does not yet load a
-typed native bundle, restore native state or manage a proxy process.
+indexes and launches fresh document contexts in Codex. It also validates typed
+native bundles and reports their local availability. Native restoration and
+managed proxy processes remain pending.
 The earlier successful native lifecycle tests establish a feasible route, with
 the version and protocol limits in [the lifecycle receipt](native-recovery-lifecycle.md).
 
@@ -49,9 +50,10 @@ does not turn a missing referenced checkpoint into a fresh-session fallback.
 
 The first milestone is complete with the runtime limits documented in
 [fresh launch](fresh-launch.md) and current results in its
-[verification receipt](fresh-launch-verification.md). The next task is the native
-bundle contract.
-The third milestone adds usable native restoration in
+[verification receipt](fresh-launch-verification.md). The second milestone is
+complete: the [native bundle contract](native-bundles.md) and its
+[verification receipt](native-bundle-verification.md) keep artifact integrity
+separate from destination runtime binding. The next milestone adds usable native restoration in
 the existing checkout. Milestone four introduces automatic worktree creation.
 Existing broad work items
 retain their IDs and close only when their acceptance criteria are actually met.

@@ -4,10 +4,11 @@ Fresh launch and repository initialization are now available; see
 [fresh launch](fresh-launch.md). The resolver and inspection contract below
 remain applicable independently of launching.
 
-Astral's project-context work starts with **read-only inspection**, before a
-launcher creates worktrees, accesses native artifacts, or starts an agent. The
-repository carries the shared context; runtime credentials, native payloads and
-thread bindings remain private. The native proxy experiment is a separate layer.
+Astral's project-context work includes **read-only inspection** of documents and
+explicit [native bundles](native-bundles.md), separate from runtime launch. The
+repository carries shared context and explicitly exported native data; runtime
+credentials and thread bindings remain private. The native proxy experiment is a
+separate layer.
 See [the current integration receipt](project-context-verification.md) for tests
 rerun on the merged implementation and the remaining launch boundary.
 The subsequent [unified CLI receipt](cli-verification.md) records the binary
@@ -69,10 +70,10 @@ non-UTF-8 arguments on platforms that support them. Limits are 1,024 arguments,
 64 KiB per argument and 256 KiB aggregate argument bytes; final inspection output
 also remains within the resolver's output budget.
 
-These are argument inspection and invocation primitives. The project CLI does
-**not** yet call the process builder. Native artifact staging, runtime compatibility
-checks, proxy health/lifetime management, and branch/worktree binding remain
-required before real project launch. The requested route is not a verified
+Fresh project launch uses these argument primitives with the
+[documented staging limits](fresh-launch.md). Native artifact staging, destination
+compatibility checks, proxy health/lifetime management, and branch/worktree
+binding remain subsequent work. The requested route is not a verified
 effective route: explicit Codex configuration overrides may change routing.
 A native checkpoint requiring tool rebinding must report that requirement before
 direct launch; it must not trigger an implicit proxy or plaintext substitution.
@@ -87,6 +88,9 @@ direct launch; it must not trigger an implicit proxy or plaintext substitution.
   dependencies. Dependencies are explicit and acyclic, never model-inferred.
 - Named projection directories contain `projection.toml`, a handoff reference,
   subsystem selections and scoped source provenance. Discovery is bounded.
+- A `native-checkpoint` projection declares an explicit digest-pinned
+  `native_bundle` reference. The [bundle contract](native-bundles.md) defines
+  its manifest, immutable payload and structural compatibility validation.
 - Work items are one object per JSONL line, with unique IDs, explicit dependencies
   and acceptance criteria. V1 is a snapshot format, not an append-only event log;
   duplicate IDs, missing references and dependency cycles are errors.
@@ -114,19 +118,21 @@ transactional snapshot of a concurrently changing repository.
 
 The bootstrap is a `reviewable-design-context`, not a packaged native checkpoint.
 It explicitly declares `native_payload_in_repository = false`. Inspection reports
-the native binding as unavailable/unbound; it must not suggest the Markdown
-handoff can stand in for that missing checkpoint. In-repository native payload
-loading is not supported by this first resolver.
+the native binding as unbound; it must not suggest the Markdown handoff can stand
+in for native memory. Explicit version-one native bundles are now read and
+validated through confined paths. Their availability is reported separately from
+destination binding, and their bytes never appear in inspection output.
 
-Native artifact access, compatibility checks, private binding stores and lifecycle
-launch are subsequent work. The [native lifecycle record](native-recovery-lifecycle.md)
+Native capture, destination compatibility checks, private binding stores and
+lifecycle launch are subsequent work. The [native lifecycle record](native-recovery-lifecycle.md)
 describes a tested runtime route, not an artifact registry or general launcher.
 
 ## Safety and platform boundary
 
 The resolver rejects unsupported versions, malformed manifests and JSONL,
 ambiguous names, escaping paths, symlink components and nonregular source files.
-Default limits are 1 MiB per file, 16 MiB aggregate input, 2,048 files, 4,096
+Default limits are 1 MiB per ordinary file, 64 KiB per native manifest, 8 MiB per
+native payload, 16 MiB aggregate input, 2,048 files, 4,096
 discovery entries, dependency depth 64, and 2 MiB JSON output. Exceeding a limit
 is an explicit error. These are filesystem/output budgets, not token estimates.
 

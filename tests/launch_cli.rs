@@ -264,6 +264,6 @@ fn invalid_native_reference_and_conflicting_session_selector_do_not_launch() {
     )
     .unwrap();
     let out = invoke(root.path(), &bin, &log, &["project"], "");
-    assert_eq!(error(&out), "UNSUPPORTED_NATIVE_BINDING");
+    assert_eq!(error(&out), "INVALID_NATIVE_REFERENCE");
     assert_eq!(fs::read(&log).unwrap(), before);
 }

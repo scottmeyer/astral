@@ -18,7 +18,9 @@ for compatibility with existing runners. `astral project` launches a fresh Codex
 session from selected documents in the current checkout. `astral init` starts
 best-effort repository indexing; `astral init --non-interactive` uses `codex exec`.
 See [fresh launch](../../docs/fresh-launch.md) for argument and platform limits.
-Native restoration and managed proxy launch remain pending. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
+Explicit [native bundles](../../docs/native-bundles.md) can be validated with
+`context validate` and inspected with `project NAME --inspect`. Native restoration
+and managed proxy launch remain pending. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
 for the opt-in Codex route and tested resume procedure.
 
 For this experiment, start the proxy on loopback with `--mode passthrough
