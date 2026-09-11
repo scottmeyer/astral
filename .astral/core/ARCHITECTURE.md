@@ -12,6 +12,11 @@ capabilities from the current trusted runtime. Native checkpoints must remain
 native; readable documentation is a separate artifact, never evidence of native
 recovery. Historical commands require a current instruction before execution.
 
+Explicit native exports will be tracked in Git. A context without any saved
+checkpoint starts fresh from selected documents; repositories without `.astral/`
+can opt into a best-effort inference initializer using a prompt embedded in the
+binary. These launch paths remain planned, as described in the milestone plan.
+
 ## Verified current structure
 
 The unified binary is `astral`; `astral proxy` starts the server, while `project`

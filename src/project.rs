@@ -561,6 +561,11 @@ fn check_graph(
 }
 
 impl Project {
+    /// Existing logical work IDs, for collision checks without exposing source text.
+    pub fn work_ids(&self) -> impl Iterator<Item = &str> {
+        self.work.keys().map(String::as_str)
+    }
+
     pub fn load(root: impl AsRef<Path>) -> Result<Self> {
         Self::load_with_limits(root, Limits::default())
     }

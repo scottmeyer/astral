@@ -54,7 +54,7 @@ audits; it does not disable release integrity checks or static detectors. Do not
 report those skipped phases as UBS passes. Separate CI checks above do not include
 `cargo audit`, `cargo deny`, `cargo udeps` or `cargo outdated`.
 
-The current staged static scan completed both language modules across 13 files,
+The binary/UBS repair's staged static scan completed both language modules across 13 files,
 with no failed modules. It exited 1 with 2 critical, 284 warning and 93 informational
 matches, so this is **not a clean scan**. Both critical matches were reviewed:
 
@@ -76,3 +76,23 @@ calls. Review found no introduced production defect: the new context-name expect
 is guarded by a successful peek, existing JSON operations have guaranteed input
 types, and the SIGTERM handler moved unchanged. No detector suppressions were
 added to obtain these results.
+
+## Inspection and work-ID verification, 2026-09-11
+
+After the formatted inspection and random work-ID changes, the current checkout
+passed formatting, strict Clippy, all 119 Rust tests, the locked release build of
+all binaries, and all 18 Python tests. The release CLI validated the 21-record
+project index, printed a work-ID proposal, and emitted valid indented inspection
+JSON selecting `project-context`. These were local checks, with no live-provider
+launch or recovery test in this pass. The launch milestones remain unimplemented.
+
+The staged static UBS scan completed its Rust module across seven files, with
+zero failed modules, and exited 1: 3 critical, 346 warning and 105 informational
+matches. This is not a clean scan. The critical matches were two intentional
+test-only `panic!` callbacks proving oversized inputs never request entropy, and
+the existing `MaybeUninit::assume_init` guarded by successful `fstatat` in the
+confined reader. The encoder's flagged index is masked to 0–31 for a 32-byte
+alphabet. Other findings include test assertions/unwraps, bounded allocations,
+and a test socket closed when its owning function returns. Review found no
+introduced production defect; no detector suppression was added. Reports remain
+in private temporary storage, outside Git.

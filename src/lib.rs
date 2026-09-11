@@ -10,6 +10,7 @@ pub mod proxy;
 pub mod server;
 pub mod store;
 pub mod usage;
+pub mod work;
 pub mod working;
 
 use serde_json::Value;

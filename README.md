@@ -13,6 +13,11 @@ named subsystems or projections to source handles and hashes. Run
 context defaults to `project-context`.
 The native `astral project` launcher remains pending.
 
+Inspection prints formatted JSON. `astral work id` proposes a short random work
+ID for new JSONL records, avoiding per-branch counters. See the
+[launch milestones](docs/launch-plan.md) for fresh initialization, Git-tracked
+native bundles, launch, worktrees and handoff.
+
 Use [the working-state integration](docs/working-state.md) to run the new agent host: `astral-state` manages configured files, checks and immutable artifacts; `examples/agent.py` connects them to Responses tools. It records immediate state changes while freezing model-visible snapshots between native checkpoints. The supplied coding trial compares native compaction, native compaction with the same adapter, and Astral with the adapter and state layer.
 
 The [first coding evaluation](docs/working-evaluation.md) passed all six tasks,

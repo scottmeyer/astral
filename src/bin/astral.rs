@@ -30,6 +30,11 @@ enum Command {
         #[command(subcommand)]
         command: ContextCommand,
     },
+    /// Utilities for Git-native work items.
+    Work {
+        #[command(subcommand)]
+        command: WorkCommand,
+    },
     #[command(
         after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect and --proxy before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. Direct Codex is the requested default; --proxy explicitly requests local proxy routing. Native launch is not implemented yet."
     )]
@@ -51,6 +56,12 @@ enum ContextCommand {
     List,
 }
 
+#[derive(Subcommand)]
+enum WorkCommand {
+    /// Generate a short random ID; printing does not reserve or create a work item.
+    Id,
+}
+
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     if matches!(cli.command, Command::Project { inspect: false, .. }) {
         return Err(Error { code: "LAUNCH_NOT_IMPLEMENTED", message: "Native launch is not implemented; use project NAME --inspect for read-only context inspection".into() });
@@ -63,6 +74,18 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
         Command::Context {
             command: ContextCommand::List,
         } => Project::load(&cli.root)?.list().map(Some),
+        Command::Work {
+            command: WorkCommand::Id,
+        } => {
+            let project = Project::load(&cli.root)?;
+            let id =
+                ostk_gpt_cache::work::generate_id(project.work_ids()).map_err(|error| Error {
+                    code: error.code(),
+                    message: error.to_string(),
+                })?;
+            println!("{id}");
+            Ok(None)
+        }
         Command::Project {
             name,
             work,
@@ -92,14 +115,6 @@ fn inspect_project(request: ProjectArguments) -> Result<Value, Error> {
     let project = Project::load(&request.root)?;
     let mut output = project.inspect(&request.name, request.work.as_deref())?;
     output["launch_request"] = preview;
-    if serde_json::to_vec(&output).expect("JSON serializes").len()
-        > ostk_gpt_cache::project::Limits::default().output_bytes
-    {
-        return Err(Error {
-            code: "LIMIT_EXCEEDED",
-            message: "output byte limit".into(),
-        });
-    }
     Ok(output)
 }
 
@@ -113,7 +128,25 @@ async fn run_proxy(config: Config) -> Result<Option<Value>, Error> {
         })
 }
 
+fn render_output(output: Value) -> Result<String, Error> {
+    let text = if output.get("mode").and_then(Value::as_str) == Some("inspect") {
+        serde_json::to_string_pretty(&output)
+    } else {
+        serde_json::to_string(&output)
+    }
+    .expect("JSON Value serializes");
+    // Bound the actual emitted bytes, including indentation and the final newline.
+    if text.len().saturating_add(1) > ostk_gpt_cache::project::Limits::default().output_bytes {
+        return Err(Error {
+            code: "LIMIT_EXCEEDED",
+            message: "output byte limit".into(),
+        });
+    }
+    Ok(text)
+}
+
 fn finish(result: Result<Option<Value>, Error>) {
+    let result = result.and_then(|output| output.map(render_output).transpose());
     match result {
         Ok(Some(output)) => println!("{output}"),
         Ok(None) => {}
@@ -172,4 +205,19 @@ async fn main() {
         }
     };
     finish(run(cli).await);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indentation_is_included_in_the_output_budget() {
+        let output = json!({"mode": "inspect", "rows": vec![0; 400_000]});
+        assert!(
+            serde_json::to_vec(&output).unwrap().len()
+                < ostk_gpt_cache::project::Limits::default().output_bytes
+        );
+        assert_eq!(render_output(output).unwrap_err().code, "LIMIT_EXCEEDED");
+    }
 }

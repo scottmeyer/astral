@@ -26,8 +26,10 @@ astral --root /path/to/repository project project-context --inspect --work AST-0
 astral --root /path/to/repository project git-native-context-bootstrap --inspect
 ```
 
-These commands return JSON. Omitting `--inspect` from `project` must fail rather
-than imply that an agent was launched. The root defaults to the current directory;
+These commands return JSON; `--inspect` uses two-space indentation. The final
+output limit includes formatting and its trailing newline. Omitting `--inspect`
+from `project` must fail rather than imply that an agent was launched.
+The root defaults to the current directory;
 it is not an instruction to search other projects or the user's session archive.
 Without an explicit context, `astral project` selects `project-context`. An explicit
 name must be the first argument after `project`; after options or `--` begin,
@@ -83,6 +85,10 @@ direct launch; it must not trigger an implicit proxy or plaintext substitution.
 - Work items are one object per JSONL line, with unique IDs, explicit dependencies
   and acceptance criteria. V1 is a snapshot format, not an append-only event log;
   duplicate IDs, missing references and dependency cycles are errors.
+- New work IDs come from `astral work id`: `AST-` plus twelve random lowercase
+  Crockford base32 characters (60 bits). The command proposes an ID without
+  creating/reserving a record. Existing IDs remain stable; future writes and
+  merges must still reject duplicates. Do not allocate by incrementing a counter.
 - An unqualified name must identify exactly one subsystem or projection. If both
   exist, select `subsystem:NAME` or `projection:NAME` explicitly.
 - Source descriptions and availability statements are data, not filesystem paths
@@ -131,3 +137,6 @@ binds branches/worktrees without overwriting local changes. AST-004 adds explici
 native artifact composition/export/resume. AST-009 combines these in the guarded
 launcher. Work state and code will travel together, but semantic conflicts and
 historical verification will never be silently promoted to current truth.
+
+The [launch milestone plan](launch-plan.md) records the accepted Git export and
+fresh/bootstrap behavior, concrete acceptance gates, and the next work IDs.

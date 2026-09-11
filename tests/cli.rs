@@ -157,7 +157,7 @@ fn help(args: &[&str]) -> String {
 #[test]
 fn unified_help_describes_commands_and_default_project_context() {
     let global = help(&["--help"]);
-    for command in ["proxy", "context", "project"] {
+    for command in ["proxy", "context", "project", "work"] {
         assert!(global.contains(command), "missing {command}: {global}");
     }
     assert!(global.contains("astral"));

@@ -589,6 +589,9 @@ fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
+        let rendered = std::str::from_utf8(&output.stdout).unwrap();
+        assert!(rendered.starts_with("{\n"));
+        assert!(rendered.contains("\n  \"launch_request\": {\n"));
         let result: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(result["selection"]["id"], DEFAULT_CONTEXT);
         assert_eq!(
@@ -620,6 +623,36 @@ fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
         serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
         "LAUNCH_NOT_IMPLEMENTED"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_work_id_prints_a_proposal_without_creating_a_record() {
+    let root = tempfile::tempdir().unwrap();
+    project_fixture(root.path());
+    let register = root.path().join(".astral/work/items.jsonl");
+    let before = fs::read(&register).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_astral"))
+        .arg("--root")
+        .arg(root.path())
+        .args(["work", "id"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let id = std::str::from_utf8(&output.stdout).unwrap().trim_end();
+    assert_eq!(id.len(), 16);
+    assert!(id.starts_with("AST-"));
+    assert!(
+        id[4..]
+            .bytes()
+            .all(|b| b"0123456789abcdefghjkmnpqrstvwxyz".contains(&b))
+    );
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read(register).unwrap(), before);
 }
 
 #[cfg(unix)]
