@@ -62,3 +62,12 @@ confirmed; no suppression was added. UBS Cargo/audit phases were skipped;
 the independent Cargo checks above ran against the complete checkout.
 
 Private logs and release metadata are retained outside tracked source.
+
+## Installed release
+
+Source commit: `14840af6ef29b7d81f31f4ee88dac482b6e86afd`.
+The verified release was archived and atomically promoted to
+`~/.local/bin/astral` as an independent regular file. Its SHA-256 is
+`8a9e0ceb418bb4164988aeb02bf23b53538b6241c594fa82754c50754ff7aa26`.
+The previous binary remains archived. Nine Git/Codex hook and configuration
+files matched their pre-install hashes; runtime trust settings were not changed.
