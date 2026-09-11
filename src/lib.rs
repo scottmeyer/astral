@@ -4,6 +4,7 @@ pub mod config;
 pub mod economics;
 pub mod engine;
 pub mod policy;
+pub mod project;
 pub mod proxy;
 pub mod store;
 pub mod usage;

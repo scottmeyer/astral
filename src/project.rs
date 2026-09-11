@@ -1,0 +1,930 @@
+//! Read-only, bounded inspection of Git-native project context.
+//!
+//! Handles fingerprint observed source bytes, not an atomic filesystem snapshot
+//! or provider-equivalent context. Nothing here launches an agent or binds native
+//! checkpoint state. Source provenance is inert data, never executable authority.
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Error {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for Error {}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+fn error(code: &'static str, message: impl Into<String>) -> Error {
+    let message = message.into();
+    Error {
+        code,
+        // Diagnostic output must remain bounded even for a hostile manifest path.
+        message: message.chars().take(512).collect(),
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    pub file_bytes: usize,
+    pub total_bytes: usize,
+    pub files: usize,
+    pub entries: usize,
+    pub graph_depth: usize,
+    pub output_bytes: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            file_bytes: 1_048_576,
+            total_bytes: 16_777_216,
+            files: 2_048,
+            entries: 4_096,
+            graph_depth: 64,
+            output_bytes: 2_097_152,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Identity {
+    pub scope: String,
+    pub runtime_bindings: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectManifest {
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_status: Option<String>,
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub core: String,
+    pub projections: String,
+    pub work_items: String,
+    pub identity: Identity,
+    pub subsystems: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubsystemManifest {
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_status: Option<String>,
+    pub id: String,
+    pub purpose: String,
+    pub readme: String,
+    pub rules: Vec<String>,
+    pub decisions: Vec<String>,
+    pub work_items: Vec<String>,
+    pub projection: String,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Provenance {
+    pub id: String,
+    pub kind: String,
+    pub scope: String,
+    pub availability: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator_policy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionManifest {
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_status: Option<String>,
+    pub id: String,
+    pub kind: String,
+    pub subsystems: Vec<String>,
+    pub handoff: String,
+    pub native_payload_in_repository: bool,
+    pub sources: Vec<Provenance>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkStatus {
+    Open,
+    InProgress,
+    Blocked,
+    Complete,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkItem {
+    pub schema_version: u32,
+    pub id: String,
+    pub title: String,
+    pub status: WorkStatus,
+    pub depends_on: Vec<String>,
+    pub acceptance: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceHandle {
+    pub path: String,
+    pub sha256: String,
+    pub bytes: usize,
+    /// When present, the hash covers this exact JSONL record, without its line ending.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_id: Option<String>,
+}
+
+struct Subsystem {
+    manifest: SubsystemManifest,
+    directory: String,
+}
+struct Projection {
+    manifest: ProjectionManifest,
+    directory: String,
+}
+struct WorkRecord {
+    item: WorkItem,
+    source: SourceHandle,
+}
+
+pub struct Project {
+    manifest: ProjectManifest,
+    subsystems: BTreeMap<String, Subsystem>,
+    projections: BTreeMap<String, Projection>,
+    work: BTreeMap<String, WorkRecord>,
+    sources: BTreeMap<String, SourceHandle>,
+    limits: Limits,
+}
+
+fn relative(value: &str) -> Result<()> {
+    if value.is_empty()
+        || value.contains(['\\', ':', '\0'])
+        || value
+            .split('/')
+            .any(|c| c.is_empty() || c == "." || c == "..")
+        || Path::new(value).is_absolute()
+    {
+        return Err(error(
+            "UNSAFE_PATH",
+            format!("expected a confined relative path: {value:?}"),
+        ));
+    }
+    Ok(())
+}
+
+fn join(base: &str, child: &str) -> Result<String> {
+    relative(base)?;
+    relative(child)?;
+    Ok(format!("{base}/{child}"))
+}
+
+fn identifier(value: &str) -> Result<()> {
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || !value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+    {
+        return Err(error(
+            "INVALID_ID",
+            format!("invalid logical identifier: {value:?}"),
+        ));
+    }
+    Ok(())
+}
+
+fn nonempty(value: &str, field: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        return Err(error("INVALID_FIELD", format!("{field} must not be empty")));
+    }
+    Ok(())
+}
+
+fn version(v: u32, path: &str) -> Result<()> {
+    if v != 1 {
+        return Err(error(
+            "UNSUPPORTED_SCHEMA",
+            format!("{path}: schema_version must be 1"),
+        ));
+    }
+    Ok(())
+}
+
+fn distinct(values: &[String], field: &str) -> Result<()> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        nonempty(value, field)?;
+        if !seen.insert(value) {
+            return Err(error(
+                "DUPLICATE_REFERENCE",
+                format!("{field}: duplicate {value:?}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn schema<T: serde::de::DeserializeOwned>(bytes: &[u8], path: &str) -> Result<T> {
+    let text = std::str::from_utf8(bytes).map_err(|_| error("INVALID_UTF8", path))?;
+    // Avoid echoing entire source lines or private provenance through parser diagnostics.
+    toml::from_str(text).map_err(|_| {
+        error(
+            "INVALID_MANIFEST",
+            format!("{path}: invalid TOML or schema fields"),
+        )
+    })
+}
+
+/// Descriptor-relative filesystem access. No symlink inside the repository is followed.
+/// Individual observations are protected; this is not a transactional tree snapshot.
+struct Reader {
+    root: File,
+    limits: Limits,
+    total_bytes: usize,
+    entries: usize,
+    contents: BTreeMap<String, Vec<u8>>,
+}
+
+impl Reader {
+    fn new(root: &Path, limits: Limits) -> Result<Self> {
+        Ok(Self {
+            root: confined::root(root)?,
+            limits,
+            total_bytes: 0,
+            entries: 0,
+            contents: BTreeMap::new(),
+        })
+    }
+
+    fn charge(&mut self, count: usize) -> Result<()> {
+        self.entries = self
+            .entries
+            .checked_add(count)
+            .ok_or_else(|| error("LIMIT_EXCEEDED", "entry count"))?;
+        if self.entries > self.limits.entries {
+            return Err(error("LIMIT_EXCEEDED", "entry count"));
+        }
+        Ok(())
+    }
+
+    fn read(&mut self, path: &str) -> Result<Vec<u8>> {
+        relative(path)?;
+        if let Some(bytes) = self.contents.get(path) {
+            return Ok(bytes.clone());
+        }
+        if self.contents.len() >= self.limits.files {
+            return Err(error("LIMIT_EXCEEDED", "file count"));
+        }
+        let mut file = confined::open(&self.root, path, false)?;
+        let remaining = self.limits.total_bytes.saturating_sub(self.total_bytes);
+        let limit = self.limits.file_bytes.min(remaining);
+        if file
+            .metadata()
+            .map_err(|_| error("READ_FAILED", path))?
+            .len()
+            > limit as u64
+        {
+            return Err(error(
+                "LIMIT_EXCEEDED",
+                format!("{path}: file or aggregate byte limit"),
+            ));
+        }
+        let mut bytes = Vec::new();
+        file.by_ref()
+            .take((limit as u64).saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|_| error("READ_FAILED", path))?;
+        if bytes.len() > limit {
+            return Err(error(
+                "LIMIT_EXCEEDED",
+                format!("{path}: file or aggregate byte limit"),
+            ));
+        }
+        self.total_bytes += bytes.len();
+        self.contents.insert(path.to_owned(), bytes.clone());
+        Ok(bytes)
+    }
+
+    fn directory(&mut self, path: &str) -> Result<Vec<String>> {
+        let file = confined::open(&self.root, path, true)?;
+        let names = confined::names(file, self.limits.entries.saturating_sub(self.entries))?;
+        self.charge(names.len())?;
+        Ok(names)
+    }
+}
+
+#[cfg(unix)]
+mod confined {
+    use super::*;
+    use std::ffi::{CStr, CString};
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
+    use std::os::unix::fs::OpenOptionsExt;
+
+    pub fn root(path: &Path) -> Result<File> {
+        // The caller chooses the root. Resolve its aliases once; confinement starts here.
+        let path = path
+            .canonicalize()
+            .map_err(|_| error("INVALID_ROOT", "repository root is unavailable"))?;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(path)
+            .map_err(|_| {
+                error(
+                    "INVALID_ROOT",
+                    "repository root must be a readable directory",
+                )
+            })
+    }
+
+    pub fn open(root: &File, path: &str, directory: bool) -> Result<File> {
+        relative(path)?;
+        let mut parent = root.try_clone().map_err(|_| error("READ_FAILED", path))?;
+        let components: Vec<_> = path.split('/').collect();
+        for (index, component) in components.iter().enumerate() {
+            let is_dir = index + 1 != components.len() || directory;
+            let name = CString::new(*component).map_err(|_| error("UNSAFE_PATH", path))?;
+            let mut before = std::mem::MaybeUninit::<libc::stat>::uninit();
+            // SAFETY: name is terminated, parent is live, and fstatat initializes before on success.
+            let rc = unsafe {
+                libc::fstatat(
+                    parent.as_raw_fd(),
+                    name.as_ptr(),
+                    before.as_mut_ptr(),
+                    libc::AT_SYMLINK_NOFOLLOW,
+                )
+            };
+            if rc != 0 {
+                return Err(error("PATH_UNAVAILABLE", path));
+            }
+            // SAFETY: successful fstatat above initialized the structure.
+            let before = unsafe { before.assume_init() };
+            let kind = before.st_mode & libc::S_IFMT;
+            if kind == libc::S_IFLNK {
+                return Err(error("SYMLINK_REJECTED", path));
+            }
+            if kind != if is_dir { libc::S_IFDIR } else { libc::S_IFREG } {
+                return Err(error("INVALID_FILE_TYPE", path));
+            }
+            let flags = libc::O_RDONLY
+                | libc::O_NOFOLLOW
+                | libc::O_NONBLOCK
+                | libc::O_CLOEXEC
+                | if is_dir { libc::O_DIRECTORY } else { 0 };
+            // SAFETY: parent is a live directory descriptor and name is terminated.
+            let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
+            if fd < 0 {
+                return Err(error("PATH_UNAVAILABLE", path));
+            }
+            // SAFETY: fd was newly opened and is uniquely owned by this File.
+            let next = unsafe { File::from_raw_fd(fd) };
+            use std::os::unix::fs::MetadataExt;
+            let actual = next.metadata().map_err(|_| error("READ_FAILED", path))?;
+            // libc's dev_t/ino_t widths differ across supported Unix targets.
+            #[allow(clippy::unnecessary_cast)]
+            let expected_identity = (before.st_dev as u64, before.st_ino as u64);
+            if (actual.dev(), actual.ino()) != expected_identity
+                || if is_dir {
+                    !actual.is_dir()
+                } else {
+                    !actual.is_file()
+                }
+            {
+                return Err(error("FILESYSTEM_CHANGED", path));
+            }
+            parent = next;
+        }
+        Ok(parent)
+    }
+
+    pub fn names(file: File, limit: usize) -> Result<Vec<String>> {
+        struct Directory(*mut libc::DIR);
+        impl Drop for Directory {
+            fn drop(&mut self) {
+                unsafe {
+                    libc::closedir(self.0);
+                }
+            }
+        }
+        let fd = file.into_raw_fd();
+        // SAFETY: fd is an owned directory descriptor; fdopendir takes it on success.
+        let raw = unsafe { libc::fdopendir(fd) };
+        if raw.is_null() {
+            // SAFETY: fdopendir failed and did not take ownership.
+            unsafe {
+                libc::close(fd);
+            }
+            return Err(error("READ_FAILED", "cannot list projection directory"));
+        }
+        let dir = Directory(raw);
+        let mut names = Vec::new();
+        loop {
+            // POSIX readdir requires clearing errno to distinguish EOF from failure.
+            errno::set_errno(errno::Errno(0));
+            // SAFETY: dir stays live and this function is its exclusive reader.
+            let entry = unsafe { libc::readdir(dir.0) };
+            if entry.is_null() {
+                if errno::errno().0 != 0 {
+                    return Err(error("READ_FAILED", "cannot list projection directory"));
+                }
+                break;
+            }
+            // SAFETY: readdir returns a terminated d_name valid until the next call.
+            let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }
+                .to_str()
+                .map_err(|_| error("INVALID_UTF8", "projection directory entry"))?;
+            if name == "." || name == ".." {
+                continue;
+            }
+            if names.len() >= limit {
+                return Err(error("LIMIT_EXCEEDED", "directory entry count"));
+            }
+            relative(name)?;
+            names.push(name.to_owned());
+        }
+        names.sort();
+        Ok(names)
+    }
+}
+
+#[cfg(not(unix))]
+mod confined {
+    use super::*;
+    fn unsupported() -> Error {
+        error(
+            "UNSUPPORTED_PLATFORM",
+            "confined project inspection currently requires Unix",
+        )
+    }
+    pub fn root(_: &Path) -> Result<File> {
+        Err(unsupported())
+    }
+    pub fn open(_: &File, _: &str, _: bool) -> Result<File> {
+        Err(unsupported())
+    }
+    pub fn names(_: File, _: usize) -> Result<Vec<String>> {
+        Err(unsupported())
+    }
+}
+
+fn check_graph(
+    graph: &BTreeMap<String, Vec<String>>,
+    depth_limit: usize,
+    label: &str,
+) -> Result<()> {
+    fn visit<'a>(
+        id: &'a str,
+        graph: &'a BTreeMap<String, Vec<String>>,
+        path: &mut BTreeSet<&'a str>,
+        memo: &mut BTreeMap<&'a str, usize>,
+        limit: usize,
+        label: &str,
+    ) -> Result<usize> {
+        if path.contains(id) {
+            return Err(error("DEPENDENCY_CYCLE", format!("{label}: cycle at {id}")));
+        }
+        if path.len() >= limit {
+            return Err(error(
+                "LIMIT_EXCEEDED",
+                format!("{label}: dependency depth"),
+            ));
+        }
+        if let Some(depth) = memo.get(id) {
+            if path.len() + depth > limit {
+                return Err(error(
+                    "LIMIT_EXCEEDED",
+                    format!("{label}: dependency depth"),
+                ));
+            }
+            return Ok(*depth);
+        }
+        let deps = graph.get(id).ok_or_else(|| {
+            error(
+                "MISSING_REFERENCE",
+                format!("{label}: unknown dependency {id}"),
+            )
+        })?;
+        path.insert(id);
+        let mut depth = 1;
+        for dep in deps {
+            depth = depth.max(1 + visit(dep, graph, path, memo, limit, label)?);
+        }
+        path.remove(id);
+        memo.insert(id, depth);
+        Ok(depth)
+    }
+    let mut memo = BTreeMap::new();
+    for id in graph.keys() {
+        visit(
+            id,
+            graph,
+            &mut BTreeSet::new(),
+            &mut memo,
+            depth_limit,
+            label,
+        )?;
+    }
+    Ok(())
+}
+
+impl Project {
+    pub fn load(root: impl AsRef<Path>) -> Result<Self> {
+        Self::load_with_limits(root, Limits::default())
+    }
+
+    pub fn load_with_limits(root: impl AsRef<Path>, limits: Limits) -> Result<Self> {
+        let mut reader = Reader::new(root.as_ref(), limits)?;
+        let project_path = ".astral/project.toml";
+        let manifest: ProjectManifest = schema(&reader.read(project_path)?, project_path)?;
+        version(manifest.schema_version, project_path)?;
+        identifier(&manifest.id)?;
+        nonempty(&manifest.name, "project.name")?;
+        nonempty(&manifest.description, "project.description")?;
+        nonempty(&manifest.identity.scope, "identity.scope")?;
+        nonempty(
+            &manifest.identity.runtime_bindings,
+            "identity.runtime_bindings",
+        )?;
+        let core = join(".astral", &manifest.core)?;
+        let projection_root = join(".astral", &manifest.projections)?;
+        let work_path = join(".astral", &manifest.work_items)?;
+        for name in ["ARCHITECTURE.md", "RUN.md", "TEST.md"] {
+            reader.read(&join(&core, name)?)?;
+        }
+
+        let mut work = BTreeMap::new();
+        let raw_work = reader.read(&work_path)?;
+        let text = std::str::from_utf8(&raw_work).map_err(|_| error("INVALID_UTF8", &work_path))?;
+        for (line_number, line) in text.lines().enumerate() {
+            reader.charge(1)?;
+            // Blank/comment lines are malformed records, not silently skipped.
+            let item: WorkItem = serde_json::from_str(line).map_err(|_| {
+                error(
+                    "INVALID_WORK_ITEM",
+                    format!(
+                        "{work_path}: invalid JSON/schema on line {}",
+                        line_number + 1
+                    ),
+                )
+            })?;
+            version(item.schema_version, &work_path)?;
+            identifier(&item.id)?;
+            nonempty(&item.title, "work.title")?;
+            distinct(&item.depends_on, "work.depends_on")?;
+            distinct(&item.acceptance, "work.acceptance")?;
+            if item.acceptance.is_empty() {
+                return Err(error(
+                    "INVALID_FIELD",
+                    "work.acceptance must have at least one criterion",
+                ));
+            }
+            reader.charge(
+                item.depends_on.len()
+                    + item.acceptance.len()
+                    + item.evidence.as_ref().map_or(0, Vec::len),
+            )?;
+            for dep in &item.depends_on {
+                identifier(dep)?;
+            }
+            if let Some(evidence) = &item.evidence {
+                for path in evidence {
+                    relative(path)?;
+                }
+            }
+            let id = item.id.clone();
+            let source = SourceHandle {
+                path: work_path.clone(),
+                sha256: crate::hash(line.as_bytes()),
+                bytes: line.len(),
+                record_id: Some(id.clone()),
+            };
+            if work
+                .insert(id.clone(), WorkRecord { item, source })
+                .is_some()
+            {
+                return Err(error("DUPLICATE_ID", format!("duplicate work item {id}")));
+            }
+        }
+        check_graph(
+            &work
+                .iter()
+                .map(|(id, record)| (id.clone(), record.item.depends_on.clone()))
+                .collect(),
+            limits.graph_depth,
+            "work",
+        )?;
+
+        reader.charge(manifest.subsystems.len())?;
+        let mut subsystems = BTreeMap::new();
+        for (id, location) in &manifest.subsystems {
+            identifier(id)?;
+            let directory = join(".astral", location)?;
+            let path = join(&directory, "subsystem.toml")?;
+            let m: SubsystemManifest = schema(&reader.read(&path)?, &path)?;
+            version(m.schema_version, &path)?;
+            if &m.id != id {
+                return Err(error(
+                    "REGISTRY_MISMATCH",
+                    format!("{path}: id must equal registry key {id}"),
+                ));
+            }
+            nonempty(&m.purpose, "subsystem.purpose")?;
+            identifier(&m.projection)?;
+            distinct(&m.rules, "subsystem.rules")?;
+            distinct(&m.decisions, "subsystem.decisions")?;
+            distinct(&m.work_items, "subsystem.work_items")?;
+            distinct(&m.depends_on, "subsystem.depends_on")?;
+            reader.charge(
+                m.rules.len() + m.decisions.len() + m.work_items.len() + m.depends_on.len(),
+            )?;
+            for dep in &m.depends_on {
+                identifier(dep)?;
+            }
+            for id in &m.work_items {
+                if !work.contains_key(id) {
+                    return Err(error(
+                        "MISSING_REFERENCE",
+                        format!("{path}: unknown work item {id}"),
+                    ));
+                }
+            }
+            for doc in std::iter::once(&m.readme)
+                .chain(m.rules.iter())
+                .chain(m.decisions.iter())
+            {
+                reader.read(&join(&directory, doc)?)?;
+            }
+            subsystems.insert(
+                id.clone(),
+                Subsystem {
+                    manifest: m,
+                    directory,
+                },
+            );
+        }
+        check_graph(
+            &subsystems
+                .iter()
+                .map(|(id, subsystem)| (id.clone(), subsystem.manifest.depends_on.clone()))
+                .collect(),
+            limits.graph_depth,
+            "subsystems",
+        )?;
+
+        let mut projections = BTreeMap::new();
+        for id in reader.directory(&projection_root)? {
+            identifier(&id)?;
+            let directory = join(&projection_root, &id)?;
+            let path = join(&directory, "projection.toml")?;
+            let m: ProjectionManifest = schema(&reader.read(&path)?, &path)?;
+            version(m.schema_version, &path)?;
+            if m.id != id {
+                return Err(error(
+                    "REGISTRY_MISMATCH",
+                    format!("{path}: id must equal directory name {id}"),
+                ));
+            }
+            nonempty(&m.kind, "projection.kind")?;
+            if m.native_payload_in_repository {
+                return Err(error(
+                    "UNSUPPORTED_NATIVE_BINDING",
+                    format!("{path}: native_payload_in_repository=true is not supported"),
+                ));
+            }
+            distinct(&m.subsystems, "projection.subsystems")?;
+            reader.charge(m.subsystems.len() + m.sources.len())?;
+            for id in &m.subsystems {
+                if !subsystems.contains_key(id) {
+                    return Err(error(
+                        "MISSING_REFERENCE",
+                        format!("{path}: unknown subsystem {id}"),
+                    ));
+                }
+            }
+            let mut source_ids = BTreeSet::new();
+            for source in &m.sources {
+                identifier(&source.id)?;
+                if !source_ids.insert(&source.id) {
+                    return Err(error(
+                        "DUPLICATE_ID",
+                        format!("{path}: duplicate provenance id {}", source.id),
+                    ));
+                }
+                nonempty(&source.kind, "source.kind")?;
+                nonempty(&source.scope, "source.scope")?;
+                nonempty(&source.availability, "source.availability")?;
+            }
+            reader.read(&join(&directory, &m.handoff)?)?;
+            projections.insert(
+                id,
+                Projection {
+                    manifest: m,
+                    directory,
+                },
+            );
+        }
+        for subsystem in subsystems.values() {
+            if !projections.contains_key(&subsystem.manifest.projection) {
+                return Err(error(
+                    "MISSING_REFERENCE",
+                    format!(
+                        "subsystem {}: unknown projection {}",
+                        subsystem.manifest.id, subsystem.manifest.projection
+                    ),
+                ));
+            }
+        }
+        let sources = reader
+            .contents
+            .into_iter()
+            .map(|(path, bytes)| {
+                let handle = SourceHandle {
+                    path: path.clone(),
+                    sha256: crate::hash(&bytes),
+                    bytes: bytes.len(),
+                    record_id: None,
+                };
+                (path, handle)
+            })
+            .collect();
+        Ok(Self {
+            manifest,
+            subsystems,
+            projections,
+            work,
+            sources,
+            limits,
+        })
+    }
+
+    fn output(&self, value: Value) -> Result<Value> {
+        if serde_json::to_vec(&value).expect("Value serializes").len() > self.limits.output_bytes {
+            return Err(error("LIMIT_EXCEEDED", "output byte limit"));
+        }
+        Ok(value)
+    }
+
+    pub fn validate(&self) -> Result<Value> {
+        self.output(json!({
+            "schema_version": 1, "status": "valid", "project_id": self.manifest.id,
+            "subsystems": self.subsystems.len(), "projections": self.projections.len(),
+            "work_items": self.work.len(), "observed_files": self.sources.len(),
+            "native_binding": native_binding(),
+            "verification_scope": "Declared local inputs only; per-file observations, not an atomic tree snapshot, native recall, or execution verification"
+        }))
+    }
+
+    pub fn list(&self) -> Result<Value> {
+        let mut contexts = Vec::new();
+        for id in self.subsystems.keys() {
+            contexts.push(
+                json!({"id": id, "kind": "subsystem", "selector": format!("subsystem:{id}")}),
+            );
+        }
+        for id in self.projections.keys() {
+            contexts.push(
+                json!({"id": id, "kind": "projection", "selector": format!("projection:{id}")}),
+            );
+        }
+        self.output(json!({"schema_version": 1, "project_id": self.manifest.id, "contexts": contexts, "native_binding": native_binding()}))
+    }
+
+    pub fn inspect(&self, selector: &str, work_id: Option<&str>) -> Result<Value> {
+        let (kind, id) = if let Some((kind, id)) = selector.split_once(':') {
+            if kind != "subsystem" && kind != "projection" {
+                return Err(error(
+                    "INVALID_SELECTOR",
+                    "use subsystem:NAME or projection:NAME",
+                ));
+            }
+            (kind, id)
+        } else {
+            match (
+                self.subsystems.contains_key(selector),
+                self.projections.contains_key(selector),
+            ) {
+                (true, true) => {
+                    return Err(error(
+                        "AMBIGUOUS_CONTEXT",
+                        format!("{selector}: use subsystem:{selector} or projection:{selector}"),
+                    ));
+                }
+                (true, false) => ("subsystem", selector),
+                (false, true) => ("projection", selector),
+                (false, false) => return Err(error("UNKNOWN_CONTEXT", selector)),
+            }
+        };
+        identifier(id)?;
+        let mut selected = BTreeSet::new();
+        let projection = if kind == "projection" {
+            let projection = self
+                .projections
+                .get(id)
+                .ok_or_else(|| error("UNKNOWN_CONTEXT", selector))?;
+            for id in &projection.manifest.subsystems {
+                self.closure(id, &mut selected);
+            }
+            Some(projection)
+        } else {
+            if !self.subsystems.contains_key(id) {
+                return Err(error("UNKNOWN_CONTEXT", selector));
+            }
+            self.closure(id, &mut selected);
+            None
+        };
+        let work = work_id
+            .map(|id| {
+                self.work
+                    .get(id)
+                    .ok_or_else(|| error("UNKNOWN_WORK_ITEM", id))
+            })
+            .transpose()?;
+        let mut paths = BTreeSet::from([".astral/project.toml".to_owned()]);
+        let core = join(".astral", &self.manifest.core)?;
+        for name in ["ARCHITECTURE.md", "RUN.md", "TEST.md"] {
+            paths.insert(join(&core, name)?);
+        }
+        let mut subsystem_metadata = BTreeMap::new();
+        for id in &selected {
+            let subsystem = &self.subsystems[id];
+            let m = &subsystem.manifest;
+            paths.insert(join(&subsystem.directory, "subsystem.toml")?);
+            for doc in std::iter::once(&m.readme)
+                .chain(m.rules.iter())
+                .chain(m.decisions.iter())
+            {
+                paths.insert(join(&subsystem.directory, doc)?);
+            }
+            subsystem_metadata.insert(id, m);
+        }
+        if let Some(projection) = projection {
+            paths.insert(join(&projection.directory, "projection.toml")?);
+            paths.insert(join(&projection.directory, &projection.manifest.handoff)?);
+        }
+        let mut sources: Vec<_> = paths
+            .iter()
+            .map(|path| self.sources[path].clone())
+            .collect();
+        if let Some(work) = work {
+            sources.push(work.source.clone());
+        }
+        sources.sort_by(|a, b| (&a.path, &a.record_id).cmp(&(&b.path, &b.record_id)));
+        let selection = json!({"kind": kind, "id": id, "subsystems": selected, "projection": projection.map(|p| &p.manifest.id), "work_item": work_id});
+        let selection_digest = crate::fingerprint(
+            &json!({"schema_version": 1, "selection": selection, "sources": sources}),
+        );
+        self.output(json!({
+            "schema_version": 1, "mode": "inspect", "project_id": self.manifest.id,
+            "selection": selection, "sources": sources, "selection_digest": selection_digest,
+            "fingerprint_scope": "Selected declared source bytes and exact selected JSONL record; no machine path, time, provider semantics, or atomic snapshot claim",
+            "metadata": {"project": self.manifest, "subsystems": subsystem_metadata, "projection": projection.map(|p| &p.manifest)},
+            "work_item": work.map(|w| &w.item), "native_binding": native_binding()
+        }))
+    }
+
+    fn closure(&self, id: &str, selected: &mut BTreeSet<String>) {
+        if selected.insert(id.to_owned()) {
+            for dep in &self.subsystems[id].manifest.depends_on {
+                self.closure(dep, selected);
+            }
+        }
+    }
+}
+
+fn native_binding() -> Value {
+    json!({"state": "UNBOUND", "launch": false, "plaintext_substitution": false,
+        "reason": "Native checkpoint binding is not implemented. Readable handoffs are documentation, not native checkpoints."})
+}
