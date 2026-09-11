@@ -16,6 +16,10 @@ and the current development request.
   export automatically, and explicit save does not commit or share its output.
 - Separate accepted requirements, proposals, verified facts, historical evidence,
   and open questions. Test claims need current receipts and explicit scope.
+- Use selected current documents and the current work register for present-day
+  guidance. Historical native windows may contain superseded names, commands
+  and plans. Preserve their immutable bytes; update editable handoffs and current
+  documents, or explicitly save a new checkpoint after reviewed continuation.
 - Preserve existing work; use disposable fixtures for lifecycle and failure tests.
   Do not resume competing writers or weaken destination permissions implicitly.
 - Name code for its behavior, keeping work-item IDs in tracking and evidence.

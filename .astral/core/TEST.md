@@ -11,6 +11,12 @@ cargo +1.85.0 check --locked --all-targets
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
+For authored context/documentation changes, validate the actual project and
+inspect every declared selection. Confirm that the default is readable, explicit
+native selections retain their bundle, and saved bundle hashes do not change.
+Check local links and current CLI examples. Such checks do not establish live
+runtime execution or refresh historical verification inside native exports.
+
 Structural tests in `tests/native_binding.rs` cover native item preservation, declaration
 placement, compaction controls, completion validation, inventories, and isolated
 incremental state. `tests/native_transport.rs` uses real local HTTP/WS transports

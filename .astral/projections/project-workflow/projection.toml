@@ -1,0 +1,14 @@
+schema_version = 1
+schema_status = "current readable workflow; implemented experimental v1"
+id = "project-workflow"
+kind = "fresh-context"
+subsystems = ["project-context"]
+handoff = "handoff.md"
+native_payload_in_repository = false
+
+[[sources]]
+id = "implemented-project-workflow"
+kind = "current-repository-guidance"
+scope = "Project selection, worktree/thread binding, explicit save, recovery, completion and advisory hooks"
+availability = "README.md, .astral/core and docs/ usage guides in the current checkout"
+verification = "Source-backed behavior; dated test receipts do not verify subsequent changes"

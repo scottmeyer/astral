@@ -1,8 +1,8 @@
 schema_version = 1
-schema_status = "experimental v1; bound worktrees, native save and same-account Git handoff implemented"
+schema_status = "implemented experimental v1; launch, bound workers, explicit save/recovery/completion and advisory hooks"
 id = "astral"
 name = "Astral"
-description = "Native conversation continuity with capabilities rebound by the destination runtime"
+description = "Git-backed project context, bound workers, native handoff and reviewed lifecycle operations"
 core = "core"
 projections = "projections"
 work_items = "work/items.jsonl"

@@ -25,8 +25,10 @@ overrides above work for headless sandbox and approval selection.
 
 Astral options are recognized before the first literal `--`. Put Codex arguments
 after it, especially if their values resemble Astral options. Astral does not
-add permission bypasses. Fresh contexts launch directly. Native contexts on the
-currently supported route require explicit `--proxy`:
+add permission bypasses. Fresh contexts launch directly. A fresh bound worker may
+opt into `--proxy`; an unbound fresh launch rejects it. All bound-worker staging
+requires Codex 0.154.0, independently of whether the selection is native. Native
+contexts on the currently supported route require explicit `--proxy`:
 
 ```sh
 astral project my-checkpoint --proxy
@@ -55,7 +57,7 @@ override or conflicting route fails rather than sending the native payload to
 another destination.
 
 Astral prints a random local launch ID and the destination thread ID. Resume
-with the same selector, work record and checkout:
+with the same selector and checkout:
 
 ```sh
 astral project my-checkpoint --proxy --resume LAUNCH_ID
@@ -65,7 +67,7 @@ astral project my-checkpoint --proxy --resume LAUNCH_ID --non-interactive -- \
 
 Resume starts a new owned proxy and reopens the recorded thread. It does not
 reinject the original native bundle or selected documents. The receipt binds
-the canonical workspace, project, selector, selected-input digest, work ID and
+the canonical workspace, project, selector, selected-input digest and
 bundle manifest digest. Changed bindings fail explicitly. Start a new launch
 when intentionally selecting changed context.
 
@@ -108,7 +110,7 @@ other Codex versions and arbitrary checkpoint formats are not qualified by this
 launcher. Capture/export, automatic worktrees and record-aware Git merging
 are described in [bound workers and handoff](worktree-handoff.md).
 
-See the dated [verification receipt](native-launch-verification.md) for current
+See the dated [verification receipt](native-launch-verification.md) for recorded
 checks, live controls, scanner findings and untested boundaries.
 
 The launcher enables a parent agent to start an Astral worker with selected

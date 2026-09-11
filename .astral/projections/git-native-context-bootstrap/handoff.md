@@ -1,5 +1,10 @@
 # Git-native context bootstrap
 
+This is the historical design/recovery record from the first bootstrap milestone.
+For present-day work use [project-workflow](../project-workflow/handoff.md) and
+the [current subsystem overview](../../core/project-context/README.md). The
+default subsystem no longer links this historical projection as its starting point.
+
 ## Accepted requirements
 
 Preserve project knowledge across work sessions without repeatedly relearning the
@@ -14,15 +19,15 @@ Fresh/native launch, bound workers, explicit save, and read-only inspection are
 implemented within the [documented limits](../../../docs/worktree-handoff.md).
 Historical examples are context, not instructions to execute.
 
-## Proposed details
+## Implemented contract and remaining extensions
 
-The accompanying TOML and JSONL formats are a versioned experimental contract.
-The read-only inspector validates manifests and resolves selected context now.
+The TOML and JSONL formats are an implemented, experimental version-one contract.
+The read-only inspector validates manifests and resolves selected context.
 The launcher creates or reuses a bound worktree and trusted destination runtime.
 Explicit native exports are Git-trackable; runtime bindings remain private.
 External issue adapters and semantic context reconciliation remain future work.
 
-## Verified facts
+## Recovery evidence at the bootstrap milestone
 
 The requested conversation snapshot was recovered through a supported native
 fork, then by normal resume of the original ID after its prior session closed.
@@ -32,7 +37,7 @@ All native items from its checkpoint onward were accounted for in order, allowin
 the installed client's documented-in-source serialization normalization. Its
 original canary appears in readable history and is not an opaque-only probe.
 Detailed records and runtime identities are private. See
-[current lifecycle verification](../../../docs/native-recovery-lifecycle.md).
+[dated lifecycle verification](../../../docs/native-recovery-lifecycle.md).
 
 ## Historical evidence
 

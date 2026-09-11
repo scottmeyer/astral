@@ -1,4 +1,5 @@
 schema_version = 1
+schema_status = "saved historical native review; current continuation guidance is in handoff.md"
 id = "worktree-handoff-review"
 kind = "native-checkpoint"
 subsystems = ["project-context"]

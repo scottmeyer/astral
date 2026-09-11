@@ -1,29 +1,93 @@
 # Project context
 
-This subsystem documents the user's accepted direction: context follows Git;
-core knowledge stays small; selected subsystems and named projections supply
-additional context; JSONL work items travel with the repository. The recovered
-conversation is a historical design source, not a queue of authorized commands.
+This is the current document-based starting context for maintaining Astral.
+Core knowledge stays small; manifests select subsystem documents, explicit
+dependencies and named projections. JSONL work records carry status, dependencies
+and acceptance criteria alongside code. Inspect the current checkout before
+relying on a historical conversation or test receipt.
 
-[Rules](rules/context-contract.md) state the accepted boundaries.
-[The bootstrap decision](decisions/0001-bootstrap-scope.md) separates those
-requirements from proposed schema details. [The projection](../../projections/git-native-context-bootstrap/handoff.md)
-records provenance and unresolved work. The work register is
-[`items.jsonl`](../../work/items.jsonl).
+## Implemented workflow
 
-The Rust context resolver now validates these files and exposes bounded read-only
-inspection through `astral context validate`, `astral context list`, and
-`astral project NAME --inspect`. Native bindings remain explicitly UNBOUND.
-Explicit native bundle metadata and payload integrity can now be validated and
-inspected; see [native bundles](../../../docs/native-bundles.md).
-Native launch with an explicit owned proxy, local receipt-based cold resume and
-headless workers are implemented; see [native launch](../../../docs/native-launch.md).
-Automatic branch/worktree binding, work-record merging and native save are
-implemented; see [bound workers and handoff](../../../docs/worktree-handoff.md).
-Git preserves divergent opaque artifacts; native histories are never implicitly merged.
-Fresh document launch and embedded-prompt initialization are now implemented;
-see [fresh launch](../../../docs/fresh-launch.md) for usage and limits.
-The [code-health record](../../../docs/code-health.md) describes adapter/resolver
-module boundaries, catalog forwarding and package checks.
-See [the interface decision](decisions/0003-launcher-interface.md) for direct
-Codex by default, explicit proxy routing, and argument forwarding requirements.
+- `init` asks Codex to build a best-effort index; `context` and `project --inspect`
+  validate and inspect declared inputs without launching a worker.
+- `project` launches selected documents or a supported native checkpoint.
+  `--work ID` creates or reopens a branch, worktree and reusable thread.
+- `work create`, `update` and `merge` implement random IDs, optimistic status
+  updates and three-way record merging. External issue adapters are separate work.
+- `save` explicitly compacts a stopped bound worker and publishes an immutable
+  bundle. Named projections can advance while retaining older bundles.
+- `status` and `doctor` inspect local state. `recover` applies reviewed repairs
+  backed by recorded acknowledgements; uncertain outcomes stay visible.
+- `finish` previews committed branch results and supports reviewed fast-forwards.
+  Ordinary Git commits/merges remain valid workflow steps.
+- Git and Codex hooks provide opt-in offline advice. Setup confirms a plan in a
+  terminal; `--yes` and `--dry-run` support scripts. `astral commit` forwards to Git.
+
+Model-catalog forwarding, module reorganization and the initial finish/resume
+milestones are complete. Read [RUN](../RUN.md), [TEST](../TEST.md) and the
+[workflow guide](../../../docs/finish-resume.md) for commands and limits.
+
+## Runtime and continuation boundaries
+
+Inspection uses Unix confined reads. All bound workers currently require Codex
+0.154.0. Native import/save additionally require the supported same-account
+OpenAI / `gpt-6-astra` route and explicit `--proxy`. Unbound fresh launch uses the
+installed app-server API without that exact-version gate; broader compatibility
+is not inferred from its absence.
+
+Without `--work`, fresh launch starts a new thread in the current checkout.
+Repeat the same selector and `--work ID` to continue a bound worker. After native
+save, that worker needs `--proxy` even if its original selection was document-only.
+`--resume LAUNCH_ID` is for unbound native launch receipts, not bound work IDs.
+
+The destination supplies authentication, executors and permissions. Current
+documents accompany native import; changed selected documents are appended on
+bound resume. Neither operation erases old claims from a checkpoint or verifies
+tests. Hooks do not save, commit, repair or start inference automatically.
+Bound resume reads its own checkout: newer context on `main` must be brought
+into that worker branch through Git before the worker can observe it.
+
+## Names and storage
+
+| Name/path | Current meaning |
+| --- | --- |
+| `astral` | Unified user-facing executable |
+| `.astral/` | Git-tracked manifests, selected documents, work records and explicit exports |
+| Git common directory: `astral/work-bindings/` | Private bound-worker receipts, ownership and proxy state |
+| `~/.local/state/astral/launches/` | Default private unbound native launch receipts; override with `ASTRAL_LAUNCH_STATE_DIR` |
+| Git common directory: `astral-hooks/` | Private hook registration and advisory metadata |
+| `.codex/hooks.json` | Opt-in configuration for this checkout; Codex manages runtime trust |
+| `.ostk-gpt/` | Actual legacy default for standalone `astral proxy --state-dir`; not the portable context tree |
+| `OSTK_GPT_UPSTREAM`, `x-ostk-*` | Retained standalone proxy environment/wire identifiers |
+| `ostk-gpt-cache` / `ostk_gpt_cache` | Internal Cargo package / Rust crate names, not the CLI command |
+
+Changing documentation does not migrate existing runtime storage or protocol
+names. Use `--state-dir` to choose private standalone proxy storage; keep it out
+of Git. Managed project proxies supply their own private state paths. See the
+[proxy guide](../../../docs/responses-proxy.md) for the actual client contract.
+
+## Current and historical projections
+
+The subsystem links [project-workflow](../../projections/project-workflow/handoff.md),
+a current readable projection with no native payload. The old
+[bootstrap](../../projections/git-native-context-bootstrap/handoff.md) and
+[native worktree review](../../projections/worktree-handoff-review/handoff.md)
+remain available for explicit selection. Old names, completed tasks and dated
+results inside native bundles are historical data; bundle bytes remain immutable.
+
+The early [bootstrap](decisions/0001-bootstrap-scope.md) and
+[read-only milestone](decisions/0002-read-only-resolution.md) decisions are retained
+as history, outside the default decision selection. The current
+[interface](decisions/0003-launcher-interface.md),
+[work-ID policy](decisions/work-identifiers.md) and
+[native portability contract](decisions/portable-native-launch.md) remain selected.
+
+## Remaining work
+
+The [work register](../../work/items.jsonl) tracks broader runtime/protocol and
+cross-account qualification, long-horizon retrieval and freshness, artifact
+retention, external issue synchronization, semantic reconciliation, delegated
+worker orchestration and sustained quality/cost measurements. The initial
+implementation does not establish these capabilities or general savings.
+Use `astral work list` to observe current statuses; a completed record is not a
+fresh verification result.

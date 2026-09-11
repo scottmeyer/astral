@@ -166,5 +166,6 @@ Work state and code travel together; conflicting histories still require an
 explicit choice and historical verification is never promoted to current truth.
 
 The [launch milestone plan](launch-plan.md) records the accepted Git export and
-fresh/bootstrap behavior and completed acceptance gates. The next workflow
-milestone is [finish and resume](finish-resume.md).
+fresh/bootstrap behavior and completed acceptance gates. The implemented
+[finish and resume](finish-resume.md) workflow adds status, recovery, completion
+and opt-in advisory hooks.

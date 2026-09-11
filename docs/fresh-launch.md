@@ -19,6 +19,9 @@ checkout. The printed thread ID can later be resumed directly with Codex.
 worktree and reusable thread. Repeating the command continues that worker and
 appends selected documents when their fingerprint changes. Commit context changes
 before first binding; the configured work-record file is carried automatically.
+Bound workers require exactly Codex 0.154.0, including fresh document workers.
+Unbound fresh staging does not enforce that exact-version gate; it still depends
+on the installed app-server API and has only the recorded runtime qualification.
 See [bound workers and handoff](worktree-handoff.md) for source-edit preservation
 and retry behavior. Inspection creates no binding. Launch does not commit files
 or advance a saved projection; [save](worktree-handoff.md#save-and-hand-off) is explicit.
@@ -94,8 +97,11 @@ selected context and the caller's task. Native launch, automatic worktree bindin
 record operations and explicit save/handoff are implemented within the limits in
 the [milestone plan](launch-plan.md). Fresh bound workers can opt into `--proxy`;
 fresh launches without `--work` use the direct route and do not support Astral's
-receipt-based `--resume`. The next workflow milestone is
-[finish and resume](finish-resume.md).
+receipt-based `--resume`. The implemented
+[finish and resume](finish-resume.md) workflow adds status, recovery, branch
+completion and opt-in advisory hooks. A bound worker that is later saved natively
+needs `--proxy` for subsequent continuation, even when its original selection
+was document-only.
 
 See the dated [verification receipt](fresh-launch-verification.md) for local and
 live-runtime results, scanner findings and untested boundaries.

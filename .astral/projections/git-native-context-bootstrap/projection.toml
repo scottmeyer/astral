@@ -1,5 +1,5 @@
 schema_version = 1
-schema_status = "draft"
+schema_status = "historical bootstrap; current workflow is projection:project-workflow"
 id = "git-native-context-bootstrap"
 kind = "reviewable-design-context"
 subsystems = ["project-context"]
@@ -17,7 +17,7 @@ verification = "supported native fork, then original-ID resume and proxy restart
 [[sources]]
 id = "current-development-request"
 kind = "accepted-user-requirements"
-scope = "conversation recovery, native lifecycle, minimal .astral bootstrap, no full launcher"
+scope = "Historical initial scope: conversation recovery, native lifecycle and minimal .astral bootstrap before launcher implementation"
 availability = "requirements captured in core/project-context/rules/context-contract.md"
 
 [[sources]]

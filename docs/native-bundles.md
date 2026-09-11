@@ -200,8 +200,9 @@ still reports the selected artifacts without binding a runtime.
 
 Native launch requires explicit `--proxy` on the supported Codex route. Missing references
 and unavailable files have separate errors; none triggers fresh-context fallback.
-The current readable bootstrap remains a fresh context and contains no native
-bundle. This feature introduces no proxy requirement for existing fresh launches.
+The repository's `project-workflow` projection is readable and contains no native
+bundle; the older readable bootstrap remains available as historical context.
+Neither requires a proxy for fresh document launch.
 
 Default budgets are 64 KiB per native manifest, 8 MiB per payload, 4,096 payload
 items, JSON depth 64, 131,072 JSON value nodes, and the existing 16 MiB aggregate
@@ -213,4 +214,5 @@ snapshot of a concurrently changing repository. Confined filesystem loading
 currently requires Unix; the data format is independent of machine paths.
 
 See the [milestone plan](launch-plan.md) for the implemented launch/save flow and
-[finish and resume](finish-resume.md) for the next workflow milestone.
+[finish and resume](finish-resume.md) for the implemented status, recovery,
+completion and advisory hook workflow.

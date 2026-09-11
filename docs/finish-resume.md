@@ -66,6 +66,9 @@ The default page size is 32 and the maximum is 64. `next_offset` indicates more
 records; `--work` selects one and requires offset zero. An empty page does not
 mean the repository has no workers. The inventory is scoped to the current work
 register: orphan private bindings and launches without `--work` are not listed.
+Use `astral recover` to inventory retained bindings outside that register, or
+`astral recover --launch-state-root /absolute/private/launches` for explicitly
+selected unbound native receipts; see [recovery inventory](worker-recovery.md#find-retained-state-outside-the-current-work-register).
 Files and Git plumbing outputs are bounded; each Git subprocess has the existing
 30-second deadline. Ownership probes are nonblocking, brief, and released before
 return. There is no reservation or atomic snapshot across the whole report.
@@ -133,5 +136,5 @@ are implemented. Dependencies now point at implemented work where an unrelated
 external integration would otherwise keep the bounded launcher misleadingly open.
 
 Dated verification receipts retain the results and limitations of their runs.
-Current usage guides point to implemented behavior and distinguish the planned
+Current usage guides point to implemented behavior and distinguish the remaining
 workflow above. A status field is not a new test result.

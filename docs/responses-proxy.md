@@ -99,7 +99,14 @@ Only a successful HTTP response with a completed response object/event and clean
 
 On restart, snapshots load lazily. Matching full history resumes the previous projection. Edited, truncated, or branched history resets to the caller's new history. Changes to instructions, tools, model settings, or other prompt contract fields also reset it. Stream settings and metadata are excluded from this fingerprint. Corrupt snapshots produce an error instead of silently dropping history.
 
-The default directory is `.ostk-gpt/`:
+The default directory is `.ostk-gpt/`. This legacy standalone-proxy name remains
+an actual runtime default; it is separate from Git-tracked `.astral/` project
+context. Managed project proxies supply private binding/receipt paths instead.
+Use `--state-dir` to choose another private directory; changing the path does not
+migrate existing snapshots. `OSTK_GPT_UPSTREAM` and the documented `x-ostk-*`
+headers also retain their compatibility names.
+
+The standalone directory contains:
 
 ```text
 lanes/<hash>.json    committed projection and original-item hashes

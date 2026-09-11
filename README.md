@@ -11,7 +11,7 @@ conversation; an explicit save creates a portable starting point for the next
 session.
 
 [Get started](#get-started) · [Project layout](#context-lives-in-your-repository) ·
-[Save and resume](#save-a-starting-point) · [Guides](#guides)
+[Current scope](#current-scope) · [Save and resume](#save-a-starting-point) · [Guides](#guides)
 
 ## What you can do
 
@@ -28,12 +28,36 @@ Astral also includes a standalone Responses proxy for rolling native context
 projections and an optional host for compact tool observations, exact artifact
 retrieval and verification tied to file versions.
 
+## Current scope
+
+The project workflow is implemented, with an experimental version-one context
+format and a deliberately narrow runtime contract. These are separate paths:
+
+| Path | What works today | Boundary |
+| --- | --- | --- |
+| Inspect or launch documents | Validate named contexts; initialize an index; start a fresh Codex thread | Inspection is offline. Fresh unbound launch uses the installed app-server API; tested on macOS, without a general runtime compatibility guarantee |
+| Bound work: `--work ID` | Dedicated branch/worktree, reusable thread, status and diagnostics | **Codex 0.154.0 is required even for document-only workers** |
+| Native save/import | Explicit export, Git transfer, new-thread import and cold resume | Codex 0.154.0, `gpt-6-astra`, built-in OpenAI provider, same account, explicit `--proxy` |
+| Recovery and completion | Evidence-based repairs and reviewed fast-forward integration; recognize ordinary Git work | Save, tests, commits and divergent merges remain explicit |
+| Git/Codex hooks | Per-repository Git setup and per-checkout Codex configuration; offline context advice | Opt-in and advisory; Codex trust is separate; no automatic save or global Codex hook installer |
+
+Project filesystem operations use Unix confinement. The standalone Responses
+proxy is a separate component; its rolling and cache policies do not qualify
+additional Codex versions or native checkpoint formats.
+
+Remaining work includes cross-account handoff, broader runtime qualification,
+external issue adapters, long-horizon retrieval/freshness, retention cleanup,
+semantic context reconciliation and automatic delegated-worker orchestration.
+See the [current project context](.astral/core/project-context/README.md) and
+[work register](.astral/work/items.jsonl). Historical test receipts and completed
+work records describe their recorded scope; they do not verify today's checkout.
+
 ## Get started
 
 Build from source with Rust **1.85 or later**, and have Git and Codex installed.
-Project operations currently require Unix filesystem confinement; runtime
-verification has been performed on macOS. The native checkpoint route is pinned
-to the compatibility limits below.
+Use Codex **0.154.0** for the bound-worker and native examples below. An unbound
+fresh launch does not enforce that exact-version gate; its app-server API must
+still support the documented staging operations.
 
 ```sh
 git clone https://github.com/scottmeyer/astral.git
@@ -91,9 +115,23 @@ select documents and explicit dependencies. Selecting `web` loads its declared
 context plus shared core; it does not inject the entire repository or every
 saved conversation.
 
+This layout is illustrative. Astral's own index currently defines the
+`project-context` subsystem and three projections: the current readable
+`project-workflow`, the historical `git-native-context-bootstrap`, and the saved
+native `worktree-handoff-review`. Use `astral context list` for the actual
+selections in your repository. A new project does not automatically contain `web`.
+
 Readable documents, work records and explicit exports travel through Git.
 Credentials, local thread bindings and proxy state stay outside tracked context.
 See the [manifest and selection contract](docs/project-context.md#manifest-and-selection-contract).
+
+The old `.ostk-gpt/` name is still the standalone proxy's default state directory;
+it is not `.astral/` project context. `OSTK_GPT_UPSTREAM`, `x-ostk-*` headers and the
+internal `ostk-gpt-cache` crate also remain compatibility names. Managed project
+proxies use private binding/receipt paths instead. The
+[names and storage reference](.astral/core/project-context/README.md#names-and-storage)
+distinguishes these locations. Old names inside an exported native window remain
+historical; editable handoffs and selected current documents provide updated guidance.
 
 ## Start a task, then pick it up again
 
@@ -118,6 +156,14 @@ HEAD. Subsequent launches preserve its edits and resume its thread. Commit
 selected context changes before first binding; the work-record file is carried
 automatically. Work IDs are random, avoiding competing branch counters.
 
+Resumes read context from the bound worktree. Updating documents on `main` does
+not update other worker branches automatically; bring the desired Git changes
+into the worker's branch first. Its next resume appends changed selected documents.
+
+Without `--work`, repeating `astral project web` starts another fresh thread in
+the current checkout. Use a work ID when you want Astral to retain continuation
+identity. `status` reports the bound worktree path for review and commits.
+
 Put Codex arguments after `--` to forward them literally:
 
 ```sh
@@ -141,6 +187,13 @@ Close the worker, then explicitly export its native context:
 astral save authentication-review --context web --work AST-EXAMPLE --proxy
 ```
 
+After saving, resume the **same worker** with the original selector and work ID,
+adding `--proxy` because its thread now contains native context:
+
+```sh
+astral project web --work AST-EXAMPLE --proxy -- --model gpt-6-astra
+```
+
 The export is published under `.astral/projections/` in the **worker's checkout**.
 Review and commit the code, work records, handoff and bundle there. Once that
 commit is available in another checkout:
@@ -149,9 +202,16 @@ commit is available in another checkout:
 astral project projection:authentication-review --proxy
 ```
 
+Update the readable handoff yourself: save creates a generic handoff for a new
+projection and preserves an existing one; it does not generate a fresh task summary.
+
 Astral manages the proxy for this route and rebinds the destination's current tool
 declarations after the checkpoint. Cross-account teammate handoff and other
 runtimes remain unproven.
+
+For native launches without `--work`, use the printed private launch ID with
+`--resume LAUNCH_ID`. That is separate from bound-worker continuation; do not
+combine `--resume` and `--work`.
 
 Git can retain multiple native bundles; it cannot semantically merge encrypted
 conversations. Reconcile readable decisions and explicitly choose the next
@@ -226,7 +286,7 @@ invoice savings, lossless compaction or a general performance advantage.
 | Understand native formats and compatibility | [Bundles](docs/native-bundles.md) · [Native launch](docs/native-launch.md) |
 | Integrate Git and Codex lifecycle hooks | [Lifecycle integration](docs/lifecycle-integration.md) |
 | Operate the proxy or explicit host | [Proxy](docs/responses-proxy.md) · [Working state](docs/working-state.md) |
-| Review dated verification and open boundaries | [Lifecycle receipt](docs/lifecycle-verification.md) · [Native launch receipt](docs/native-launch-verification.md) · [Milestones](docs/launch-plan.md) |
+| Review dated verification and open boundaries | [Context audit](docs/context-refresh-verification.md) · [Lifecycle receipt](docs/lifecycle-verification.md) · [Native launch receipt](docs/native-launch-verification.md) · [Milestones](docs/launch-plan.md) |
 
 ## Development
 
@@ -245,5 +305,4 @@ release helper before running the Python suite. See
 [development checks](docs/development-checks.md) for scanner setup and review
 requirements.
 
-The executable is `astral`; the internal Rust crate is still `ostk-gpt-cache`.
 Licensed under [MIT](LICENSE).

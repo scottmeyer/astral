@@ -1,8 +1,8 @@
 # Portable native launch scope
 
-Status: launch plan and accepted user choices, 2026-09-11.
+Status: accepted and implemented within the compatibility limits below, 2026-09-11.
 
-Explicitly exported native bundles will be tracked in Git with the project.
+Explicitly exported native bundles are tracked in Git with the project.
 Launching one creates a new destination-local thread from its immutable native
 window; the source thread is not resumed or modified by import. Runtime thread
 IDs, active process ownership and executable capability bindings remain local.
@@ -14,11 +14,17 @@ repository and build the index. Validate the generated structure; distinguish
 observations, suggestions and unverified checks. Missing referenced artifacts
 still fail instead of taking the fresh path.
 
-Implement five measurable milestones: fresh launch and initialization, versioned
-native bundles, native launch, work-item/worktree launch, then capture and handoff.
-The first usable native launch targets the existing checkout and the supported
-Codex route. Direct is
-the default; `--proxy` is explicit. Missing referenced checkpoints are errors.
+The five launch milestones are implemented: fresh launch/initialization,
+versioned native bundles, native launch, work-item/worktree launch and explicit
+capture/handoff. Status, recovery, branch completion and advisory hook integration
+were added afterward. Direct is the default for fresh launch; `--proxy` is
+explicit. Missing referenced checkpoints are errors.
+
+All bound workers currently require Codex 0.154.0. Native import and save use
+the same-account OpenAI / `gpt-6-astra` route with managed tool rebinding. Once a
+worker has been saved natively, resume it with `--proxy`, including workers
+originally launched from documents. Cross-account and broader runtime support
+remain unqualified.
 
 Git can merge documents and work records under declared rules. Native checkpoint
 bytes are immutable artifacts: retain competing histories and require an explicit

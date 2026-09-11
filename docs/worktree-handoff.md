@@ -1,8 +1,9 @@
 # Bound workers and native handoff
 
 `astral project --work ID` creates or reopens one Git worktree and one local Codex
-thread for a work record. Without `--work`, launch keeps the existing checkout
-behavior. Direct Codex remains the default; native checkpoints require explicit
+thread for a work record. Every bound worker currently requires Codex 0.154.0,
+including workers started from documents. Without `--work`, launch keeps the
+existing checkout behavior. Direct Codex remains the default; native checkpoints require explicit
 `--proxy` on the supported Codex 0.154.0 / OpenAI / `gpt-6-astra` route.
 
 ## Start and continue work
@@ -85,6 +86,18 @@ and atomically replaces only the named reference. Staging evidence is private in
 the Git common directory. The initial publisher requires staging and the target
 checkout to share a filesystem. Save does not commit or push.
 
+Save does not write an updated task summary: a new projection receives a generic
+handoff, and an existing projection keeps its authored handoff text. Review and
+update readable decisions and `handoff.md` explicitly before committing a handoff.
+
+The original worker now contains native context. Resume it using its original
+selector and work ID with `--proxy`, including a worker that originally launched
+directly from documents:
+
+```sh
+astral project web --work AST-EXAMPLE --proxy -- --model gpt-6-astra
+```
+
 A worker may save under multiple names. Its selected projection is tracked
 separately from its latest export, so saving `p`, then `q`, still allows the worker
 bound to `p` to continue. Existing projections retain their authored subsystem
@@ -135,9 +148,11 @@ astral context validate
 Creation uses short random IDs. Updates compare the exact observed record digest
 and retain other fields. Merge returns JSON containing merged JSONL, or explicit
 record-ID conflicts without a partial result (exit status 1). Independent additions combine;
-different concurrent edits, duplicate-ID additions, and edit/delete disagreements
-conflict. The merged dependency graph is validated. After applying a merged file,
+different concurrent edits, different additions under the same ID, and edit/delete
+disagreements conflict. The merged dependency graph is validated. After applying a merged file,
 validate the project to check subsystem references as well.
+Identical semantic additions on both branches coalesce. Duplicate IDs within
+one input file are invalid regardless of content.
 
 Do not install a concatenating JSONL merge driver. Distinct native artifacts can
 coexist, but encrypted histories cannot be semantically merged by Git. Preserve

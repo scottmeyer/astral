@@ -22,18 +22,21 @@ native compaction and publishes an immutable bundle in the bound worktree.
 See [bound workers and handoff](../../docs/worktree-handoff.md) for the initial
 same-account, version, filesystem, and ownership limits.
 
-## Verified current structure
+## Current implementation structure
 
-The unified binary is `astral`; `astral proxy` starts the server, while `project`
-and `context` inspect project context. `project` also launches fresh contexts and
-`init` initializes missing indexes. The internal Rust crate remains
+The unified binary is `astral`; `astral proxy` starts the server, `context` and
+`project --inspect` inspect context, `project` launches fresh/native selections,
+and `init` initializes missing indexes. The internal Rust crate remains
 `ostk-gpt-cache`. `src/server.rs` owns startup and shutdown; `src/proxy.rs` owns HTTP
 routing and inference flow. `src/proxy/http.rs` shares header policy, request
 construction, response metadata and bounded-body handling across inference,
 compaction and model discovery. Catalog GETs have no conversation state.
 `engine.rs`, `store.rs`, and `policy.rs` implement the existing projection,
 persistence, and cache policies. `working.rs` supports the optional explicit host.
-These are distinct from the experimental Codex compatibility path.
+The standalone proxy retains `.ostk-gpt/`, `OSTK_GPT_UPSTREAM` and `x-ostk-*`
+compatibility names. They are separate from portable `.astral/` documents and
+from managed project proxies' private state paths. See
+[names and storage](project-context/README.md#names-and-storage).
 
 `native_binding.rs` validates Responses Lite inputs and reasserts current runtime tool
 declarations after the effective native checkpoint. `native_transport.rs` owns one
@@ -59,12 +62,12 @@ valid stages of the workflow; the command does not infer test success.
 selected core, subsystem, projection and work-item sources. Its `schema` module
 defines the public manifest/output types and limits; its `reader` module owns
 bounded, confined filesystem reads. Public `project::*` paths stay stable.
-The `astral` binary
-provides `context validate`, `context list`, and `project NAME --inspect`. It
-returns bounded repository-relative handles and hashes with native state UNBOUND.
+The `astral` binary provides `context validate`, `context list`, and
+`project NAME --inspect`. Inspection returns bounded repository-relative handles
+and hashes with native state UNBOUND.
 Explicit native bundles have separate validated artifact availability metadata.
-It reads confined regular files on Unix; it does not launch a runtime or execute
-documented commands. Source hashes observe declared inputs, not an atomic tree.
+It reads confined regular files on Unix; inspection does not launch a runtime or
+execute documented commands. Source hashes observe declared inputs, not an atomic tree.
 
 `src/launch.rs` orchestrates fresh launch and initialization. `src/codex.rs` exposes
 the app-server adapter through three internal modules: `options` translates current
@@ -74,6 +77,14 @@ retain each path's separate identity checks and request budget. See
 [fresh launch](../../docs/fresh-launch.md) for supported arguments and limits.
 
 The native launcher binds the destination runtime and workspace explicitly.
+`src/worker_launch.rs` and `src/workspace.rs` orchestrate bound threads, branches,
+worktrees and private receipts. `src/work_records.rs` owns record allocation,
+status updates and three-way merging; `src/save.rs` and `src/projection_save.rs`
+capture and publish explicit exports. All bound-worker staging is pinned to Codex
+0.154.0, including document-only workers. Native import/save additionally require
+the supported same-account OpenAI / `gpt-6-astra` route and `--proxy`. A saved
+worker needs that route for later resumes even if its original selector was fresh.
+
 Direct Codex is the default; `--proxy` opts into Astral routing. User-supplied Codex
 arguments must be forwarded unchanged, with `--` disambiguating overlapping
 options. Native checkpoint requirements must be reported before launch.
@@ -104,10 +115,16 @@ private notification metadata. Events trigger current observation, never advance
 worker acknowledgements; save, recovery and completion remain explicit. See
 [lifecycle integration](../../docs/lifecycle-integration.md) for the event contract.
 
+The default subsystem links the current readable `project-workflow` projection.
+Bootstrap design and native review projections remain historical selections.
+Current documents accompany native launch; old document copies inside an
+immutable native window are not edited to match them. Creating a new native
+snapshot requires explicit save, not a documentation rewrite.
+
 ## Open questions
 
 - Future schema evolution and runtime compatibility/version negotiation.
 - Native artifact access, account/model compatibility, retention, and sharing.
-- Conflict reconciliation for concurrent context and JSONL work-item changes.
+- Semantic context reconciliation beyond the implemented record-level merge rules.
 - Which runtime metadata is essential when moving a native window between hosts.
 - Protocol negotiation and additional lifecycle transitions beyond the tested path.

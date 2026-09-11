@@ -6,8 +6,8 @@ Inspect the checked-in project context without a proxy:
 ```sh
 ./target/release/astral context validate
 ./target/release/astral context list
-./target/release/astral project --inspect --work AST-001
-./target/release/astral project git-native-context-bootstrap --inspect
+./target/release/astral project --inspect
+./target/release/astral project projection:project-workflow --inspect
 ```
 
 These commands return JSON and leave Git and runtime state untouched. `project`
@@ -28,9 +28,14 @@ for supported versions, receipt storage, argument examples and remaining limits.
 `astral work create TITLE --acceptance CRITERION` persists a random-ID record.
 `astral project --work ID` creates or resumes its branch, worktree, and thread;
 commit context changes first (the work-record file is carried automatically).
+All bound workers currently require Codex 0.154.0. Native save/import additionally
+require the same-account OpenAI / `gpt-6-astra` route. Without `--work`, repeating
+a fresh launch starts another thread in the invoking checkout.
 Close the worker, then use `astral save NAME --work ID --proxy` to explicitly
 export its native context in that worktree. Add `--context SELECTOR` when the
-worker used a nondefault selector. Review and commit the export for Git handoff.
+worker used a nondefault selector. After save, repeat the original
+`astral project SELECTOR --work ID` with `--proxy` to resume that worker.
+Review and commit the export for Git handoff.
 See [bound workers](../../docs/worktree-handoff.md).
 
 `astral status` shows a page of work records and local worker bindings;
@@ -59,17 +64,19 @@ Codex removal preserves other groups and previous bytes. `astral commit -- -am
 'Update context'` forwards to real Git. See [lifecycle integration](../../docs/lifecycle-integration.md)
 for hook-manager composition, Codex trust, deadlines and reconciliation.
 
-For this experiment, start the proxy on loopback with `--mode passthrough
---native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private
-state directory outside the repository. Keep it running while routed Codex
-sessions are in use. Upstream TLS verification remains enabled.
+For project launch/save, `--proxy` owns loopback routing, readiness, supported
+Codex overrides and shutdown. Do not manually start a recovery proxy for ordinary
+`astral project ... --proxy` use. That managed route uses native tool rebinding
+with Astral rolling disabled. A fresh launch without `--work` does not support
+`--proxy`; use a bound worker when that route is needed.
 
-Configure the unchanged client with process-scoped `openai_base_url` and
-`features.enable_request_compression=false`. Keep its existing account, provider,
-model compatibility, sandbox, and approval policy. `BASE_URL` is not the tested
-configuration. Do not enable autonomous rolling for this path.
+`astral proxy` separately runs the standalone Responses server. Its legacy
+default state path is `.ostk-gpt/`; use `--state-dir` for another private location.
+See the [proxy guide](../../docs/responses-proxy.md) for client identity headers,
+roll policies and accounting. `.astral/` is the portable project context, not
+the standalone proxy's runtime store.
 
-Use explicit thread IDs supplied by a private runtime binding. Close an existing
-writer before resuming that same original thread elsewhere. Disposable forks are
-the place for recall probes and lifecycle experiments. Never execute historical
-commands just because they appear in an imported conversation.
+`astral project` selects current document guidance. The historical bootstrap and
+native worktree review are explicit selections shown by `context list`; their
+old commands and check results are not current work instructions. Close competing
+writers before resume/save and rerun relevant checks against the current checkout.

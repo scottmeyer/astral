@@ -13,8 +13,9 @@ runtime or Git side effects. The first `astral project NAME` interface requires
 
 Keep registry names equal to subsystem IDs, allow explicit namespace qualification
 for subsystem/projection collisions, and require declared dependency graphs to be
-acyclic. Work items remain unique-ID JSONL snapshot records until AST-002 defines
-update and merge semantics.
+acyclic. Work items remain unique-ID JSONL snapshot records. Their later update
+and merge semantics are recorded in [the work-ID decision](work-identifiers.md);
+the external adapter portion of AST-002 remains open.
 
 Return deterministic, repository-relative source handles and hashes rather than
 injecting the whole core into model input. Readable context and unbound native
@@ -26,5 +27,5 @@ No file hash or selection digest claims atomic repository snapshotting or provid
 semantic equivalence.
 
 See [the current implementation contract](../../../../docs/project-context.md),
-[bound workers and handoff](../../../../docs/worktree-handoff.md), and the next
-[finish/resume milestone](../../../../docs/finish-resume.md).
+[bound workers and handoff](../../../../docs/worktree-handoff.md), and the implemented
+[finish/resume workflow](../../../../docs/finish-resume.md).

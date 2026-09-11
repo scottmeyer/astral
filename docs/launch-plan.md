@@ -8,7 +8,8 @@ proxy, local receipt-based cold resume and headless worker launch are implemente
 see [native launch](native-launch.md) for the supported runtime and limits.
 Worktree binding, record operations and explicit save/handoff are also implemented;
 see [bound workers and handoff](worktree-handoff.md). This plan records those five
-milestones. [Finish and resume](finish-resume.md) describes the next workflow milestone.
+milestones. [Finish and resume](finish-resume.md) describes the implemented status,
+recovery, completion and advisory hook workflow that followed them.
 The earlier successful native lifecycle tests establish a feasible route, with
 the version and protocol limits in [the lifecycle receipt](native-recovery-lifecycle.md).
 
@@ -96,7 +97,11 @@ and reusable thread. Repeating the command continues the bound worker.
 
 The sample work ID is illustrative. `astral work id` proposes a random ID but
 does not persist a record; `work create` does. `save` compacts and exports the
-stopped bound worker into a named immutable projection in its checkout.
+stopped bound worker into an immutable bundle in its checkout. The named
+projection reference can advance while earlier bundles remain retained.
+Bound workers require Codex 0.154.0 even when their selected context is readable.
+After native save, repeat the same selector and work ID with `--proxy` to resume
+the original worker; the saved native state now requires rebinding.
 
 On success the user enters the Codex session with the chosen context and working
 directory. On failure the launcher reports the failed stage and artifact/runtime
