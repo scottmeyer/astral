@@ -124,6 +124,7 @@ fn effective_headers(mut headers: HeaderMap) -> Result<HeaderMap, (StatusCode, &
         "x-ostk-session-id",
         "session_id",
         "openai-session-id",
+        "x-ostk-roll-estimate",
     ] {
         if headers.get_all(name).iter().count() > 1 {
             return Err((StatusCode::BAD_REQUEST, "duplicate identity header"));
@@ -217,6 +218,8 @@ fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
         app.config.compact_path,
         app.config.compaction_backend,
         app.config.inline_threshold_tokens,
+        app.config.inline_tool_boundaries,
+        app.config.economic_roll_policy,
         headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
@@ -359,6 +362,23 @@ async fn handle(
         &app.config,
         headers.get("x-ostk-roll").is_some_and(|v| v == "1"),
     );
+    if app.config.economic_roll_policy {
+        if let Some(raw) = headers.get("x-ostk-roll-estimate") {
+            let estimate = raw
+                .to_str()
+                .ok()
+                .and_then(|s| serde_json::from_str::<crate::economics::RollEstimate>(s).ok());
+            let net = match estimate.as_ref().map(|e| e.net_savings()) {
+                Some(Ok(net)) => net,
+                _ => return error(StatusCode::BAD_REQUEST, "invalid x-ostk-roll-estimate"),
+            };
+            if net <= 0.0 && plan.compact_input.is_some() {
+                plan.compact_input = None;
+                plan.next.last_roll_attempt_ms = guard.as_ref().unwrap().last_roll_attempt_ms;
+                plan.reason = "economic_defer";
+            }
+        }
+    }
     let mut reason = plan.reason;
     let mut inline_bytes = None;
     if plan.compact_input.is_some() && app.config.compaction_backend == CompactionBackend::Inline {

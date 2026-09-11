@@ -1,5 +1,8 @@
 //! Pure projection planning. No inferred cache expiry and no mutation on response failure.
-use crate::{config::Config, fingerprint};
+use crate::{
+    config::{CompactionBackend, Config},
+    fingerprint,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -129,6 +132,61 @@ pub fn bytes(items: &[Value]) -> usize {
     serde_json::to_vec(items).unwrap().len()
 }
 
+/// The provider checkpoints the whole effective input; no tool pair is sliced.
+pub fn complete_tool_return(items: &[Value]) -> bool {
+    let output = |ty: &str| {
+        matches!(
+            ty,
+            "function_call_output"
+                | "custom_tool_call_output"
+                | "computer_call_output"
+                | "local_shell_call_output"
+                | "shell_call_output"
+                | "apply_patch_call_output"
+        )
+    };
+    if !items
+        .last()
+        .and_then(|i| i["type"].as_str())
+        .is_some_and(output)
+    {
+        return false;
+    }
+    let mut pending = HashSet::new();
+    let mut seen = HashSet::new();
+    for item in items {
+        let ty = item["type"].as_str().unwrap_or("");
+        if matches!(
+            ty,
+            "function_call"
+                | "custom_tool_call"
+                | "computer_call"
+                | "local_shell_call"
+                | "shell_call"
+                | "apply_patch_call"
+        ) {
+            let Some(id) = item
+                .get("call_id")
+                .or_else(|| item.get("id"))
+                .and_then(Value::as_str)
+            else {
+                return false;
+            };
+            if !seen.insert(id) || !pending.insert(id) {
+                return false;
+            }
+        } else if output(ty) {
+            let Some(id) = item["call_id"].as_str() else {
+                return false;
+            };
+            if !pending.remove(id) {
+                return false;
+            }
+        }
+    }
+    pending.is_empty()
+}
+
 pub fn plan(request: &Value, previous: &Lane, now: u64, cfg: &Config, force: bool) -> Plan {
     let raw = request["input"].as_array().expect("validated array");
     let hashes: Vec<String> = raw.iter().map(fingerprint).collect();
@@ -183,6 +241,18 @@ pub fn plan(request: &Value, previous: &Lane, now: u64, cfg: &Config, force: boo
             < cfg.min_roll_seconds.saturating_mul(1000)
     {
         result.reason = "roll_cooldown";
+        return result;
+    }
+    if cfg.compaction_backend == CompactionBackend::Inline
+        && cfg.inline_tool_boundaries
+        && complete_tool_return(raw)
+    {
+        if bytes(&result.effective) >= cfg.min_compact_bytes || force {
+            result.compact_input = Some(result.effective.clone());
+            result.compact_cut = raw.len();
+            result.next.last_roll_attempt_ms = now;
+            result.reason = "complete_tool_roll";
+        }
         return result;
     }
     let Some(cut) = safe_cut(raw, cfg.keep_recent_turns) else {

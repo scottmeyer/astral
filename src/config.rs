@@ -45,6 +45,12 @@ pub struct Config {
     /// Provider token threshold when an inline rollover is scheduled.
     #[arg(long, default_value_t = 8192)]
     pub inline_threshold_tokens: usize,
+    /// Allow native inline checkpoints after complete external tool results.
+    #[arg(long)]
+    pub inline_tool_boundaries: bool,
+    /// Honor x-ostk-roll-estimate when supplied; otherwise retain byte scheduling.
+    #[arg(long)]
+    pub economic_roll_policy: bool,
     #[arg(long, value_enum, default_value = "rolling")]
     pub mode: Mode,
     #[arg(long, default_value = ".ostk-gpt")]

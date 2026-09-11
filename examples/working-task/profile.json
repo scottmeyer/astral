@@ -1,0 +1,8 @@
+{
+  "files": [
+    {"path": "total.py", "writable": true},
+    {"path": "check_total.py", "writable": false},
+    {"path": "requirements.json", "writable": false}
+  ],
+  "checks": {"tests": {"argv": ["python3", "-B", "check_total.py"], "timeout_seconds": 20}}
+}

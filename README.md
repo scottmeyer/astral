@@ -1,8 +1,10 @@
 # Astral
 
-A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. No `haystack` or other private dependencies.
+A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. An optional host layer adds compact tool observations, exact artifact retrieval, versioned workspace verification, and durable action replay. No `haystack` or other private dependencies.
 
 The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. The default backend uses standalone native compaction; the opt-in [inline backend](docs/inline-backend.md) lets Astral schedule and persist checkpoints through the normal Responses route. The [validation receipt](docs/validation.md) distinguishes these paths and records the remaining environment limitations.
+
+Use [the working-state integration](docs/working-state.md) to run the new agent host: `astral-state` manages configured files, checks and immutable artifacts; `examples/agent.py` connects them to Responses tools. It records immediate state changes while freezing model-visible snapshots between native checkpoints. The supplied coding trial compares native compaction, native compaction with the same adapter, and Astral with the adapter and state layer.
 
 In a [two-seed live comparison](docs/benefit-evaluation.md), Astral inline reduced input tokens by 69.4% against full history, increased wall time by 22.1%, and passed all recall/restart checks. Provider-managed compaction used fewer input tokens than Astral. These are synthetic-task measurements, not verified cost savings.
 
@@ -51,11 +53,11 @@ For SDK callers, set the base URL to the proxy and attach `x-ostk-session-id` as
 
 With no projection, the entire input forwards normally. Once effective input exceeds `--roll-bytes` (160,000 by default), the proxy can compact older completed turns. The default standalone backend keeps the most recent two user turns and everything after them intact. Inline mode lets the provider checkpoint the effective window and does not reserve a fixed raw tail; see [its ownership contract](docs/inline-backend.md).
 
-Rolls happen only on requests whose final input item is a new user message. All known external tool calls must have corresponding outputs. Mid-tool-cycle requests retain the previous projection and complete active tail. A size trigger never authorizes deleting a pending call or its reasoning.
+By default, rolls happen only on requests whose final input item is a new user message. All known external tool calls must have corresponding outputs. The inline backend's opt-in `--inline-tool-boundaries` also permits scheduling immediately after a complete tool-result batch, with the entire effective input intact. Mid-tool-cycle requests retain the previous projection and complete active tail. A size trigger never authorizes deleting a pending call or its reasoning.
 
 An accepted roll requires a nonempty canonical output containing an encrypted compaction item and at least `--min-savings` wire-size reduction. If compaction times out, fails, returns malformed output, or does not reduce the prefix enough, the existing projection and full remaining history are used. There are no automatic retries of the main generation request.
 
-`x-ostk-roll: 1` forces an attempt at the next eligible boundary, bypassing size and cooldown checks. It does not bypass tool-pair safety or the output acceptance gate. `--idle-roll-seconds` enables an optional inactivity heuristic; it is disabled by default. Time is never used to assert that an upstream cache has expired.
+`x-ostk-roll: 1` forces an attempt at the next eligible boundary, bypassing size and cooldown checks. It does not bypass tool-pair safety, an enabled economic gate or the output acceptance gate. `--idle-roll-seconds` enables an optional inactivity heuristic; it is disabled by default. Time is never used to assert that an upstream cache has expired. The optional [economic decision hook](docs/working-state.md#roll-only-when-the-boundary-and-estimate-allow-it) accounts for caller-estimated checkpoint, cache and recovery costs.
 
 ```sh
 ./target/release/ostk-gpt-cache \
@@ -66,7 +68,7 @@ An accepted roll requires a nonempty canonical output containing an encrypted co
   --min-savings 0.15
 ```
 
-These are **byte budgets**, not tokenizer estimates or model context limits. Select a trigger with enough room for instructions, tool schemas, the active tail, and output. A very large single tool cycle is deliberately not compacted by this implementation. The provider can still return a context-limit error. The proxy does not truncate input to hide that error.
+These are **byte budgets**, not tokenizer estimates or model context limits. Select a trigger with enough room for instructions, tool schemas, the active tail, and output. An incomplete tool cycle cannot be compacted by the proxy. The provider can still return a context-limit error. The proxy does not truncate input to hide that error.
 
 ## GPT cache policy
 
@@ -133,4 +135,4 @@ Integration tests use real loopback HTTP servers with mocked Responses/compact p
 
 ## Scope
 
-This version implements native opaque projections. It does not create a human-readable kernel state, inject recall tools, summarize failed tool results into text, or claim lossless semantic compaction. Extending the projection backend should keep the planner, transactional commit rule, full canonical output handling, and active-tail invariants. The official [compaction guide](https://developers.openai.com/api/docs/guides/compaction) describes the native output contract.
+The proxy implements native opaque projections. The optional explicit host adds human-readable state, narrow deterministic check adapters and recall tools; it does not intercept arbitrary tools or decode provider reasoning. Verification covers declared inputs and configured checks. Natural-language constraint interpretation, arbitrary command sandboxing, artifact garbage collection and autonomous economic estimates remain outside this reference implementation. Neither layer claims lossless semantic compaction. The official [compaction guide](https://developers.openai.com/api/docs/guides/compaction) describes the native output contract.

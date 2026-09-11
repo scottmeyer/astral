@@ -115,6 +115,10 @@ class Proxy:
                    "--compact-timeout-seconds", str(self.args.timeout)]
         if self.args.allow_compatible_compaction:
             command.append("--allow-compatible-compaction")
+        if getattr(self.args, "inline_tool_boundaries", False):
+            command.append("--inline-tool-boundaries")
+        if getattr(self.args, "economic_roll_policy", False):
+            command.append("--economic-roll-policy")
         process_env = os.environ.copy()
         if getattr(self.args, "auth", None) == "gateway":
             # Gateway routing is already authorized; do not forward a separate

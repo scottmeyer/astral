@@ -18,9 +18,15 @@ The client keeps sending its complete original history, including every output i
 
 Astral uses the existing size, cooldown, and safe new-user-boundary checks to decide which requests may compact. On an eligible request, it injects `context_management` with the configured token threshold. The provider decides whether its rendered context crosses that threshold and emits any native compaction item in the response stream. `x-ostk-roll: 1` bypasses Astral's size and cooldown gates; it does not bypass the provider's token threshold.
 
+`--inline-tool-boundaries` additionally allows an eligible request ending with
+the last outstanding external tool result. All known calls must have exactly
+one matching result; duplicates, orphans and partial batches cannot use this
+boundary. The entire effective window is forwarded intact. The new explicit
+host enables this option; the bare proxy retains its original default.
+
 The two thresholds measure different things: `roll-bytes` measures Astral's serialized effective input; `inline-threshold-tokens` is interpreted by the provider. Inline mode does not make a separate preparatory generation or standalone compact request.
 
-In standalone mode, `keep-recent-turns` reserves an exact raw tail outside the compacted prefix. In inline mode it helps determine eligibility, but the provider may compact the entire effective window, including the latest user message. Inline mode therefore does not promise a particular number of raw retained turns. Astral never schedules inline compaction during an active tool continuation. After a provider-issued checkpoint, its documented replacement semantics govern the retained context.
+In standalone mode, `keep-recent-turns` reserves an exact raw tail outside the compacted prefix. In inline mode it helps determine user-boundary eligibility, but the provider may compact the entire effective window, including the latest user message. Inline mode therefore does not promise a particular number of raw retained turns. Astral never schedules inline compaction while a known tool call still lacks its result. After a provider-issued checkpoint, its documented replacement semantics govern the retained context.
 
 Caller-supplied `context_management` continues to bypass Astral's planner entirely. That is the provider-managed reference mode. API Platform cache policy and caller controls retain their existing behavior; inline mode does not change cache TTL or reasoning-context settings.
 

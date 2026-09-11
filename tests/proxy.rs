@@ -1080,3 +1080,105 @@ async fn edited_replayed_inline_checkpoint_resets_to_authoritative_client_histor
     assert!(sent.get("context_management").is_none());
     assert_eq!(f.snapshots().await[0]["cut"], 0);
 }
+
+#[tokio::test]
+async fn inline_tool_boundary_requires_all_results_and_preserves_native_items() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compaction_backend = CompactionBackend::Inline;
+        cfg.inline_tool_boundaries = true;
+    })
+    .await;
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    let mut r = json!({"model":"gpt-6-astra","input":[
+        {"role":"user","content":"inspect"},
+        {"type":"reasoning","encrypted_content":"unchanged+/="},
+        {"type":"function_call","call_id":"a","name":"read","arguments":"{}"},
+        {"type":"function_call","call_id":"b","name":"read","arguments":"{}"},
+        {"type":"function_call_output","call_id":"a","output":"first"}]});
+    f.request("tool-boundary")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[0].body).unwrap();
+    assert!(sent.get("context_management").is_none());
+    r["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type":"function_call_output","call_id":"b","output":"X".repeat(5000)}));
+    f.request("tool-boundary")
+        .header("x-ostk-roll", "1")
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&f.records(false)[1].body).unwrap();
+    assert!(sent.get("context_management").is_some());
+    assert_eq!(sent["input"], r["input"]);
+    assert_eq!(f.snapshots().await[0]["epoch"], 1);
+}
+
+#[tokio::test]
+async fn economic_gate_defers_unprofitable_roll_and_accepts_valid_positive_estimate() {
+    let f = Fixture::configured(Mode::Rolling, |cfg| {
+        cfg.compaction_backend = CompactionBackend::Inline;
+        cfg.economic_roll_policy = true;
+    })
+    .await;
+    f.mock.inline_mode.store(1, Ordering::SeqCst);
+    let r = input();
+    let mut estimate = json!({"remaining_calls":1,"saved_input_per_call":1.0,"checkpoint_cost":10.0,"lost_cache_cost":1.0,"recovery_cost":1.0});
+    f.request("economics")
+        .header("x-ostk-roll", "1")
+        .header("x-ostk-roll-estimate", estimate.to_string())
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert!(
+        serde_json::from_slice::<Value>(&f.records(false)[0].body)
+            .unwrap()
+            .get("context_management")
+            .is_none()
+    );
+    estimate["remaining_calls"] = json!(100);
+    f.request("economics")
+        .header("x-ostk-roll", "1")
+        .header("x-ostk-roll-estimate", estimate.to_string())
+        .json(&r)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert!(
+        serde_json::from_slice::<Value>(&f.records(false)[1].body)
+            .unwrap()
+            .get("context_management")
+            .is_some()
+    );
+    assert!(
+        !f.records(false)[1]
+            .headers
+            .contains_key("x-ostk-roll-estimate")
+    );
+    let response = f
+        .request("economics")
+        .header("x-ostk-roll-estimate", "invalid")
+        .json(&r)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
