@@ -18,9 +18,11 @@ Git commands mean or make native histories automatically mergeable.
 Status, diagnosis and [explicit worker recovery](worker-recovery.md) are implemented.
 [Branch completion](branch-completion.md) previews the results and supports an
 explicit, checked fast-forward, while recognizing ordinary Git integration.
-Hook installation and a potential `astral commit` command remain planned.
+Opt-in [Git/Codex hooks](lifecycle-integration.md) and `astral commit -- GIT_ARGS`
+are implemented with shared advisory checks and explicit installation plans.
 The [recovery/completion verification receipt](recovery-completion-verification.md)
-records this implementation's current local checks and remaining limits.
+records that stage's dated checks and remaining limits. The separate
+[lifecycle receipt](lifecycle-verification.md) qualifies the hook integration.
 A status observation cannot establish that a remote model is
 available, a recorded thread still exists, a checkpoint is decryptable, or a
 runtime command will execute. Launch retains its current preflights and locks.
@@ -74,16 +76,14 @@ run tests, inspect authentication or conversation contents, or claim provider
 compatibility. Remote thread existence, general code freshness and historical
 test validity remain unchecked. Save still requires an explicit stopped worker.
 
-## Git integration direction
+## Git and Codex integration
 
-Ordinary `git commit`, checkout and merge must remain useful. Build one set of
-context checks and invoke it from explicit Astral commands or opt-in lifecycle
-hooks. A future wrapper should add a convenient reviewed sequence, while
-preserving literal Git arguments, signing, existing hooks and exit behavior.
-Installing an integration must not replace another tool's hooks or silently
-rewrite `core.hooksPath`. Detect existing configuration and show the proposed
-integration first. Guard against invoking hooks recursively from Astral's own
-Git operations.
+Ordinary `git commit`, checkout and merge remain usable. `astral lifecycle check`
+and opt-in Git/Codex hooks share current evidence checks. `astral commit -- ARGS`
+forwards literally to real Git, preserving signing, existing hooks and exit
+behavior. Installation previews detect foreign hooks and `core.hooksPath` instead
+of replacing them. See [lifecycle integration](lifecycle-integration.md) for exact
+events, commands, independent opt-ins and out-of-order reconciliation.
 
 Commit-time checks should examine the staged snapshot, since working-tree files
 can differ from what Git will commit. Checkout/merge checks should report how
@@ -96,7 +96,9 @@ Native export is an explicit operation against a stopped, owned worker today.
 A commit hook must not infer permission to compact an active conversation.
 Codex integration must use a supported runtime lifecycle surface when one is
 available; the host's subagent tool is not automatically intercepted by Astral.
-Exact hook names and event contracts are still design work, not claimed APIs.
+The initial adapter targets Codex 0.154.0 command-hook schemas; unknown events and
+subagent events are inert. Stop and PostCompact produce UI-only advice and never
+request another turn. Runtime trust and permissions remain destination choices.
 
 Branch completion should produce a reviewable plan before integration. Git can
 preserve both branches' immutable native artifacts, but a user or reconciliation

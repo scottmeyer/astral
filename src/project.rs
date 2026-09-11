@@ -15,6 +15,7 @@ pub use schema::{
 };
 
 use crate::native_bundle::NativeBundle;
+pub(crate) use reader::ProjectSource;
 use reader::{Reader, join, relative};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -362,7 +363,14 @@ impl Project {
     }
 
     pub fn load_with_limits(root: impl AsRef<Path>, limits: Limits) -> Result<Self> {
-        let mut reader = Reader::new(root.as_ref(), limits)?;
+        Self::load_reader(Reader::new(root.as_ref(), limits)?, limits)
+    }
+
+    pub(crate) fn load_source(source: &dyn ProjectSource, limits: Limits) -> Result<Self> {
+        Self::load_reader(Reader::from_source(source, limits), limits)
+    }
+
+    fn load_reader(mut reader: Reader<'_>, limits: Limits) -> Result<Self> {
         let project_path = ".astral/project.toml";
         let manifest: ProjectManifest = schema(&reader.read(project_path)?, project_path)?;
         version(manifest.schema_version, project_path)?;

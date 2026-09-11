@@ -25,12 +25,19 @@ Git handoff; see [bound workers and handoff](docs/worktree-handoff.md).
 Use `astral status` to inspect recorded workers, or `astral doctor --work ID`
 to diagnose local resume blockers. Both support formatted `--json` output and
 leave files and runtime sessions unchanged. See [finish and resume](docs/finish-resume.md)
-for the current commands and planned Git/Codex integrations.
+for the current workflow commands.
 
 `astral recover --work ID` previews repairs for interrupted operations using
 retained evidence. `astral finish --work ID --into main` previews branch completion;
 both require an explicit reviewed plan hash before applying a change. See
 [recovery](docs/worker-recovery.md) and [branch completion](docs/branch-completion.md).
+
+`astral lifecycle check` compares committed, staged and working context. Opt in
+separately with `astral hooks install git` or `astral hooks install codex`; each
+prints a reviewable plan before `--apply PLAN_SHA256`. Hooks give bounded offline
+advice and preserve existing integrations. `astral commit -- GIT_ARGS` forwards
+to real Git with its ordinary hooks and signing. See [lifecycle integration](docs/lifecycle-integration.md)
+for event ownership, coexistence and out-of-order work.
 
 Inspection prints formatted JSON. `astral work id` proposes a short random work
 ID for new JSONL records, avoiding per-branch counters. `astral work create`,

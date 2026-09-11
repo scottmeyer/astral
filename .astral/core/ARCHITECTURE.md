@@ -94,8 +94,15 @@ and private receipt stores retain their different safety policies.
 and confined worker observations in `src/workspace/observation`. The observer
 checks recorded identities and briefly probes existing ownership locks without
 creating or retaining state. Context comparison uses the bound checkout's
-selected documents; recorded threads are not contacted. Mutation/recovery and
-Git/Codex hook integration remain separate [workflow work](../../docs/finish-resume.md).
+selected documents; recorded threads are not contacted.
+
+`src/git_snapshot` supplies an immutable, lazy Git-object source to the project
+reader, preserving the actual candidate index environment. `src/lifecycle`
+compares that candidate, HEAD and working context without changing receipts.
+`src/hooks` owns separate Git/Codex installers, bounded advisory callbacks and
+private notification metadata. Events trigger current observation, never advance
+worker acknowledgements; save, recovery and completion remain explicit. See
+[lifecycle integration](../../docs/lifecycle-integration.md) for the event contract.
 
 ## Open questions
 

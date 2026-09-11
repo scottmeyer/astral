@@ -72,6 +72,13 @@ artifact preservation. These checks do not establish live-provider recovery,
 semantic reconciliation quality or cross-account portability.
 See the dated [recovery/completion receipt](../../docs/recovery-completion-verification.md).
 
+`tests/git_snapshot.rs` validates exact index/HEAD sources, temporary and alternate
+indexes, native bytes, unsafe entries and no-write behavior. `lifecycle.rs`,
+`hook_install.rs`, `codex_hooks.rs` and `hook_deadline.rs` exercise shared drift
+checks, worker ownership, hook coexistence, callback budgets and literal Git
+forwarding. The separate [lifecycle receipt](../../docs/lifecycle-verification.md)
+distinguishes local fixtures from actual installed Codex dispatch and UI gaps.
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

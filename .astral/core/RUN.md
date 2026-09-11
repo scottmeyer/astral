@@ -38,7 +38,7 @@ See [bound workers](../../docs/worktree-handoff.md).
 `astral doctor --work ID` reports local blockers and exits 1 when that observation
 needs attention. These commands do not start Codex, repair receipts or verify
 recorded threads. Use `--offset N --limit N` for further pages. See
-[finish and resume](../../docs/finish-resume.md) for limits and planned integrations.
+[finish and resume](../../docs/finish-resume.md) for workflow limits.
 
 `astral recover --work ID` previews repairs backed by retained operation evidence;
 `--apply PLAN_SHA256` explicitly applies an unchanged plan under worker ownership.
@@ -47,6 +47,15 @@ missing from the current work register. See [recovery](../../docs/worker-recover
 `astral finish --work ID --into main` previews branch integration and required
 review; its explicit apply supports checked fast-forwards. Ordinary commits and
 merges remain supported. See [branch completion](../../docs/branch-completion.md).
+
+`astral lifecycle check --scope index` validates the exact staged context;
+the default scope is `worktree`, with committed/staged/working comparisons in
+every report. `astral hooks install git` and `astral hooks install codex` preview
+independent opt-ins; `--apply PLAN_SHA256` applies the reviewed installation.
+`hooks uninstall TARGET` also previews first. Git shims are retained but disabled;
+Codex removal preserves other groups and previous bytes. `astral commit -- -am
+'Update context'` forwards to real Git. See [lifecycle integration](../../docs/lifecycle-integration.md)
+for hook-manager composition, Codex trust, deadlines and reconciliation.
 
 For this experiment, start the proxy on loopback with `--mode passthrough
 --native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private

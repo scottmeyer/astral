@@ -78,6 +78,38 @@ pub(crate) fn git_config_for_completion(root: &Path) -> Result<Vec<u8>> {
     }
 }
 
+/// Snapshot-only reads preserve an explicitly captured Git repository/index
+/// context. Callers supply only fixed read commands, never user command text.
+pub(crate) fn git_snapshot_read(
+    root: &Path,
+    args: &[std::ffi::OsString],
+    context: &[(std::ffi::OsString, std::ffi::OsString)],
+    allow_one: bool,
+    limit: usize,
+) -> Result<(bool, Vec<u8>)> {
+    if limit > crate::native_bundle::MAX_PAYLOAD_BYTES {
+        return Err(fail(
+            "WORKSPACE_GIT_LIMIT",
+            "snapshot Git output limit exceeds native artifact budget",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        unix::git_snapshot(
+            root,
+            &args.iter().map(|a| a.as_os_str()).collect::<Vec<_>>(),
+            context,
+            allow_one,
+            limit,
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (root, args, context, allow_one, limit);
+        Err(unsupported())
+    }
+}
+
 /// Only destination-local identifiers and hashes; no prompts or executable settings.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -694,12 +726,16 @@ mod unix {
         }
     }
 
-    struct GitChild(Child);
+    struct GitChild(Child, bool);
     impl Drop for GitChild {
         fn drop(&mut self) {
             // The child owns a new process group, also bounding inherited pipe writers.
-            unsafe {
-                libc::kill(-(self.0.id() as i32), libc::SIGKILL);
+            if self.1 {
+                unsafe {
+                    libc::kill(-(self.0.id() as i32), libc::SIGKILL);
+                }
+            } else {
+                let _ = self.0.kill();
             }
             let _ = self.0.wait();
         }
@@ -747,7 +783,7 @@ mod unix {
         allow_one: bool,
         stdout_limit: usize,
     ) -> Result<(bool, Vec<u8>)> {
-        git_run(root, args, allow_one, stdout_limit, false)
+        git_run(root, args, allow_one, stdout_limit, false, &[])
     }
 
     pub(super) fn git_config(root: &Path) -> Result<(bool, Vec<u8>)> {
@@ -757,7 +793,18 @@ mod unix {
             false,
             MAX_STDOUT,
             true,
+            &[],
         )
+    }
+
+    pub(super) fn git_snapshot(
+        root: &Path,
+        args: &[&OsStr],
+        context: &[(std::ffi::OsString, std::ffi::OsString)],
+        allow_one: bool,
+        limit: usize,
+    ) -> Result<(bool, Vec<u8>)> {
+        git_run(root, args, allow_one, limit, false, context)
     }
 
     fn git_run(
@@ -766,28 +813,32 @@ mod unix {
         allow_one: bool,
         stdout_limit: usize,
         observe_config: bool,
+        snapshot_context: &[(std::ffi::OsString, std::ffi::OsString)],
     ) -> Result<(bool, Vec<u8>)> {
         let mut cmd = Command::new("git");
-        cmd.current_dir(root)
-            .args([
-                "--no-pager",
-                "--no-optional-locks",
-                "-c",
-                "core.hooksPath=/dev/null",
-                "-c",
-                "core.fsmonitor=false",
-                "-c",
-                "submodule.recurse=false",
-                "-c",
-                "gc.auto=0",
-                "-c",
-                "maintenance.auto=false",
-            ])
-            .args(args)
+        cmd.current_dir(root).args([
+            "--no-pager",
+            "--no-optional-locks",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "submodule.recurse=false",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "maintenance.auto=false",
+        ]);
+        if !observe_config {
+            cmd.args(["-c", "core.hooksPath=/dev/null"]);
+        }
+        cmd.args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0);
+            .stderr(Stdio::piped());
+        let owns_group = std::env::var_os("ASTRAL_HOOK_CHILD").as_deref() != Some(OsStr::new("1"));
+        if owns_group {
+            cmd.process_group(0);
+        }
         for (key, _) in std::env::vars_os() {
             if key.as_bytes().starts_with(b"GIT_")
                 && !(observe_config && key.as_bytes().starts_with(b"GIT_CONFIG_"))
@@ -795,17 +846,26 @@ mod unix {
                 cmd.env_remove(key);
             }
         }
+        for (key, value) in snapshot_context {
+            cmd.env(key, value);
+        }
+        if !snapshot_context.is_empty() {
+            cmd.env("GIT_NO_LAZY_FETCH", "1")
+                .env("GIT_NO_REPLACE_OBJECTS", "1")
+                .env("GIT_LITERAL_PATHSPECS", "1");
+        }
         cmd.env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
             .env("GIT_ATTR_NOSYSTEM", "1")
             .env("LC_ALL", "C");
-        if !observe_config {
+        if !observe_config && snapshot_context.is_empty() {
             cmd.env("GIT_CONFIG_NOSYSTEM", "1")
                 .env("GIT_CONFIG_GLOBAL", "/dev/null");
         }
         let mut child = GitChild(
             cmd.spawn()
                 .map_err(|_| fail("WORKSPACE_GIT_START", "cannot start Git"))?,
+            owns_group,
         );
         let mut stdout = child.0.stdout.take().expect("piped stdout");
         let mut stderr = child.0.stderr.take().expect("piped stderr");

@@ -29,25 +29,47 @@ pub(super) fn join(base: &str, child: &str) -> Result<String> {
     Ok(format!("{base}/{child}"))
 }
 
+/// A read-only logical object tree. Implementations must never fall back to
+/// working files; Reader still owns all project byte/file/discovery budgets.
+pub(crate) trait ProjectSource {
+    fn read_blob(&self, path: &str, limit: usize) -> Result<Vec<u8>>;
+    fn directory(&self, path: &str, limit: usize) -> Result<Vec<String>>;
+}
+
+enum Source<'a> {
+    Filesystem(File),
+    Objects(&'a dyn ProjectSource),
+}
+
 /// Descriptor-relative filesystem access. No symlink inside the repository is followed.
 /// Individual observations are protected; this is not a transactional tree snapshot.
-pub(super) struct Reader {
-    root: File,
+pub(super) struct Reader<'a> {
+    root: Source<'a>,
     pub(super) limits: Limits,
     total_bytes: usize,
     entries: usize,
     pub(super) contents: BTreeMap<String, Vec<u8>>,
 }
 
-impl Reader {
+impl<'a> Reader<'a> {
     pub(super) fn new(root: &Path, limits: Limits) -> Result<Self> {
         Ok(Self {
-            root: confined::root(root)?,
+            root: Source::Filesystem(confined::root(root)?),
             limits,
             total_bytes: 0,
             entries: 0,
             contents: BTreeMap::new(),
         })
+    }
+
+    pub(super) fn from_source(source: &'a dyn ProjectSource, limits: Limits) -> Self {
+        Self {
+            root: Source::Objects(source),
+            limits,
+            total_bytes: 0,
+            entries: 0,
+            contents: BTreeMap::new(),
+        }
     }
 
     pub(super) fn charge(&mut self, count: usize) -> Result<()> {
@@ -76,39 +98,61 @@ impl Reader {
         if self.contents.len() >= self.limits.files {
             return Err(error("LIMIT_EXCEEDED", "file count"));
         }
-        let mut file = confined::open(&self.root, path, false)?;
         let remaining = self.limits.total_bytes.saturating_sub(self.total_bytes);
         let limit = file_limit.min(remaining);
-        if file
-            .metadata()
-            .map_err(|_| error("READ_FAILED", path))?
-            .len()
-            > limit as u64
-        {
-            return Err(error(
-                "LIMIT_EXCEEDED",
-                format!("{path}: file or aggregate byte limit"),
-            ));
-        }
-        let mut bytes = Vec::new();
-        file.by_ref()
-            .take((limit as u64).saturating_add(1))
-            .read_to_end(&mut bytes)
-            .map_err(|_| error("READ_FAILED", path))?;
-        if bytes.len() > limit {
-            return Err(error(
-                "LIMIT_EXCEEDED",
-                format!("{path}: file or aggregate byte limit"),
-            ));
-        }
+        let bytes = match &self.root {
+            Source::Filesystem(root) => {
+                let mut file = confined::open(root, path, false)?;
+                if file
+                    .metadata()
+                    .map_err(|_| error("READ_FAILED", path))?
+                    .len()
+                    > limit as u64
+                {
+                    return Err(error(
+                        "LIMIT_EXCEEDED",
+                        format!("{path}: file or aggregate byte limit"),
+                    ));
+                }
+                let mut bytes = Vec::new();
+                file.by_ref()
+                    .take((limit as u64).saturating_add(1))
+                    .read_to_end(&mut bytes)
+                    .map_err(|_| error("READ_FAILED", path))?;
+                if bytes.len() > limit {
+                    return Err(error(
+                        "LIMIT_EXCEEDED",
+                        format!("{path}: file or aggregate byte limit"),
+                    ));
+                }
+                bytes
+            }
+            Source::Objects(source) => {
+                let bytes = source.read_blob(path, limit)?;
+                if bytes.len() > limit {
+                    return Err(error(
+                        "LIMIT_EXCEEDED",
+                        format!("{path}: file or aggregate byte limit"),
+                    ));
+                }
+                bytes
+            }
+        };
         self.total_bytes += bytes.len();
         self.contents.insert(path.to_owned(), bytes.clone());
         Ok(bytes)
     }
 
     pub(super) fn directory(&mut self, path: &str) -> Result<Vec<String>> {
-        let file = confined::open(&self.root, path, true)?;
-        let names = confined::names(file, self.limits.entries.saturating_sub(self.entries))?;
+        relative(path)?;
+        let limit = self.limits.entries.saturating_sub(self.entries);
+        let names = match &self.root {
+            Source::Filesystem(root) => confined::names(confined::open(root, path, true)?, limit)?,
+            Source::Objects(source) => source.directory(path, limit)?,
+        };
+        if names.len() > limit {
+            return Err(error("LIMIT_EXCEEDED", "directory entry count"));
+        }
         self.charge(names.len())?;
         Ok(names)
     }

@@ -23,6 +23,44 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Observe committed, staged and working context without changing worker state.
+    Lifecycle {
+        #[command(subcommand)]
+        command: LifecycleCommand,
+    },
+    /// Preview or explicitly apply opt-in lifecycle hook installation.
+    Hooks {
+        #[command(subcommand)]
+        command: HooksCommand,
+    },
+    /// Advisory hook entry points; installers normally invoke these.
+    Hook {
+        #[command(subcommand)]
+        command: HookCommand,
+    },
+    #[command(hide = true)]
+    HookCheck {
+        #[arg(long, value_parser = ["index", "head", "worktree"])]
+        scope: String,
+        #[arg(long)]
+        audience: String,
+        #[arg(long)]
+        session_scope: String,
+        #[arg(long)]
+        claimed_session: Option<String>,
+        #[arg(long)]
+        require_git_registration: bool,
+        #[arg(long)]
+        force_notice: bool,
+    },
+    /// Invoke real git commit, preserving its index, hooks, signing and exit status.
+    #[command(
+        after_help = "Pass literal Git arguments after --, for example: astral commit -- -am 'Update context'. Lifecycle advice requires installed Git hooks; Git decides which hooks run."
+    )]
+    Commit {
+        #[arg(last = true, allow_hyphen_values = true)]
+        git_args: Vec<std::ffi::OsString>,
+    },
     /// Preview interrupted operations; apply only the exact reviewed plan hash.
     Recover {
         #[arg(long)]
@@ -126,6 +164,52 @@ enum Command {
 }
 
 #[derive(Subcommand)]
+enum LifecycleCommand {
+    Check {
+        #[arg(long, default_value = "worktree", value_parser = ["index", "head", "worktree"])]
+        scope: String,
+        #[arg(long)]
+        work: Option<String>,
+    },
+}
+#[derive(Subcommand)]
+enum HooksCommand {
+    Install {
+        #[arg(value_parser = ["git", "codex"])]
+        target: String,
+        #[arg(long)]
+        apply: Option<String>,
+    },
+    Uninstall {
+        #[arg(value_parser = ["git", "codex"])]
+        target: String,
+        #[arg(long)]
+        apply: Option<String>,
+    },
+    Status,
+}
+#[derive(Subcommand)]
+enum HookCommand {
+    Git {
+        event: String,
+        #[arg(long)]
+        manual: bool,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<std::ffi::OsString>,
+    },
+    Codex,
+}
+
+fn lifecycle_scope(value: &str) -> ostk_gpt_cache::lifecycle::Scope {
+    use ostk_gpt_cache::lifecycle::Scope;
+    match value {
+        "index" => Scope::Index,
+        "head" => Scope::Head,
+        _ => Scope::Worktree,
+    }
+}
+
+#[derive(Subcommand)]
 enum ContextCommand {
     Validate,
     List,
@@ -166,6 +250,89 @@ enum WorkCommand {
 
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     match cli.command {
+        Command::Lifecycle {
+            command: LifecycleCommand::Check { scope, work },
+        } => print_workflow(&json!(ostk_gpt_cache::lifecycle::check(
+            &cli.root,
+            lifecycle_scope(&scope),
+            work.as_deref()
+        )?)),
+        Command::Hooks { command } => {
+            use ostk_gpt_cache::hooks::install::{self, Action, Target};
+            let (target, action, apply) = match command {
+                HooksCommand::Status => return print_workflow(&install::status(&cli.root)?),
+                HooksCommand::Install { target, apply } => (target, Action::Install, apply),
+                HooksCommand::Uninstall { target, apply } => (target, Action::Uninstall, apply),
+            };
+            let target = if target == "git" {
+                Target::Git
+            } else {
+                Target::Codex
+            };
+            let executable = std::env::current_exe().map_err(|_| Error {
+                code: "HOOK_EXECUTABLE",
+                message: "current executable unavailable".into(),
+            })?;
+            let value = match apply {
+                Some(expected) => {
+                    install::apply(&cli.root, &executable, target, action, &expected)?
+                }
+                None => json!(install::plan(&cli.root, &executable, target, action)?),
+            };
+            print_workflow(&value)
+        }
+        Command::Hook { command } => {
+            match command {
+                HookCommand::Git {
+                    event,
+                    manual,
+                    args: _,
+                } => ostk_gpt_cache::hooks::git_callback(&cli.root, &event, manual),
+                HookCommand::Codex => ostk_gpt_cache::hooks::codex_callback(),
+            }
+            Ok(None)
+        }
+        Command::HookCheck {
+            scope,
+            audience,
+            session_scope,
+            claimed_session,
+            require_git_registration,
+            force_notice,
+        } => print_workflow(&json!(ostk_gpt_cache::hooks::check_callback(
+            &cli.root,
+            lifecycle_scope(&scope),
+            &audience,
+            &session_scope,
+            claimed_session.as_deref(),
+            require_git_registration,
+            force_notice
+        )?)),
+        Command::Commit { git_args } => {
+            let mut command = std::process::Command::new("git");
+            command
+                .arg("-C")
+                .arg(&cli.root)
+                .arg("commit")
+                .args(git_args);
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                let error = command.exec();
+                Err(Error {
+                    code: "GIT_COMMIT_EXEC",
+                    message: format!("cannot invoke git commit: {error}"),
+                })
+            }
+            #[cfg(not(unix))]
+            {
+                let status = command.status().map_err(|_| Error {
+                    code: "GIT_COMMIT_EXEC",
+                    message: "cannot invoke git commit".into(),
+                })?;
+                std::process::exit(status.code().unwrap_or(1));
+            }
+        }
         Command::Recover {
             work,
             apply,
