@@ -17,7 +17,11 @@ including launch milestones, use random IDs. Randomness makes cross-branch
 collisions unlikely, not impossible: writers and merge validation must still
 reject duplicates. Never silently renumber one side of a conflicting merge.
 
-Unique IDs do not by themselves reconcile a shared JSONL file. The planned
-record-aware three-way merge unions independent additions and reports divergent
+Unique IDs do not by themselves reconcile a shared JSONL file. `astral work merge`
+performs a record-aware three-way merge, unions independent additions and reports divergent
 edits/deletions of the same ID. Dependency validation runs after reconciliation.
 Native checkpoint histories require separate handling; they are not work records.
+
+`astral work create TITLE --acceptance CRITERION` persists a new record under a
+directory lock. `work list` returns observed record digests; `work update` requires
+the expected digest and currently changes status while retaining other fields.

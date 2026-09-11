@@ -25,6 +25,14 @@ its local thread with a new owned proxy. `--non-interactive -- ...` starts a wor
 with selected context and an explicit task. See [native launch](../../docs/native-launch.md)
 for supported versions, receipt storage, argument examples and remaining limits.
 
+`astral work create TITLE --acceptance CRITERION` persists a random-ID record.
+`astral project --work ID` creates or resumes its branch, worktree, and thread;
+commit context changes first (the work-record file is carried automatically).
+Close the worker, then use `astral save NAME --work ID --proxy` to explicitly
+export its native context in that worktree. Add `--context SELECTOR` when the
+worker used a nondefault selector. Review and commit the export for Git handoff.
+See [bound workers](../../docs/worktree-handoff.md).
+
 For this experiment, start the proxy on loopback with `--mode passthrough
 --native-tool-binding rebind`, the compatible ChatGPT Codex HTTPS upstream, and a private
 state directory outside the repository. Keep it running while routed Codex

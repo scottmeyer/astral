@@ -17,11 +17,14 @@ asks Codex to build a best-effort index in an uninitialized repository. See
 Explicit [native bundles](docs/native-bundles.md) can be validated, inspected and
 launched with `astral project NAME --proxy`. Local receipts support cold resume.
 `--non-interactive` runs a Codex worker with selected context and an explicit
-task; see [native launch and delegated workers](docs/native-launch.md). Native
-capture and automatic branch/worktree integration remain later milestones.
+task; see [native launch and delegated workers](docs/native-launch.md).
+`--work ID` automatically binds a branch, worktree, and reusable worker thread.
+`astral save NAME --work ID --proxy` exports its completed native projection for
+Git handoff; see [bound workers and handoff](docs/worktree-handoff.md).
 
 Inspection prints formatted JSON. `astral work id` proposes a short random work
-ID for new JSONL records, avoiding per-branch counters. See the
+ID for new JSONL records, avoiding per-branch counters. `astral work create`,
+`update`, and `merge` provide bounded record operations. See the
 [launch milestones](docs/launch-plan.md) for fresh initialization, Git-tracked
 native bundles, launch, worktrees and handoff.
 

@@ -5,8 +5,8 @@
 Git should carry durable, reviewable project context: a small core, user-defined
 subsystems, named investigation projections, and committed JSONL work items.
 Branching and merging should carry that work state with the code. The requested
-example is `astral project web --work ISSUE-123`; it now selects document/work
-context, while automatic branch/worktree binding remains pending.
+example is `astral project web --work ISSUE-123`; it selects document/work
+context and binds one branch, worktree, and reusable worker thread.
 
 Import preserves conversational work state. Resume supplies executable
 capabilities from the current trusted runtime. Native checkpoints must remain
@@ -17,7 +17,10 @@ Explicit native exports will be tracked in Git. A context without any saved
 checkpoint starts fresh from selected documents; repositories without `.astral/`
 can opt into a best-effort inference initializer using a prompt embedded in the
 binary. Fresh launch, initialization and the native bundle validation contract are
-implemented; capture/export commands remain planned in the milestone plan.
+implemented. `astral save NAME --work ID --proxy` captures a newly completed
+native compaction and publishes an immutable bundle in the bound worktree.
+See [bound workers and handoff](../../docs/worktree-handoff.md) for the initial
+same-account, version, filesystem, and ownership limits.
 
 ## Verified current structure
 

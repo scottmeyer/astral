@@ -23,6 +23,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Compact and explicitly export a stopped bound worker for Git handoff.
+    Save {
+        name: String,
+        #[arg(long)]
+        work: String,
+        #[arg(long, default_value = DEFAULT_CONTEXT)]
+        context: String,
+        #[arg(long)]
+        proxy: bool,
+        #[arg(last = true, allow_hyphen_values = true)]
+        codex_args: Vec<std::ffi::OsString>,
+    },
     /// Ask Codex to build a best-effort .astral index in a repository without one.
     #[command(
         after_help = "Pass Codex options after --. The initializer supplies its own prompt. --non-interactive uses codex exec; otherwise Codex opens interactively. Generated files are validated after Codex exits."
@@ -76,10 +88,53 @@ enum ContextCommand {
 enum WorkCommand {
     /// Generate a short random ID; printing does not reserve or create a work item.
     Id,
+    /// List records and their exact-line digests for optimistic updates.
+    List,
+    /// Create an open work item with a merge-safe random ID.
+    Create {
+        title: String,
+        #[arg(long = "acceptance", required = true)]
+        acceptance: Vec<String>,
+        #[arg(long = "depends-on")]
+        depends_on: Vec<String>,
+    },
+    /// Update status only if the observed record digest still matches.
+    Update {
+        id: String,
+        #[arg(long, value_parser = ["open", "in_progress", "blocked", "complete"])]
+        status: String,
+        #[arg(long)]
+        expected: String,
+    },
+    /// Three-way merge by ID. Returns JSON with merged JSONL or explicit conflicts.
+    Merge {
+        #[arg(long)]
+        base: PathBuf,
+        #[arg(long)]
+        ours: PathBuf,
+        #[arg(long)]
+        theirs: PathBuf,
+    },
 }
 
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     match cli.command {
+        Command::Save {
+            name,
+            work,
+            context,
+            proxy,
+            codex_args,
+        } => ostk_gpt_cache::save::save(ostk_gpt_cache::save::SaveArguments {
+            root: cli.root,
+            name,
+            context,
+            work,
+            proxy,
+            codex_args,
+        })
+        .await
+        .map(Some),
         Command::Init {
             non_interactive,
             inspect,
@@ -118,6 +173,7 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             println!("{id}");
             Ok(None)
         }
+        Command::Work { command } => run_work(&cli.root, command).map(Some),
         Command::Project {
             name,
             work,
@@ -148,9 +204,110 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
 fn inspect_project(request: ProjectArguments) -> Result<Value, Error> {
     let preview = request.preview()?;
     let project = Project::load(&request.root)?;
-    let mut output = project.inspect(&request.name, request.work.as_deref())?;
+    if let Some(work) = &request.work {
+        let binding = match ostk_gpt_cache::workspace::WorktreeBinding::inspect(
+            &request.root,
+            project.project_id(),
+            &request.name,
+            work,
+        ) {
+            Ok(binding) => binding,
+            Err(error) if error.code == "WORKSPACE_GIT_FAILED" => {
+                // Context inspection remains useful before Git initialization.
+                // Launch still requires a valid committed repository.
+                let mut output = project.inspect(&request.name, Some(work))?;
+                output["launch_request"] = preview;
+                output["worktree"] = json!({"available":false,"error":error});
+                return Ok(output);
+            }
+            Err(error) => return Err(error),
+        };
+        let mut output = if binding.existing {
+            Project::load(&binding.root)?.inspect(&request.name, Some(work))?
+        } else {
+            project.inspect(&request.name, Some(work))?
+        };
+        output["launch_request"] = preview;
+        output["worktree"] = json!(binding);
+        return Ok(output);
+    }
+    let mut output = project.inspect(&request.name, None)?;
     output["launch_request"] = preview;
     Ok(output)
+}
+
+fn run_work(root: &std::path::Path, command: WorkCommand) -> Result<Value, Error> {
+    use ostk_gpt_cache::work_records as records;
+    let convert = |e: records::Error| Error {
+        code: e.code,
+        message: e.to_string(),
+    };
+    match command {
+        WorkCommand::List => records::read(root).map(|v| json!(v)).map_err(convert),
+        WorkCommand::Create {
+            title,
+            acceptance,
+            depends_on,
+        } => records::create(root, &title, &acceptance, &depends_on)
+            .map(|v| json!(v.record))
+            .map_err(convert),
+        WorkCommand::Update {
+            id,
+            status,
+            expected,
+        } => {
+            let status = serde_json::from_value(json!(status)).map_err(|_| Error {
+                code: "INVALID_STATUS",
+                message: "invalid work status".into(),
+            })?;
+            records::update(root, &id, status, &expected)
+                .map(|v| json!(v.record))
+                .map_err(convert)
+        }
+        WorkCommand::Merge { base, ours, theirs } => {
+            fn read(path: &std::path::Path) -> Result<Vec<u8>, Error> {
+                use std::io::Read;
+                let mut options = std::fs::OpenOptions::new();
+                options.read(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+                }
+                let file = options.open(path).map_err(|_| Error {
+                    code: "WORK_INPUT",
+                    message: "merge input unavailable".into(),
+                })?;
+                if !file
+                    .metadata()
+                    .is_ok_and(|m| m.is_file() && m.len() <= records::MAX_FILE_BYTES as u64)
+                {
+                    return Err(Error {
+                        code: "WORK_INPUT",
+                        message: "merge input must be a bounded regular file".into(),
+                    });
+                }
+                let mut bytes = Vec::new();
+                file.take(records::MAX_FILE_BYTES as u64 + 1)
+                    .read_to_end(&mut bytes)
+                    .map_err(|_| Error {
+                        code: "WORK_INPUT",
+                        message: "merge input read failed".into(),
+                    })?;
+                Ok(bytes)
+            }
+            match records::merge(&read(&base)?, &read(&ours)?, &read(&theirs)?).map_err(convert)? {
+                records::MergeResult::Merged { bytes, .. } => Ok(
+                    json!({"outcome":"merged", "jsonl":String::from_utf8(bytes).expect("validated UTF-8")}),
+                ),
+                conflicts => {
+                    println!("{}", render_output(json!(conflicts))?);
+                    std::process::exit(1);
+                }
+            }
+        }
+        WorkCommand::Id => unreachable!("handled separately"),
+    }
 }
 
 async fn run_project(request: ProjectArguments) -> Result<Option<Value>, Error> {

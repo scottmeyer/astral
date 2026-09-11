@@ -57,7 +57,9 @@ complete: the [native bundle contract](native-bundles.md) and its
 separate from destination runtime binding. The third milestone adds usable native
 restoration in the existing checkout and `--non-interactive` workers, with
 [current verification](native-launch-verification.md). Milestone
-four introduces automatic worktree creation.
+four adds automatic worktree creation and record operations; milestone five adds
+explicit save and same-account continuation through Git. See [bound workers and
+handoff](worktree-handoff.md) and its [verification receipt](worktree-handoff-verification.md).
 Existing broad work items
 retain their IDs and close only when their acceptance criteria are actually met.
 
@@ -78,18 +80,20 @@ astral project my-checkpoint --proxy --resume LAUNCH_ID
 astral project web --non-interactive --work AST-3k9v4n6x2m7q -- --json 'Review the selected task.'
 ```
 
-Later milestones extend the established interface:
+Bound work and save commands:
 
 ```sh
 astral project web --work AST-3k9v4n6x2m7q -- --model gpt-6-astra
+astral work create 'Review web behavior' --acceptance 'Record checked behavior'
+astral save web-review --context web --work AST-3k9v4n6x2m7q --proxy
 ```
 
-`--work` currently adds the selected record to the current project context; milestone four adds
-automatic branch/worktree binding to that same command.
+`--work` adds the selected record and automatically binds a branch, worktree,
+and reusable thread. Repeating the command continues the bound worker.
 
 The sample work ID is illustrative. `astral work id` proposes a random ID but
-does not yet persist a record. Capture/export command spelling will be settled
-with the bundle API; it is not an implemented command today.
+does not persist a record; `work create` does. `save` compacts and exports the
+stopped bound worker into a named immutable projection in its checkout.
 
 On success the user enters the Codex session with the chosen context and working
 directory. On failure the launcher reports the failed stage and artifact/runtime

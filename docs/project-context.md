@@ -143,11 +143,11 @@ Individual file observations do not constitute an atomic multi-file snapshot.
 
 ## Remaining workflow
 
-AST-002 defines work-item updates, reconciliation and adapter boundaries. AST-003
-binds branches/worktrees without overwriting local changes. AST-004 adds explicit
-native artifact composition/export/resume. AST-009 combines these in the guarded
-launcher. Work state and code will travel together, but semantic conflicts and
-historical verification will never be silently promoted to current truth.
+Bound worktrees, record updates/three-way merging and explicit native save now
+have [implemented commands](worktree-handoff.md). Broader adapter integration,
+cross-account portability and semantic reconciliation remain separate work.
+Work state and code travel together; conflicting histories still require an
+explicit choice and historical verification is never promoted to current truth.
 
 The [launch milestone plan](launch-plan.md) records the accepted Git export and
 fresh/bootstrap behavior, concrete acceptance gates, and the next work IDs.

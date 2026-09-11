@@ -2,7 +2,8 @@
 
 Status: accepted user requirements, 2026-09-11. Fresh document launch is implemented
 with the [documented runtime limits](../../../../docs/fresh-launch.md). Native
-launch and managed proxy/worktree support remain pending.
+launch, managed proxy, bound worktrees and explicit save are implemented within
+the [current handoff limits](../../../../docs/worktree-handoff.md).
 
 Use behavior names for modules, types, tests and commands. Work-item IDs belong
 in the work register and historical evidence. Native checkpoint handling is

@@ -98,6 +98,240 @@ fn error(output: &Output) -> String {
 }
 
 #[test]
+fn work_launch_carries_new_record_and_resumes_same_worktree_without_copying_code_edits() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    let (bin, log) = fixture(temp.path());
+    assert!(
+        invoke(&source, &bin, &log, &["init", "--non-interactive"], "")
+            .status
+            .success()
+    );
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .current_dir(&source)
+            .args([
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-b", "main"]);
+    fs::write(source.join("code.txt"), "committed code").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-m", "fixture"]);
+    fs::write(source.join("code.txt"), "source edit").unwrap();
+    let created = invoke(
+        &source,
+        &bin,
+        &log,
+        &[
+            "work",
+            "create",
+            "Fixture worker",
+            "--acceptance",
+            "exercise binding",
+        ],
+        "",
+    );
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let record: Value = serde_json::from_slice(&created.stdout).unwrap();
+    let work = record["item"]["id"].as_str().unwrap();
+    let inspect = invoke(
+        &source,
+        &bin,
+        &log,
+        &["project", "--work", work, "--inspect"],
+        "",
+    );
+    assert!(
+        inspect.status.success(),
+        "{}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
+    let inspection: Value = serde_json::from_slice(&inspect.stdout).unwrap();
+    let target = std::path::PathBuf::from(inspection["worktree"]["root"].as_str().unwrap());
+    assert!(!target.exists(), "inspection created the worktree");
+    let launched = invoke(
+        &source,
+        &bin,
+        &log,
+        &[
+            "project",
+            "--work",
+            work,
+            "--non-interactive",
+            "--",
+            "--json",
+            "literal $() ; task",
+        ],
+        "",
+    );
+    assert!(
+        launched.status.success(),
+        "{}",
+        String::from_utf8_lossy(&launched.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(target.join("code.txt")).unwrap(),
+        "committed code"
+    );
+    assert_eq!(
+        fs::read_to_string(source.join("code.txt")).unwrap(),
+        "source edit"
+    );
+    assert_eq!(
+        fs::read(target.join(".astral/work/items.jsonl")).unwrap(),
+        fs::read(source.join(".astral/work/items.jsonl")).unwrap()
+    );
+    fs::write(target.join("code.txt"), "worker edit").unwrap();
+    let resumed = invoke(
+        &source,
+        &bin,
+        &log,
+        &[
+            "project",
+            "--work",
+            work,
+            "--non-interactive",
+            "--",
+            "continue",
+        ],
+        "",
+    );
+    assert!(
+        resumed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&resumed.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(target.join("code.txt")).unwrap(),
+        "worker edit"
+    );
+    let rows: Vec<Value> = fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(
+        rows.iter()
+            .filter(|r| r["kind"] == "rpc" && r["request"]["method"] == "thread/start")
+            .count(),
+        1
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|r| r["kind"] == "rpc" && r["request"]["method"] == "thread/resume")
+            .count(),
+        1
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|r| r["kind"] == "rpc" && r["request"]["method"] == "thread/inject_items")
+            .count(),
+        1
+    );
+    assert!(rows.iter().any(|r| {
+        r["kind"] == "argv"
+            && r["args"]
+                .as_array()
+                .is_some_and(|a| a.last() == Some(&serde_json::json!("literal $() ; task")))
+            && r["cwd"] == target.to_str().unwrap()
+    }));
+    let receipt_path = source
+        .join(".git/astral/work-bindings")
+        .join(work)
+        .join("receipt.json");
+    let mut receipt: Value = serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
+    receipt["worker_metadata"]["context_initialized"] = serde_json::json!(false);
+    fs::write(&receipt_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+    let incomplete = invoke(
+        &source,
+        &bin,
+        &log,
+        &["project", "--work", work, "--non-interactive"],
+        "",
+    );
+    assert_eq!(error(&incomplete), "WORKSPACE_CONTEXT_INCOMPLETE");
+    assert_eq!(
+        fs::read_to_string(target.join("code.txt")).unwrap(),
+        "worker edit"
+    );
+
+    let broken = invoke(
+        &source,
+        &bin,
+        &log,
+        &[
+            "work",
+            "create",
+            "Failed staging",
+            "--acceptance",
+            "retain unknown staging outcome",
+        ],
+        "",
+    );
+    let record: Value = serde_json::from_slice(&broken.stdout).unwrap();
+    let broken_work = record["item"]["id"].as_str().unwrap();
+    let failure = invoke(
+        &source,
+        &bin,
+        &log,
+        &["project", "--work", broken_work, "--non-interactive"],
+        "native-stage-fail",
+    );
+    assert_eq!(error(&failure), "CODEX_REQUEST_FAILED");
+    let retried = invoke(
+        &source,
+        &bin,
+        &log,
+        &["project", "--work", broken_work, "--non-interactive"],
+        "",
+    );
+    assert_eq!(error(&retried), "WORKSPACE_STAGE_INCOMPLETE");
+    fs::write(source.join(".astral/core/RUN.md"), "source context edit").unwrap();
+    let new = invoke(
+        &source,
+        &bin,
+        &log,
+        &[
+            "work",
+            "create",
+            "Second worker",
+            "--acceptance",
+            "reject dirty context",
+        ],
+        "",
+    );
+    let record: Value = serde_json::from_slice(&new.stdout).unwrap();
+    let new_work = record["item"]["id"].as_str().unwrap();
+    let rejected = invoke(
+        &source,
+        &bin,
+        &log,
+        &["project", "--work", new_work, "--non-interactive"],
+        "",
+    );
+    assert_eq!(error(&rejected), "WORKSPACE_UNCOMMITTED_CONTEXT");
+}
+
+#[test]
 fn cli_initializes_validates_stages_and_resumes_with_literal_arguments() {
     let root = tempfile::tempdir().unwrap();
     let (bin, log) = fixture(root.path());

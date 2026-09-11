@@ -818,6 +818,10 @@ impl Project {
         self.work.keys().map(String::as_str)
     }
 
+    pub fn project_id(&self) -> &str {
+        &self.manifest.id
+    }
+
     pub fn load(root: impl AsRef<Path>) -> Result<Self> {
         Self::load_with_limits(root, Limits::default())
     }
@@ -1293,6 +1297,9 @@ impl Project {
     ) -> Result<ProjectLaunchContext> {
         let resolved = self.resolve(selector, work_id)?;
         let mut native_bundles = BTreeMap::new();
+        // An explicitly selected native projection is the chosen conversation.
+        // Linked subsystems still supply current documents, not additional seeds.
+        let explicit_native = resolved.projection.and_then(|p| p.native.as_ref());
         let mut fresh_sources: BTreeMap<_, _> = resolved
             .sources
             .iter()
@@ -1320,10 +1327,15 @@ impl Project {
                         ),
                     ));
                 }
-                native_bundles.insert(
-                    native.bundle.summary().manifest_sha256.clone(),
-                    &native.bundle,
-                );
+                if explicit_native.is_none_or(|chosen| {
+                    chosen.bundle.summary().manifest_sha256
+                        == native.bundle.summary().manifest_sha256
+                }) {
+                    native_bundles.insert(
+                        native.bundle.summary().manifest_sha256.clone(),
+                        &native.bundle,
+                    );
+                }
             } else if !matches!(
                 projection.manifest.kind.as_str(),
                 "reviewable-design-context" | "reviewable" | "fresh-context"

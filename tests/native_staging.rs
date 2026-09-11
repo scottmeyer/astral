@@ -1,6 +1,6 @@
 #![cfg(unix)]
 use ostk_gpt_cache::{
-    codex::{StagingOptions, stage_native},
+    codex::{StagingOptions, stage_native, stage_worker},
     native_bundle::NativeBundle,
 };
 use serde_json::{Value, json};
@@ -85,6 +85,109 @@ impl Fixture {
     }
 }
 const PAYLOAD: &str = r#"[{ "type":"compaction", "encrypted_content":"SYNTHETIC\\opaque", "id":"cmp_fixture" },{"type":"message","role":"user","content":[{"type":"input_text","text":"historical tail"}]}]"#;
+
+#[tokio::test]
+async fn worker_resume_appends_only_changed_current_context_and_keeps_identity() {
+    let f = Fixture::new("ok");
+    let first = stage_worker(
+        f.exe.as_os_str(),
+        &f.root,
+        StagingOptions::from_args(&f.root, &[]).unwrap(),
+        None,
+        None,
+        Some("current documents"),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.thread_id, ID);
+    for update in [None, Some("updated documents")] {
+        stage_worker(
+            f.exe.as_os_str(),
+            &f.root,
+            StagingOptions::from_args(&f.root, &[]).unwrap(),
+            Some(URL),
+            Some(ID),
+            update,
+            Some(("gpt-6-astra", "openai")),
+        )
+        .await
+        .unwrap();
+    }
+    let requests = f.requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r["method"] == "thread/start")
+            .count(),
+        1
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r["method"] == "thread/resume")
+            .count(),
+        2
+    );
+    let injections: Vec<_> = requests
+        .iter()
+        .filter(|r| r["method"] == "thread/inject_items")
+        .collect();
+    assert_eq!(injections.len(), 2);
+    assert_eq!(
+        injections[1]["params"]["items"][0]["content"][0]["text"],
+        "updated documents"
+    );
+    assert!(
+        injections
+            .iter()
+            .all(|r| r["params"]["items"].as_array().unwrap().len() == 1)
+    );
+    assert!(!f.root.join("unexpected").exists());
+}
+
+#[tokio::test]
+async fn worker_rejects_wrong_identity_runtime_and_unbound_native_route() {
+    for (mode, code) in [
+        ("model", "NATIVE_RUNTIME_MISMATCH"),
+        ("provider", "NATIVE_RUNTIME_MISMATCH"),
+        ("resume-id", "CODEX_PROTOCOL"),
+        ("cwd", "WORKSPACE_CONFLICT"),
+    ] {
+        let f = Fixture::new(mode);
+        let error = stage_worker(
+            f.exe.as_os_str(),
+            &f.root,
+            StagingOptions::from_args(&f.root, &[]).unwrap(),
+            Some(URL),
+            Some(ID),
+            None,
+            Some(("gpt-6-astra", "openai")),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, code, "{mode}");
+        assert!(
+            !f.requests()
+                .iter()
+                .any(|r| r["method"] == "thread/inject_items")
+        );
+    }
+    let f = Fixture::new("ok");
+    let error = stage_worker(
+        f.exe.as_os_str(),
+        &f.root,
+        StagingOptions::from_args(&f.root, &[]).unwrap(),
+        None,
+        Some(ID),
+        None,
+        Some(("gpt-6-astra", "openai")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, "NATIVE_PROXY_REQUIRED");
+    assert!(f.requests().is_empty());
+}
 
 #[tokio::test]
 async fn native_import_preserves_raw_items_and_appends_current_context_without_execution() {

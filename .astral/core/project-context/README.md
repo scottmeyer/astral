@@ -18,7 +18,9 @@ Explicit native bundle metadata and payload integrity can now be validated and
 inspected; see [native bundles](../../../docs/native-bundles.md).
 Native launch with an explicit owned proxy, local receipt-based cold resume and
 headless workers are implemented; see [native launch](../../../docs/native-launch.md).
-Capture, automatic branch/worktree binding and context merging remain pending.
+Automatic branch/worktree binding, work-record merging and native save are
+implemented; see [bound workers and handoff](../../../docs/worktree-handoff.md).
+Git preserves divergent opaque artifacts; native histories are never implicitly merged.
 Fresh document launch and embedded-prompt initialization are now implemented;
 see [fresh launch](../../../docs/fresh-launch.md) for usage and limits.
 See [the interface decision](decisions/0003-launcher-interface.md) for direct

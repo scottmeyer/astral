@@ -314,6 +314,29 @@ fn launch_context_keeps_native_window_separate_and_deduplicates_identical_bundle
         project.launch_context("web", None).unwrap_err().code,
         "MULTIPLE_NATIVE_CONTEXTS"
     );
+    let explicit = project
+        .launch_context("projection:web-native", None)
+        .unwrap();
+    assert!(explicit.native.is_some());
+    assert!(
+        explicit
+            .current_context
+            .selection
+            .subsystems
+            .iter()
+            .any(|id| id == "authentication")
+    );
+    assert_eq!(
+        explicit.native.unwrap().summary().manifest_sha256,
+        project
+            .native_artifacts("projection:web-native", None)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.projection == "web-native")
+            .unwrap()
+            .bundle
+            .manifest_sha256
+    );
     assert!(
         project
             .launch_context("authentication", None)

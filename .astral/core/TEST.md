@@ -42,6 +42,14 @@ local checks and disposable live execution, opaque recall, cold resume,
 read-only denial and Astral worker dogfood. Those results do not qualify arbitrary
 metadata, cross-account transfer or automatic worktree/save behavior.
 
+`tests/workspace.rs`, `work_records.rs`, `git_context.rs`, and `launch_cli.rs`
+cover bound worker creation/reuse, literal arguments, incomplete initialization,
+locking, dirty-file preservation and record merging. `native_capture.rs` checks
+the exact completed compaction boundary; `projection_save.rs` checks immutable
+publication, private staging, safe work-file copying and failure preservation.
+See the separate [worktree/handoff receipt](../../docs/worktree-handoff-verification.md)
+for this feature's current checks and disposable live controls.
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

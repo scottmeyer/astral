@@ -78,6 +78,9 @@ pub async fn project(request: ProjectArguments) -> Result<i32> {
         return initialize(&root, &request.codex_args, false).await;
     }
     let loaded = Project::load(&root)?;
+    if request.work.is_some() {
+        return crate::worker_launch::project(&request, &root, loaded.project_id()).await;
+    }
     let selected = loaded.launch_context(&request.name, request.work.as_deref())?;
     let context = selected.current_context;
     if selected.native.is_some() && request.route != Route::Proxy {
@@ -151,7 +154,7 @@ pub async fn project(request: ProjectArguments) -> Result<i32> {
     wait_interactive(command).await
 }
 
-fn continuation_command(
+pub(crate) fn continuation_command(
     request: &ProjectArguments,
     program: &OsStr,
     root: &Path,

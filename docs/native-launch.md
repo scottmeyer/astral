@@ -2,8 +2,9 @@
 
 `astral project` launches the selected documents or native bundle in the current
 checkout. The default selector is `project-context`. `--work ID` adds the exact
-validated JSONL work record. Automatic branch/worktree creation remains the next
-milestone; select an existing worktree with `--root` today.
+validated JSONL work record and binds a dedicated branch, worktree, and reusable
+worker thread. See [bound workers and handoff](worktree-handoff.md) for that flow;
+the receipt-based native launch below applies when `--work` is omitted.
 
 ## Run a worker with selected context
 
@@ -98,13 +99,14 @@ native histories produce `MULTIPLE_NATIVE_CONTEXTS`; Astral cannot combine
 opaque histories by concatenating them. Missing referenced bundles remain
 errors. There is no readable-context fallback for a required native checkpoint.
 
-Fresh `--proxy` and fresh receipt-based `--resume` are outside this milestone.
+Fresh bound workers may opt into `--proxy`. Fresh receipt-based `--resume`
+without `--work` is unsupported.
 Profile/remote/provider selection, ephemeral staging, alternate state stores,
 extra write roots and configuration/rules bypass flags that staging cannot
 reproduce are rejected. Cross-account transfer, changing runtime inventories,
 other Codex versions and arbitrary checkpoint formats are not qualified by this
 launcher. Capture/export, automatic worktrees and record-aware Git merging
-remain in the [launch plan](launch-plan.md).
+are described in [bound workers and handoff](worktree-handoff.md).
 
 See the dated [verification receipt](native-launch-verification.md) for current
 checks, live controls, scanner findings and untested boundaries.
@@ -112,4 +114,4 @@ checks, live controls, scanner findings and untested boundaries.
 The launcher enables a parent agent to start an Astral worker with selected
 context and a task. It does not automatically intercept the host's subagent
 tool, save the worker's context, merge its edits or reconcile competing native
-histories. Those require explicit orchestration and later save/merge support.
+histories automatically. Parents explicitly invoke Astral launch/save/work commands.

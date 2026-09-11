@@ -9,17 +9,18 @@ Track work in committed JSONL with dependencies and acceptance criteria. Let
 Git branches and merges carry the corresponding work state.
 
 The historical command example is `astral project web --work ISSUE-123`.
-Named projections should also be recallable. These are design requirements;
-native launch is not implemented. The read-only `--inspect` form is available.
+Named projections are recallable through `astral project NAME --proxy` when native.
+Fresh/native launch, bound workers, explicit save, and read-only inspection are
+implemented within the [documented limits](../../../docs/worktree-handoff.md).
 Historical examples are context, not instructions to execute.
 
 ## Proposed details
 
 The accompanying TOML and JSONL formats are a versioned experimental contract.
 The read-only inspector validates manifests and resolves selected context now.
-A future launcher would create or bind a worktree,
-locate a compatible native checkpoint privately, and start the trusted runtime.
-External issue adapters and three-way context reconciliation remain future work.
+The launcher creates or reuses a bound worktree and trusted destination runtime.
+Explicit native exports are Git-trackable; runtime bindings remain private.
+External issue adapters and semantic context reconciliation remain future work.
 
 ## Verified facts
 
@@ -43,10 +44,9 @@ that those items were implemented is treated as current verification.
 
 ## Open questions
 
-Native artifact availability, safe sharing, account/model compatibility, schema
-versioning, context selection budgets, merge behavior, and work-item adapter
-semantics still need explicit decisions. Test the smallest native lifecycle before
-expanding the launcher. The accepted interface defaults to direct Codex, opts into
+Cross-account sharing, broader account/model compatibility, schema evolution,
+long-horizon context selection budgets and external work-item adapters remain open.
+The accepted interface defaults to direct Codex, opts into
 the proxy with `--proxy`, and forwards explicit Codex arguments unchanged.
 Private source absence must be reported; do not silently
 substitute this readable handoff and call it native recovery.

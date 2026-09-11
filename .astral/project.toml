@@ -1,5 +1,5 @@
 schema_version = 1
-schema_status = "experimental v1; fresh/native launch and headless workers implemented; automatic worktrees and save pending"
+schema_status = "experimental v1; bound worktrees, native save and same-account Git handoff implemented"
 id = "astral"
 name = "Astral"
 description = "Native conversation continuity with capabilities rebound by the destination runtime"
