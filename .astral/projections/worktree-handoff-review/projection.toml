@@ -1,0 +1,11 @@
+schema_version = 1
+id = "worktree-handoff-review"
+kind = "native-checkpoint"
+subsystems = ["project-context"]
+handoff = "handoff.md"
+native_payload_in_repository = true
+sources = []
+
+[native_bundle]
+manifest = "bundles/4d252b65c558eaf519f694ff7ce00f6df104d203e4d7791c8a7f714bc9b0f76e/manifest.json"
+sha256 = "4d252b65c558eaf519f694ff7ce00f6df104d203e4d7791c8a7f714bc9b0f76e"

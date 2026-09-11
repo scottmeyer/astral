@@ -51,6 +51,7 @@ Synthetic fixture schema/UUID mistakes were corrected before the complete pass.
 | Cold resume after import | PASS | Same destination thread and worktree, new owned proxy, actual `pwd` result |
 | Read-only prohibited fixture write | PASS | Linked native call/result reports exit 1 and permission denial; fixture hash unchanged, no escalation |
 | Release-build save after imported work | PASS | Another completed native compaction; new projection preserves the imported bundle's parent digest and keeps the canary opaque |
+| Release-build save under two names, then cold resume | PASS | Selected projection advanced, alternate export advanced, original selected hash retained independently; same thread and exact worktree from a real `pwd` invocation |
 
 The initial combined `pwd`/Python tool receipt reported only the Python output.
 The verifier refused to infer the directory and ran a separate `pwd` control.
@@ -73,6 +74,13 @@ Two implementation workers were themselves launched through Astral with the
 selected project/work context and bounded assignments. They implemented the
 record and worktree modules. Parent integration, independent reviews, current
 checks and disposable live tests followed their isolated checks.
+
+The repository's bound review worker found the three defects described above in
+`e20ddf2`, resumed the same thread after its worktree advanced to `984ef02`, and
+confirmed all three fixes by source/test inspection with no new concrete issue.
+The review worker did not run the parent checks. Its work record is
+`AST-e093mvsf0xvj`; its explicitly saved native handoff is published as
+`worktree-handoff-review` after review completion.
 
 ## Staged scanner review
 
@@ -97,6 +105,11 @@ constructed thread parameters, and the previously reviewed publication paths.
 This separate scope does not erase the initial scan's findings or establish a
 warning-free scan.
 
+The final handoff-only commit contains Markdown, TOML, JSON and JSONL. Its staged
+UBS invocation exited 3 because none of those staged files are supported scanner
+languages; no scanner ran and that invocation is not a pass. Project validation
+and explicit bundle byte/hash checks cover the published artifact structure.
+
 ## Limits
 
 These controls establish a working same-account Git handoff and local worktree
@@ -104,6 +117,11 @@ binding. They do not establish cross-account teammate portability, other runtime
 versions/models/providers, Windows support, arbitrary inherited/rolled-back history,
 concurrent non-Astral writers, hostile local-process isolation, power-loss durability,
 or successful recovery from every publication/receipt failure.
+
+Live native launches/saves also logged a nonfatal model-catalog refresh 404 from
+the managed proxy. The explicitly selected supported model still completed the
+controls. Catalog forwarding is tracked as `AST-dj8adv3zgkft`; that endpoint is
+not covered by the current relay.
 
 Publication requires its private Git staging directory and target checkout to
 share a filesystem. Failed/incomplete state and prior bundles are retained.
