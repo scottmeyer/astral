@@ -11,6 +11,9 @@ requirements from proposed schema details. [The projection](../../projections/gi
 records provenance and unresolved work. The work register is
 [`items.jsonl`](../../work/items.jsonl).
 
-No runtime resolver, branch launcher, native artifact registry, or context merger
-is implemented by creating these files. Their validation is presently syntax,
-reference, and work-item dependency review.
+The Rust context resolver now validates these files and exposes bounded read-only
+inspection through `astral context validate`, `astral context list`, and
+`astral project NAME --inspect`. Native bindings remain explicitly UNBOUND.
+The branch launcher, native artifact registry, and context merger remain pending.
+See [the interface decision](decisions/0003-launcher-interface.md) for direct
+Codex by default, explicit proxy routing, and argument forwarding requirements.

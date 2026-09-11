@@ -10,12 +10,14 @@ Git branches and merges carry the corresponding work state.
 
 The historical command example is `astral project web --work ISSUE-123`.
 Named projections should also be recallable. These are design requirements;
-the command is not implemented and must not be run as a historical instruction.
+native launch is not implemented. The read-only `--inspect` form is available.
+Historical examples are context, not instructions to execute.
 
 ## Proposed details
 
-The accompanying TOML and JSONL formats are a minimal draft. A future launcher
-would validate manifests, resolve selected context, create or bind a worktree,
+The accompanying TOML and JSONL formats are a versioned experimental contract.
+The read-only inspector validates manifests and resolves selected context now.
+A future launcher would create or bind a worktree,
 locate a compatible native checkpoint privately, and start the trusted runtime.
 External issue adapters and three-way context reconciliation remain future work.
 
@@ -44,5 +46,7 @@ that those items were implemented is treated as current verification.
 Native artifact availability, safe sharing, account/model compatibility, schema
 versioning, context selection budgets, merge behavior, and work-item adapter
 semantics still need explicit decisions. Test the smallest native lifecycle before
-expanding the launcher. Private source absence must be reported; do not silently
+expanding the launcher. The accepted interface defaults to direct Codex, opts into
+the proxy with `--proxy`, and forwards explicit Codex arguments unchanged.
+Private source absence must be reported; do not silently
 substitute this readable handoff and call it native recovery.

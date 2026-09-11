@@ -29,18 +29,26 @@ See [the lifecycle record](../../docs/native-recovery-lifecycle.md) for the test
 route, transitions, limitations, and evidence classification. Earlier evaluation
 claims in `docs/` retain their original scope and dates.
 
-## Proposed implementation
+## Project context
 
-The TOML files here are a draft documentation schema. No `astral project` command
-loads them yet. A future resolver could compose core context, selected subsystems,
-work-item state, and available native projections, then bind the destination
-runtime and workspace explicitly. A private availability map would locate native
+`src/project.rs` validates the versioned TOML and JSONL contract and resolves
+selected core, subsystem, projection and work-item sources. The `astral` binary
+provides `context validate`, `context list`, and `project NAME --inspect`. It
+returns bounded repository-relative handles and hashes with native state UNBOUND.
+It reads confined regular files on Unix; it does not launch a runtime or execute
+documented commands. Source hashes observe declared inputs, not an atomic tree.
+
+A future launcher must bind the destination runtime and workspace explicitly.
+Direct Codex is the default; `--proxy` opts into Astral routing. User-supplied Codex
+arguments must be forwarded unchanged, with `--` disambiguating overlapping
+options. Native checkpoint requirements must be reported before launch.
+A private availability map would locate native
 artifacts without putting machine paths, credentials, or thread IDs in portable
 identity fields. Native payload storage and sharing policy remain undecided.
 
 ## Open questions
 
-- Manifest validation, compatibility/versioning, and projection selection rules.
+- Future schema evolution and runtime compatibility/version negotiation.
 - Native artifact access, account/model compatibility, retention, and sharing.
 - Conflict reconciliation for concurrent context and JSONL work-item changes.
 - Which runtime metadata is essential when moving a native window between hosts.

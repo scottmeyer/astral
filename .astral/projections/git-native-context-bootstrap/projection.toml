@@ -21,6 +21,12 @@ scope = "conversation recovery, native lifecycle, minimal .astral bootstrap, no 
 availability = "requirements captured in core/project-context/rules/context-contract.md"
 
 [[sources]]
+id = "launcher-interface-request"
+kind = "accepted-user-requirements"
+scope = "Semantic code names, direct Codex by default, explicit --proxy, and unchanged user Codex arguments"
+availability = "core/project-context/decisions/0003-launcher-interface.md"
+
+[[sources]]
 id = "lifecycle-verification"
 kind = "sanitized-local-verification"
 scope = "tested Codex version, native route, controls, explicit remaining gaps"

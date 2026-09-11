@@ -1,6 +1,17 @@
 # Run
 
 Build with `cargo build --release --locked --bins` from the repository root.
+Inspect the checked-in project context without a proxy:
+
+```sh
+./target/release/astral context validate
+./target/release/astral context list
+./target/release/astral project project-context --inspect --work AST-001
+./target/release/astral project git-native-context-bootstrap --inspect
+```
+
+These commands return JSON and leave Git and runtime state untouched. `project`
+without `--inspect` reports `LAUNCH_NOT_IMPLEMENTED`.
 The full launcher is not implemented. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
 for the opt-in Codex route and tested resume procedure.
 

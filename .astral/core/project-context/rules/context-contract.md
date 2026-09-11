@@ -14,7 +14,7 @@ and the current development request.
 - Separate accepted requirements, proposals, verified facts, historical evidence,
   and open questions. Test claims need current receipts and explicit scope.
 - Preserve existing work; use disposable fixtures for lifecycle and failure tests.
-  Do not resume competing writers or weaken destination permissions.
+  Do not resume competing writers or weaken destination permissions implicitly.
 - Name code for its behavior, keeping work-item IDs in tracking and evidence.
 - Make proxy routing explicit with `astral project NAME --proxy`; direct is the
   default. Report native checkpoint requirements without silently changing routes.

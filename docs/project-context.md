@@ -4,6 +4,8 @@ Astral's project-context work starts with **read-only inspection**, before a
 launcher creates worktrees, accesses native artifacts, or starts an agent. The
 repository carries the shared context; runtime credentials, native payloads and
 thread bindings remain private. The native proxy experiment is a separate layer.
+See [the current integration receipt](project-context-verification.md) for tests
+rerun on the merged implementation and the remaining launch boundary.
 
 ## Scope of the first implementation
 
@@ -12,7 +14,7 @@ launch Codex, execute scripts, fetch artifacts, change Git state, or convert a
 readable handoff into native recovery. The v1 manifest contract is repository-local
 and experimental, not a general standard for arbitrary agent checkpoints.
 
-The intended read-only interface is:
+The implemented read-only interface is:
 
 ```sh
 astral --root /path/to/repository context validate
@@ -24,6 +26,41 @@ astral --root /path/to/repository project git-native-context-bootstrap --inspect
 These commands return JSON. Omitting `--inspect` from `project` must fail rather
 than imply that an agent was launched. The root defaults to the current directory;
 it is not an instruction to search other projects or the user's session archive.
+
+## Launcher argument contract
+
+The requested route defaults to direct Codex. `--proxy` opts into Astral routing.
+Inspection can show that request and the Codex arguments without starting either
+process:
+
+```sh
+astral project project-context --inspect --model gpt-6-astra "Continue the work"
+astral project project-context --inspect --proxy -- --model gpt-6-astra
+astral project project-context --inspect -- --dangerously-bypass-approvals-and-sandbox
+```
+
+Before the first literal `--`, Astral consumes `--root`, `--work`, `--inspect`, and
+`--proxy`; remaining arguments retain their original order. After the separator,
+everything belongs to Codex. Use it when a Codex option name or an option's value
+could resemble an Astral option. Astral does not need to recognize every Codex
+flag. An explicitly supplied permission flag remains unchanged; none is added
+by default. The argument is passed as written, with Codex responsible for its
+validity and behavior.
+
+The process builder uses raw OS argument strings and `std::process::Command`,
+never a shell. Inspection requires UTF-8 for an exact JSON preview; it fails
+instead of displaying a lossy replacement. The low-level process API preserves
+non-UTF-8 arguments on platforms that support them. Limits are 1,024 arguments,
+64 KiB per argument and 256 KiB aggregate argument bytes; final inspection output
+also remains within the resolver's output budget.
+
+These are argument inspection and invocation primitives. The project CLI does
+**not** yet call the process builder. Native artifact staging, runtime compatibility
+checks, proxy health/lifetime management, and branch/worktree binding remain
+required before real project launch. The requested route is not a verified
+effective route: explicit Codex configuration overrides may change routing.
+A native checkpoint requiring tool rebinding must report that requirement before
+direct launch; it must not trigger an implicit proxy or plaintext substitution.
 
 ## Manifest and selection contract
 
@@ -70,7 +107,9 @@ describes a tested runtime route, not an artifact registry or general launcher.
 
 The resolver rejects unsupported versions, malformed manifests and JSONL,
 ambiguous names, escaping paths, symlink components and nonregular source files.
-It bounds individual reads, aggregate input, discovery and graph traversal.
+Default limits are 1 MiB per file, 16 MiB aggregate input, 2,048 files, 4,096
+discovery entries, dependency depth 64, and 2 MiB JSON output. Exceeding a limit
+is an explicit error. These are filesystem/output budgets, not token estimates.
 
 The first implementation uses descriptor-relative file access on Unix. Other
 platforms must report unsupported confinement rather than silently use a weaker

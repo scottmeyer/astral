@@ -6,9 +6,11 @@ The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runner
 
 The opt-in [native lifecycle experiment](docs/native-recovery-lifecycle.md) adds a
 Codex Responses Lite websocket relay and checkpoint tool rebinding. It requires
-pass-through mode with Astral rolling disabled. The [project-context bootstrap](.astral/core/ARCHITECTURE.md)
-records the proposed Git-native context design; the `astral project` launcher is
-not implemented.
+pass-through mode with Astral rolling disabled. The [project-context inspector](docs/project-context.md)
+validates the committed `.astral/` manifests and JSONL work register, then resolves
+named subsystems or projections to source handles and hashes. Run
+`astral context list` or `astral project project-context --inspect --work AST-001`.
+The native `astral project` launcher remains pending.
 
 Use [the working-state integration](docs/working-state.md) to run the new agent host: `astral-state` manages configured files, checks and immutable artifacts; `examples/agent.py` connects them to Responses tools. It records immediate state changes while freezing model-visible snapshots between native checkpoints. The supplied coding trial compares native compaction, native compaction with the same adapter, and Astral with the adapter and state layer.
 

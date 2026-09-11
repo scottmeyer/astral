@@ -16,6 +16,10 @@ incremental state. `tests/native_transport.rs` uses real local HTTP/WS transport
 with synthetic upstream events. Python tests cover native fixture capture and
 independent sandbox-denial evidence. Synthetic passes do not prove provider support.
 
+`tests/project.rs` covers manifest graphs, bounded reads, confined paths, work-item
+selection, stable fingerprints and CLI errors. Validate the repository's own
+bootstrap with `./target/release/astral context validate` after building.
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.
