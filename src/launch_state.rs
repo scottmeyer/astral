@@ -14,6 +14,7 @@ pub use observation::{
 };
 
 pub const MAX_RECEIPT_BYTES: usize = 16_384;
+#[cfg(unix)]
 const MAX_ATTEMPTS: usize = 16;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -206,6 +207,7 @@ fn configured_directory() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".local/state/astral/launches"))
 }
 
+#[cfg(unix)]
 fn validate_receipt(receipt: &Receipt, id: &str, expected: &Receipt) -> Result<()> {
     if receipt.schema_version != 1
         || receipt.id != id
@@ -225,6 +227,7 @@ fn validate_receipt(receipt: &Receipt, id: &str, expected: &Receipt) -> Result<(
     validate_receipt_metadata(receipt)
 }
 
+#[cfg(unix)]
 fn validate_receipt_metadata(receipt: &Receipt) -> Result<()> {
     if receipt.schema_version != 1
         || !hex(&receipt.id, 32)

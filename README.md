@@ -52,7 +52,10 @@ work records describe their recorded scope; they do not verify today's checkout.
 
 ## Get started
 
-Build from source with Rust **1.85 or later**, and have Git and Codex installed.
+Download platform binaries from [GitHub Releases](https://github.com/scottmeyer/astral/releases)
+or build from source with Rust **1.85 or later**. Release archives include checksums
+and a source/compiler manifest; see the [v0.1.0 installation and compatibility notes](docs/releases/v0.1.0.md).
+Have Git and Codex installed for the project workflow.
 Use Codex **0.154.0** for the bound-worker and native examples below. An unbound
 fresh launch does not enforce that exact-version gate; its app-server API must
 still support the documented staging operations.

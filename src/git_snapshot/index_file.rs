@@ -3,6 +3,7 @@
 use super::error;
 use crate::project::Result;
 use std::path::Path;
+#[cfg(unix)]
 pub(super) const MAX_INDEX_BYTES: usize = 33_554_432;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,12 +14,14 @@ pub(super) struct Stamp {
     changed: (i64, i64),
     sha256: String,
 }
+#[cfg(unix)]
 fn invalid() -> crate::project::Error {
     error(
         "SNAPSHOT_INDEX_FORMAT",
         "candidate index format is malformed or unsupported",
     )
 }
+#[cfg(unix)]
 fn u32_at(bytes: &[u8], at: usize) -> Result<u32> {
     Ok(u32::from_be_bytes(
         bytes
@@ -28,6 +31,7 @@ fn u32_at(bytes: &[u8], at: usize) -> Result<u32> {
             .expect("four bytes"),
     ))
 }
+#[cfg(unix)]
 fn inspect_bytes(bytes: &[u8], hash_bytes: usize) -> Result<()> {
     if bytes.get(..4) != Some(b"DIRC") || bytes.len() < 12 + hash_bytes {
         return Err(invalid());

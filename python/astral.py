@@ -47,7 +47,9 @@ class Host:
         self.workspace = Path(workspace).resolve()
         self.state_dir = Path(state_dir).resolve()
         self.profile = Path(profile).resolve()
-        binary = binary or ROOT / "target/release/astral-state"
+        build_root = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
+        executable = "astral-state.exe" if os.name == "nt" else "astral-state"
+        binary = binary or build_root / "release" / executable
         command = [str(binary), "--workspace", str(self.workspace), "--state-dir", str(self.state_dir), "--profile", str(self.profile)]
         if raw:
             command.append("--raw-observations")

@@ -1,0 +1,53 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  publish:
+    needs: checks
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Verify version and all platform assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import hashlib, os, pathlib, sys, tomllib
+          sys.path.insert(0, 'scripts')
+          from package_release import TARGETS
+          version = tomllib.loads(pathlib.Path('Cargo.toml').read_text())['package']['version']
+          assert os.environ['RELEASE_TAG'] == f'v{version}', 'tag/version mismatch'
+          receipts = []
+          for target in TARGETS:
+              suffix = '.zip' if target.endswith('windows-msvc') else '.tar.gz'
+              name = f'astral-{version}-{target}{suffix}'
+              digest = hashlib.sha256((pathlib.Path('dist') / name).read_bytes()).hexdigest()
+              receipt = f'{digest}  {name}\n'
+              assert (pathlib.Path('dist') / (name + '.sha256')).read_text() == receipt
+              receipts.append(receipt)
+          pathlib.Path('dist/SHA256SUMS').write_text(''.join(receipts))
+          PY
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft \
+            --title "Astral $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md" \
+            dist/*.tar.gz dist/*.zip dist/SHA256SUMS
+          gh release edit "$RELEASE_TAG" --draft=false --latest

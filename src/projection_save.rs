@@ -9,7 +9,9 @@
 //! guarantee is atomic visibility rather than power-loss durability.
 
 use crate::native_bundle::NativeBundle;
-use crate::project::{Error, NativeBundleReference, ProjectionManifest, Result, SourceHandle};
+use crate::project::{Error, Result, SourceHandle};
+#[cfg(unix)]
+use crate::project::{NativeBundleReference, ProjectionManifest};
 use serde::Serialize;
 use std::path::Path;
 
@@ -28,6 +30,7 @@ fn fail(code: &'static str, message: &'static str) -> Error {
     }
 }
 
+#[cfg(unix)]
 fn handle(path: String, bytes: &[u8]) -> SourceHandle {
     SourceHandle {
         path,

@@ -502,6 +502,7 @@ struct Receipt {
     creation_proof: Option<recovery::CreationProof>,
 }
 
+#[cfg(unix)]
 impl Receipt {
     fn plan(&self, existing: bool) -> WorkspacePlan {
         WorkspacePlan {

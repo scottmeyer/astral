@@ -10,6 +10,7 @@ pub(crate) fn error(code: &'static str, message: &str) -> Error {
         message: message.into(),
     }
 }
+#[cfg(unix)]
 fn name(value: &str) -> Result<()> {
     if value.is_empty()
         || value.len() > 160

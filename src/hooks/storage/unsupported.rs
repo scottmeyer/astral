@@ -1,7 +1,5 @@
 use super::*;
-pub(crate) struct Directory {
-    pub path: PathBuf,
-}
+pub(crate) struct Directory;
 pub(crate) struct Guard;
 fn no<T>() -> Result<T> {
     Err(error(

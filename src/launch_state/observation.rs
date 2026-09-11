@@ -64,6 +64,7 @@ pub struct LaunchInventory {
     pub observation_scope: &'static str,
 }
 
+#[cfg(unix)]
 fn unknown(id: &str, error: Error) -> LaunchObservation {
     LaunchObservation {
         launch_id: id.into(),
