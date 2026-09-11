@@ -264,6 +264,66 @@ fn invalid_candidate_cannot_be_hidden_by_valid_working_manifest() {
 }
 
 #[test]
+fn mutation_during_blob_read_child() {
+    if std::env::var_os("ASTRAL_LIFECYCLE_MUTATION_CHILD").is_none() {
+        return;
+    }
+    let error =
+        lifecycle::check(&std::env::current_dir().unwrap(), Scope::Worktree, None).unwrap_err();
+    assert_eq!(error.code, "SNAPSHOT_CHANGED", "{error}");
+}
+
+#[test]
+fn observation_rejects_index_or_branch_changes_during_blob_loading() {
+    use std::os::unix::fs::PermissionsExt;
+    let real_git = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|path| path.join("git"))
+        .find(|path| path.is_file())
+        .unwrap()
+        .canonicalize()
+        .unwrap();
+    for mutation in ["index", "branch"] {
+        let f = Fixture::new();
+        git(&f.root, &["branch", "moved"]);
+        put(
+            &f.root,
+            "outside-context.txt",
+            "new unrelated index entry\n",
+        );
+        let bin = f._temp.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        let wrapper = bin.join("git");
+        // The trusted fixture wrapper changes Git only after the first blob
+        // has been read. The captured project remains readable, but the final
+        // whole-observation check must reject the changed index or branch.
+        fs::write(
+            &wrapper,
+            "#!/bin/sh\n\"$ASTRAL_TEST_REAL_GIT\" \"$@\"\nstatus=$?\nif [ \"$status\" -ne 0 ]; then exit \"$status\"; fi\nfor arg do\n  if [ \"$arg\" = cat-file ] && [ ! -e .mutation-complete ]; then\n    : > .mutation-complete\n    if [ \"$ASTRAL_TEST_MUTATION\" = index ]; then\n      \"$ASTRAL_TEST_REAL_GIT\" add outside-context.txt\n    else\n      \"$ASTRAL_TEST_REAL_GIT\" symbolic-ref HEAD refs/heads/moved\n    fi\n    exit $?\n  fi\ndone\n",
+        )
+        .unwrap();
+        fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut paths = vec![bin];
+        paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap()));
+        let output = environment(&mut Command::new(std::env::current_exe().unwrap()))
+            .current_dir(&f.root)
+            .env("PATH", std::env::join_paths(paths).unwrap())
+            .env("ASTRAL_TEST_REAL_GIT", &real_git)
+            .env("ASTRAL_TEST_MUTATION", mutation)
+            .env("ASTRAL_LIFECYCLE_MUTATION_CHILD", "1")
+            .args(["--exact", "mutation_during_blob_read_child", "--nocapture"])
+            .output()
+            .unwrap();
+        assert!(f.root.join(".mutation-complete").is_file());
+        assert!(
+            output.status.success(),
+            "{mutation}: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+}
+
+#[test]
 fn busy_worker_drift_is_observed_without_rebinding_or_acknowledgement() {
     let f = Fixture::new();
     let mut binding = f.bind();

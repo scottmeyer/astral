@@ -104,8 +104,13 @@ pub fn check(root: &Path, scope: Scope, work: Option<&str>) -> Result<Report> {
     }
     let index = GitSnapshot::capture(root, SnapshotKind::Index)?;
     let head = GitSnapshot::capture(root, SnapshotKind::Head)?;
-    let index_project = index.load_project();
-    let head_project = head.load_project();
+    // This observation owns both snapshots and verifies them again before
+    // returning any report. Load their captured blobs directly here, avoiding
+    // the standalone loader's additional before/after recaptures for each
+    // project. The final full checks below cover this entire observation,
+    // including changes during blob loading and worker inspection.
+    let index_project = Project::load_source(&index, Default::default());
+    let head_project = Project::load_source(&head, Default::default());
     let working_project = Project::load(index.root());
     let present = std::fs::symlink_metadata(index.root().join(".astral/project.toml"))
         .map_or_else(|e| e.kind() != std::io::ErrorKind::NotFound, |_| true);
