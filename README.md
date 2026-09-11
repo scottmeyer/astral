@@ -1,5 +1,7 @@
 # Astral
 
+![Astral — luminous branching paths across a celestial horizon](docs/assets/astral-banner.png)
+
 **Agent context that follows your code.**
 
 Astral keeps project knowledge and saved agent context alongside your code in
