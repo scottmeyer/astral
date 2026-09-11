@@ -24,4 +24,4 @@ availability = "requirements captured in core/project-context/rules/context-cont
 id = "lifecycle-verification"
 kind = "sanitized-local-verification"
 scope = "tested Codex version, native route, controls, explicit remaining gaps"
-availability = "docs/ast000-lifecycle.md; detailed receipts remain private"
+availability = "docs/native-recovery-lifecycle.md; detailed receipts remain private"

@@ -1,11 +1,11 @@
-# AST-000 recovery and native lifecycle
+# Native recovery and lifecycle
 
 Verification date: 2026-09-11. Scope: unchanged installed Codex 0.154.0,
 `gpt-6-astra`, built-in OpenAI provider, existing ChatGPT account, Responses Lite.
-This follows [the earlier feasibility experiment](ast000-feasibility.md); its
+This follows [the earlier feasibility experiment](native-recovery-feasibility.md); its
 historical results are not counted as fresh verification here.
 
-The subsequent [reviewed integration](ast000-integration.md) records additional
+The subsequent [reviewed integration](native-recovery-integration.md) records additional
 local fixes and checks separately; it does not rewrite this live trial's scope.
 
 ## Recovery status
@@ -80,7 +80,7 @@ The matching installed source establishes the request shape:
   and incremental `previous_response_id` requests. Responses Lite serialization
   happens before the request reaches Astral.
 
-`src/ast000.rs` now accepts only that verified final trigger, after all known
+`src/native_binding.rs` now accepts only that verified final trigger, after all known
 external calls have results. A compaction response must complete with one valid
 native checkpoint. Missing, multiple, malformed, conflicting, or unexpected
 checkpoint outputs cannot establish a usable response reference. No checkpoint
@@ -98,7 +98,7 @@ requests. After compaction it rebuilt full history with an explicit checkpoint.
 The checkpoint-free post-compaction delta branch is therefore **synthetically
 tested, NOT_TESTED live**. It is not presented as an observed client behavior.
 
-`src/ast000_ws.rs` forwards native output text unchanged and records checkpoint
+`src/native_transport.rs` forwards native output text unchanged and records checkpoint
 hashes without payloads. It binds state to one socket pair and its immutable
 handshake identity. Failure invalidates references; unsupported responses produce
 explicit errors. A fresh connection reconstructs state from a new runtime prefix,
@@ -147,7 +147,7 @@ cargo build --release --locked --bins
 ASTRAL_DIAGNOSTICS=$(mktemp -d "${TMPDIR:-/tmp}/astral-dogfood.XXXXXX")
 chmod 700 "$ASTRAL_DIAGNOSTICS"
 ./target/release/ostk-gpt-cache \
-  --mode passthrough --ast000-compat rebind \
+  --mode passthrough --native-tool-binding rebind \
   --listen 127.0.0.1:18941 \
   --upstream https://chatgpt.com/backend-api/codex \
   --state-dir "$ASTRAL_DIAGNOSTICS/proxy-state"

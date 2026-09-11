@@ -10,7 +10,7 @@ pub enum Mode {
 /// Experimental, trusted-local-Codex-only compatibility lane; never rolls history.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Ast000 {
+pub enum NativeToolBindingMode {
     #[default]
     Disabled,
     Observe,
@@ -64,9 +64,9 @@ pub struct Config {
     pub economic_roll_policy: bool,
     #[arg(long, value_enum, default_value = "rolling")]
     pub mode: Mode,
-    /// AST-000 feasibility adapter. Observe is an unmodified transport control.
-    #[arg(long, value_enum, default_value = "disabled")]
-    pub ast000_compat: Ast000,
+    /// Native checkpoint tool binding. Observe is an unmodified transport control.
+    #[arg(long, alias = "ast000-compat", value_enum, default_value = "disabled")]
+    pub native_tool_binding: NativeToolBindingMode,
     #[arg(long, default_value = ".ostk-gpt")]
     pub state_dir: PathBuf,
     /// Explicit opt-in to native compaction on a compatible upstream.
@@ -110,19 +110,19 @@ impl Config {
             "upstream must be HTTP(S)"
         );
         anyhow::ensure!(url.host_str().is_some(), "upstream must have a host");
-        if self.ast000_compat != Ast000::Disabled {
+        if self.native_tool_binding != NativeToolBindingMode::Disabled {
             anyhow::ensure!(
                 self.mode == Mode::Passthrough,
-                "AST-000 requires --mode passthrough"
+                "native tool binding requires --mode passthrough"
             );
             anyhow::ensure!(
                 self.listen.ip().is_loopback(),
-                "AST-000 accepts trusted loopback clients only"
+                "native tool binding accepts trusted loopback clients only"
             );
             anyhow::ensure!(
                 url.scheme() == "https"
                     || matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]")),
-                "AST-000 upstream requires TLS or a loopback test server"
+                "native tool binding upstream requires TLS or a loopback test server"
             );
         }
         anyhow::ensure!(

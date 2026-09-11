@@ -19,13 +19,13 @@ routing; `engine.rs`, `store.rs`, and `policy.rs` implement the existing project
 persistence, and cache policies. `working.rs` supports the optional explicit host.
 These are distinct from the experimental Codex compatibility path.
 
-`ast000.rs` validates Responses Lite inputs and reasserts current runtime tool
-declarations after the effective native checkpoint. `ast000_ws.rs` owns one
+`native_binding.rs` validates Responses Lite inputs and reasserts current runtime tool
+declarations after the effective native checkpoint. `native_transport.rs` owns one
 downstream/upstream socket pair and its isolated incremental state. The adapter
 does not execute tools or grant permissions. Codex owns those responsibilities.
 The compatibility path requires pass-through mode, which disables Astral rolling.
 
-See [the lifecycle record](../../docs/ast000-lifecycle.md) for the tested version,
+See [the lifecycle record](../../docs/native-recovery-lifecycle.md) for the tested version,
 route, transitions, limitations, and evidence classification. Earlier evaluation
 claims in `docs/` retain their original scope and dates.
 

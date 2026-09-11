@@ -63,7 +63,7 @@ handoff can stand in for that missing checkpoint. In-repository native payload
 loading is not supported by this first resolver.
 
 Native artifact access, compatibility checks, private binding stores and lifecycle
-launch are subsequent work. The [AST-000 lifecycle record](ast000-lifecycle.md)
+launch are subsequent work. The [native lifecycle record](native-recovery-lifecycle.md)
 describes a tested runtime route, not an artifact registry or general launcher.
 
 ## Safety and platform boundary

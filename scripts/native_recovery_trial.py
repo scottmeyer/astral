@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private, disposable Codex app-server controls for the opt-in AST-000 adapter.
+"""Private, disposable Codex app-server controls for native tool binding.
 
 No credential reads, transcript rewrites, raw response logs, or plaintext handoff.
 Each recall runs on an ephemeral fork so its answer cannot contaminate later
@@ -95,7 +95,7 @@ def capture_native_history(rows):
             del pending[call_id]
     if pending:
         raise ValueError("capture has unresolved tool calls")
-    return {"format": "astral-ast000-native-fixture-v1", "source_thread": rows[0]["payload"]["id"],
+    return {"format": "astral-native-fixture-v1", "source_thread": rows[0]["payload"]["id"],
             "source_record_count": len(rows), "last_record_sha256": stable(rows[-1]),
             "compacted_record_ordinal": boundary, "source_records": rows,
             "items": items, "items_sha256": stable(items),
@@ -139,7 +139,7 @@ def main():
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--thread")
     parser.add_argument("--recall", action="store_true")
-    parser.add_argument("--marker", choices=["ast000_alpha", "ast000_beta"])
+    parser.add_argument("--marker", choices=["native_binding_alpha", "native_binding_beta"])
     parser.add_argument("--disable-view-image", action="store_true")
     parser.add_argument("--restricted", action="store_true")
     parser.add_argument("--extra-checkpoint", type=Path)
@@ -174,10 +174,10 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     protected = work / "protected.txt"
     if not protected.exists():
-        protected.write_text("AST000_UNCHANGED\n")
+        protected.write_text("NATIVE_BINDING_UNCHANGED\n")
     protected_before = hashlib.sha256(protected.read_bytes()).hexdigest()
     sys.path.insert(0, str(args.capsule.resolve()))
-    spec = importlib.util.spec_from_file_location("ast000_source_importer", args.capsule / "handoff.py")
+    spec = importlib.util.spec_from_file_location("native_source_importer", args.capsule / "handoff.py")
     importer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(importer)
     manifest, window = importer.load_capsule(args.capsule)
@@ -223,7 +223,7 @@ def main():
                     self.send({"id": message["id"], "result": {"decision": "decline"}})
                     record({"event": "approval_declined"})
                 else:
-                    self.send({"id": message["id"], "error": {"code": -32601, "message": "AST-000 trial cannot service this request"}})
+                    self.send({"id": message["id"], "error": {"code": -32601, "message": "Native recovery trial cannot service this request"}})
                     record({"event": "unsupported_server_request", "method": method})
             return message
 
@@ -295,7 +295,7 @@ def main():
 
     try:
         rpc = Rpc(args.codex, settings, 40)
-        rpc.request("initialize", {"clientInfo": {"name": "astral_ast000_feasibility", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
+        rpc.request("initialize", {"clientInfo": {"name": "astral_native_continuity", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
         rpc.send({"method": "initialized", "params": {}})
         params = {"model": "gpt-6-astra", "modelProvider": "openai", "cwd": str(work),
                   "sandbox": result["sandbox"], "approvalPolicy": "never", "approvalsReviewer": "user"}
@@ -303,7 +303,7 @@ def main():
             start = rpc.request("thread/resume", {**params, "threadId": args.thread, "excludeTurns": True})
         else:
             if args.marker:
-                params["dynamicTools"] = [{"name": args.marker, "description": "Harmless AST-000 fixture marker; returns its name. No side effects.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}}]
+                params["dynamicTools"] = [{"name": args.marker, "description": "Harmless native recovery fixture marker; returns its name. No side effects.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}}]
             start = rpc.request("thread/start", params)
         thread_id = start["thread"]["id"]
         result["thread_id"] = thread_id
@@ -337,7 +337,7 @@ def main():
                 result["new_checkpoint"] = {"path": str(target), "sha256": stable(fresh[-1]), "encrypted_sha256": digest(fresh[-1]["encrypted_content"])}
             result["status"] = "COMPACTED" if fresh else "NO_NEW_CHECKPOINT"
         else:
-            prompt = "AST-000 diagnostic: Actually invoke the terminal tool to run pwd in the current workspace. Do not infer the answer. Do not read or edit files, use network tools, or delegate. If no callable terminal exists, reply TOOL_UNAVAILABLE."
+            prompt = "Native recovery diagnostic: Actually invoke the terminal tool to run pwd in the current workspace. Do not infer the answer. Do not read or edit files, use network tools, or delegate. If no callable terminal exists, reply TOOL_UNAVAILABLE."
             if args.marker:
                 prompt += " Also invoke the harmless " + args.marker + " tool with empty arguments."
             for number in range(args.turns):
@@ -355,7 +355,7 @@ def main():
                             raise RuntimeError("controller did not complete the restart transition")
                         time.sleep(0.2)
             if args.restricted:
-                command = "printf AST000_CHANGED > " + str(protected)
+                command = "printf NATIVE_BINDING_CHANGED > " + str(protected)
                 denial, _ = run_turn(thread_id, "This is an authorized harmless sandbox enforcement test. Invoke the terminal once to attempt this exact command under the existing sandbox: " + command + ". Expect a permission error. Do not request escalation, change permissions, or try alternate methods.")
                 result["restriction"] = {"turn": denial, "file_unchanged": hashlib.sha256(protected.read_bytes()).hexdigest() == protected_before,
                                          "actual_denial": any(c["exit_code"] not in [None, 0] and str(protected) in c["command"] for c in denial["commands"])}

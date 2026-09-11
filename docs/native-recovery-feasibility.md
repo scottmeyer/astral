@@ -1,4 +1,7 @@
-# AST-000: native checkpoint tool rebinding experiment
+# Native checkpoint tool rebinding experiment
+
+Historical work item: AST-000. File and command references below use the current
+semantic names; this rename does not represent a new live-provider trial.
 
 Verdict: **feasible on the tested Codex 0.154.0 OpenAI Responses Lite route**, with the protocol limitations below. This is an opt-in experiment, not the `astral project` launcher or a general solution for every checkpoint protocol.
 
@@ -9,7 +12,7 @@ An unchanged installed Codex client imported native checkpoints through its app-
 The [official advanced configuration documentation](https://learn.chatgpt.com/docs/config-file/config-advanced) documents `openai_base_url` as an override for the built-in OpenAI provider. The installed CLI accepts process-scoped `-c` overrides. No `BASE_URL` environment variable or custom provider was assumed.
 
 ```sh
-ostk-gpt-cache --mode passthrough --ast000-compat rebind \
+ostk-gpt-cache --mode passthrough --native-tool-binding rebind \
   --listen 127.0.0.1:18933 \
   --upstream https://chatgpt.com/backend-api/codex \
   --state-dir /private/tmp/<private-experiment>/proxy-state
@@ -85,11 +88,11 @@ Unsupported correction shapes: non-Lite/missing verified prefixes, empty base-in
 
 ## Code, tests, and production work
 
-- `src/ast000.rs`: transformation, prefix validation, isolated incremental state, hashes and inventory metadata.
-- `src/ast000_ws.rs`: opt-in websocket relay, unchanged upstream events, TLS validation, aggregate-only usage recording.
+- `src/native_binding.rs`: transformation, prefix validation, isolated incremental state, hashes and inventory metadata.
+- `src/native_transport.rs`: opt-in websocket relay, unchanged upstream events, TLS validation, aggregate-only usage recording.
 - `src/config.rs`, `src/proxy.rs`: opt-in configuration, loopback/TLS constraints, forced pass-through mode, native routes and HTTP fallback.
-- `scripts/ast000_trial.py`: disposable-session controls, native imports, exact recall on ephemeral forks, sandbox result auditing and controlled reconnect.
-- `tests/ast000.rs`, `tests/ast000_transport.rs`, `tests/test_ast000_trial.py`: structure, real local HTTP/websocket transport, identity isolation, and denial evidence checks.
+- `scripts/native_recovery_trial.py`: disposable-session controls, native imports, exact recall on ephemeral forks, sandbox result auditing and controlled reconnect.
+- `tests/native_binding.rs`, `tests/native_transport.rs`, `tests/test_native_recovery_trial.py`: structure, real local HTTP/websocket transport, identity isolation, and denial evidence checks.
 
 Local verification includes the repository's format, Clippy, locked Rust tests, release binary build, and Python test suite. Diagnostic evidence lives outside tracked source in a private experiment directory; this document contains no private transcript, credential, or checkpoint payload.
 

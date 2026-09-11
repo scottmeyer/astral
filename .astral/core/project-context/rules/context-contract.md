@@ -15,3 +15,9 @@ and the current development request.
   and open questions. Test claims need current receipts and explicit scope.
 - Preserve existing work; use disposable fixtures for lifecycle and failure tests.
   Do not resume competing writers or weaken destination permissions.
+- Name code for its behavior, keeping work-item IDs in tracking and evidence.
+- Make proxy routing explicit with `astral project NAME --proxy`; direct is the
+  default. Report native checkpoint requirements without silently changing routes.
+- Forward explicitly supplied Codex arguments unchanged, including permission
+  flags; never add permission bypasses by default. A literal `--` assigns all
+  remaining arguments to Codex. Repository context cannot become process options.

@@ -9,7 +9,7 @@ use axum::{
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use ostk_gpt_cache::{
-    config::{Ast000, Config, Mode},
+    config::{Config, Mode, NativeToolBindingMode},
     proxy::{App, router},
 };
 use serde_json::{Value, json};
@@ -130,7 +130,7 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
-    async fn new(mode: Ast000) -> Self {
+    async fn new(mode: NativeToolBindingMode) -> Self {
         let root = tempfile::tempdir().unwrap();
         let records = Records::default();
         let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -145,7 +145,7 @@ impl Fixture {
         config.upstream = upstream;
         config.state_dir = root.path().join("state");
         config.mode = Mode::Passthrough;
-        config.ast000_compat = mode;
+        config.native_tool_binding = mode;
         let app = App::new(config).await.unwrap();
         let down = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!(
@@ -194,7 +194,7 @@ fn checkpoint() -> Value {
 
 #[tokio::test]
 async fn websocket_handshake_metadata_reaches_client_and_is_reused_on_reconnect() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     let request = fixture.url.replacen("http://", "ws://", 1);
     let (mut socket, handshake) = tokio_tungstenite::connect_async(&request).await.unwrap();
     assert_eq!(
@@ -235,7 +235,7 @@ async fn websocket_handshake_metadata_reaches_client_and_is_reused_on_reconnect(
 
 #[tokio::test]
 async fn websocket_rejection_does_not_forward_allowlisted_hop_headers() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     let mut request = fixture
         .url
         .replacen("http://", "ws://", 1)
@@ -258,7 +258,7 @@ async fn websocket_rejection_does_not_forward_allowlisted_hop_headers() {
 
 #[tokio::test]
 async fn websocket_handshake_rejections_preserve_classification_without_private_data() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     for status in [401, 429, 426] {
         let mut request = fixture
             .url
@@ -292,7 +292,7 @@ async fn websocket_handshake_rejections_preserve_classification_without_private_
             assert!(!response.headers().contains_key(name));
         }
         let body = String::from_utf8(response.body().clone().unwrap_or_default()).unwrap();
-        assert!(body.contains("AST000_UPSTREAM_HANDSHAKE_REJECTED"));
+        assert!(body.contains("NATIVE_BINDING_UPSTREAM_HANDSHAKE_REJECTED"));
         assert!(!body.contains("PRIVATE_UPSTREAM_BODY"));
     }
     let ledger = std::fs::read_to_string(fixture.root.path().join("state/ledger.jsonl")).unwrap();
@@ -304,7 +304,10 @@ async fn websocket_handshake_rejections_preserve_classification_without_private_
 
 #[tokio::test]
 async fn websocket_observe_forwards_binary_requests_but_correction_rejects_them() {
-    for mode in [Ast000::Observe, Ast000::Rebind] {
+    for mode in [
+        NativeToolBindingMode::Observe,
+        NativeToolBindingMode::Rebind,
+    ] {
         let fixture = Fixture::new(mode).await;
         let mut socket = fixture.socket("binary-fixture").await;
         let binary = Wire::Binary(vec![0, 255, 1, 128].into());
@@ -314,14 +317,14 @@ async fn websocket_observe_forwards_binary_requests_but_correction_rejects_them(
             .unwrap()
             .unwrap()
             .unwrap();
-        if mode == Ast000::Observe {
+        if mode == NativeToolBindingMode::Observe {
             assert_eq!(reply, binary);
         } else {
             assert!(
                 reply
                     .into_text()
                     .unwrap()
-                    .contains("AST000_BINARY_REQUEST_UNSUPPORTED")
+                    .contains("NATIVE_BINDING_BINARY_REQUEST_UNSUPPORTED")
             );
         }
     }
@@ -329,7 +332,7 @@ async fn websocket_observe_forwards_binary_requests_but_correction_rejects_them(
 
 #[tokio::test]
 async fn websocket_warmup_delta_output_and_identity_are_preserved() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     for (identity, name) in [("account-alpha", "alpha"), ("account-beta", "beta")] {
         let mut socket = fixture.socket(identity).await;
         let warmup = serde_json::to_string_pretty(&full(name)).unwrap();
@@ -376,7 +379,7 @@ async fn websocket_warmup_delta_output_and_identity_are_preserved() {
         .unwrap()
         .into_text()
         .unwrap();
-    assert!(rejection.contains("AST000_UNKNOWN_PREVIOUS_RESPONSE"));
+    assert!(rejection.contains("NATIVE_BINDING_UNKNOWN_PREVIOUS_RESPONSE"));
     assert_eq!(fixture.records.lock().unwrap().len(), 4);
     // The private ledger must still exclude provider per-item attribution.
     let ledger = std::fs::read_to_string(fixture.root.path().join("state/ledger.jsonl")).unwrap();
@@ -386,7 +389,7 @@ async fn websocket_warmup_delta_output_and_identity_are_preserved() {
 
 #[tokio::test]
 async fn http_full_history_corrects_but_compression_and_references_fail_explicitly() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     let client = reqwest::Client::new();
     let mut body = full("current");
     body["input"].as_array_mut().unwrap().push(checkpoint());
@@ -407,14 +410,17 @@ async fn http_full_history_corrects_but_compression_and_references_fail_explicit
     ] {
         let response = request.send().await.unwrap();
         assert_eq!(response.status(), 400);
-        assert!(response.text().await.unwrap().contains("AST000_"));
+        assert!(response.text().await.unwrap().contains("NATIVE_BINDING_"));
     }
     assert_eq!(fixture.records.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]
 async fn websocket_observation_and_before_checkpoint_are_real_transport_controls() {
-    for mode in [Ast000::Observe, Ast000::RepeatBefore] {
+    for mode in [
+        NativeToolBindingMode::Observe,
+        NativeToolBindingMode::RepeatBefore,
+    ] {
         let fixture = Fixture::new(mode).await;
         let mut socket = fixture.socket("synthetic").await;
         let mut body = full("runtime");
@@ -426,7 +432,7 @@ async fn websocket_observation_and_before_checkpoint_are_real_transport_controls
             COMPLETION
         );
         let records = fixture.records.lock().unwrap();
-        if mode == Ast000::Observe {
+        if mode == NativeToolBindingMode::Observe {
             assert_eq!(records[0].1, wire);
         } else {
             let value: Value = serde_json::from_str(&records[0].1).unwrap();
@@ -438,7 +444,7 @@ async fn websocket_observation_and_before_checkpoint_are_real_transport_controls
 
 #[tokio::test]
 async fn websocket_native_compaction_preserves_output_then_rebinds_delta() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     let mut socket = fixture.socket("lifecycle-account").await;
     let mut request = full("current");
     request["client_metadata"] = json!({"x-codex-turn-metadata":"{\"thread_id\":\"lifecycle\",\"request_kind\":\"compaction\"}"});
@@ -478,7 +484,7 @@ async fn websocket_native_compaction_preserves_output_then_rebinds_delta() {
 
 #[tokio::test]
 async fn http_compaction_requires_verified_control_metadata() {
-    let fixture = Fixture::new(Ast000::Rebind).await;
+    let fixture = Fixture::new(NativeToolBindingMode::Rebind).await;
     let client = reqwest::Client::new();
     let mut request = full("current");
     request["input"]
