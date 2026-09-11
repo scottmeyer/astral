@@ -90,3 +90,8 @@ Staged UBS JSON and verbose scans exited 0 with no failed modules: zero critical
 117 warning and 40 informational matches across two Rust files. The reviewed
 warnings concern existing bounded indexing, test assertions and display
 allocations; no defect was identified. Private logs are retained separately.
+
+The spacing build from `e15d58f8c6f978ef959d792a8ab7594667cb8492` was archived and
+atomically installed at `~/.local/bin/astral`, with SHA-256
+`3541c10eae95c470fc9e0ac94ce9a129ff13b18e099898aeff403cb8314b1ba3`.
+The previous release remains archived; all nine hook/configuration hashes match.
