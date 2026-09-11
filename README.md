@@ -4,6 +4,12 @@ A standalone Rust proxy for the **OpenAI Responses API**, with persistent rollin
 
 The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. The default backend uses standalone native compaction; the opt-in [inline backend](docs/inline-backend.md) lets Astral schedule and persist checkpoints through the normal Responses route. The [validation receipt](docs/validation.md) distinguishes these paths and records the remaining environment limitations.
 
+The opt-in [AST-000 native lifecycle experiment](docs/ast000-lifecycle.md) adds a
+Codex Responses Lite websocket relay and checkpoint tool rebinding. It requires
+pass-through mode with Astral rolling disabled. The [project-context bootstrap](.astral/core/ARCHITECTURE.md)
+records the proposed Git-native context design; the `astral project` launcher is
+not implemented.
+
 Use [the working-state integration](docs/working-state.md) to run the new agent host: `astral-state` manages configured files, checks and immutable artifacts; `examples/agent.py` connects them to Responses tools. It records immediate state changes while freezing model-visible snapshots between native checkpoints. The supplied coding trial compares native compaction, native compaction with the same adapter, and Astral with the adapter and state layer.
 
 The [first coding evaluation](docs/working-evaluation.md) passed all six tasks,
@@ -36,7 +42,7 @@ The API is available at `http://127.0.0.1:8088/v1/responses`. The upstream defau
 
 For a managed upstream with a private CA, the proxy adds certificates from `SSL_CERT_FILE` or the explicit `--upstream-ca-bundle /path/to/ca.pem` option to its trusted roots. Certificate verification stays enabled; an unreadable, empty, or invalid configured bundle fails startup.
 
-`POST /responses`, `/v1/responses`, and `/backend-api/codex/responses` all map to the configured upstream's `/responses`. Corresponding `/responses/compact` routes and the `/compact` alias forward caller compaction bodies unchanged. `GET /healthz` checks the listener and reports `requests_received`: entries into generation and caller-compaction handlers since process startup, including requests rejected by identity checks. Health probes and internal upstream compaction do not increment it. This counter distinguishes absent client traffic from traffic without a completed ledger entry. Other routes are intentionally absent; this is a dedicated Responses proxy, not a file-upload proxy or WebSocket gateway.
+`POST /responses`, `/v1/responses`, and `/backend-api/codex/responses` all map to the configured upstream's `/responses`. Corresponding `/responses/compact` routes and the `/compact` alias forward caller compaction bodies unchanged. `GET /healthz` checks the listener and reports `requests_received`: entries into generation and caller-compaction handlers since process startup, including requests rejected by identity checks. Health probes and internal upstream compaction do not increment it. This counter distinguishes absent client traffic from traffic without a completed ledger entry. The opt-in AST-000 mode also handles websocket GET on the generation routes. Other routes, including file upload, are intentionally absent.
 
 ## Client contract
 
@@ -119,7 +125,12 @@ Projection files can contain provider-retained user text as well as encrypted st
 ./target/release/stats --ledger .ostk-gpt/ledger.jsonl
 ```
 
-Passthrough performs **no request-body rewrite**, including malformed JSON, force-roll headers, reminders, and existing cache controls. Normal HTTP hop-header handling still applies. Streaming response bytes are forwarded as received; a bounded observer reads completion and usage without rebuilding SSE frames.
+Passthrough performs **no request-body rewrite** when `--ast000-compat` is disabled
+(the default), including malformed JSON, force-roll headers, reminders, and
+existing cache controls. The explicit AST-000 compatibility modes have their own
+documented transformation contract. Normal HTTP hop-header handling still
+applies. Streaming response bytes are forwarded as received; a bounded observer
+reads completion and usage without rebuilding SSE frames.
 
 The stats binary groups generation and compaction calls separately. It reports inclusive input, cache reads, reported writes, output, and measured wire bytes. Cache hit rate is `cached_tokens / input_tokens`. Missing write counts remain unreported. Rejected compact outputs include a `rejection_reason` in the ledger, without copying their contents. It emits no fixed model prices or hypothetical dollar savings.
 

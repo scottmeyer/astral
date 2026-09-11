@@ -1,5 +1,5 @@
 use crate::{
-    config::{CompactionBackend, Config, Mode},
+    config::{Ast000, CompactionBackend, Config, Mode},
     engine::{self, Lane},
     hash, now_ms, policy,
     store::Store,
@@ -39,7 +39,7 @@ pub struct App {
     pub config: Arc<Config>,
     client: reqwest::Client,
     pub store: Arc<Store>,
-    requests_received: Arc<AtomicU64>,
+    pub(crate) requests_received: Arc<AtomicU64>,
 }
 
 impl App {
@@ -83,7 +83,8 @@ impl App {
 
 pub fn router(app: App) -> Router {
     let limit = app.config.max_body_bytes;
-    Router::new()
+    let compatibility = app.config.ast000_compat != Ast000::Disabled;
+    let mut router = Router::new()
         .route(
             "/healthz",
             get(|State(app): State<App>| async move {
@@ -97,12 +98,20 @@ pub fn router(app: App) -> Router {
         .route("/v1/responses/compact", post(direct_compact))
         .route("/responses/compact", post(direct_compact))
         .route("/compact", post(direct_compact))
-        .route("/backend-api/codex/responses/compact", post(direct_compact))
-        .layer(DefaultBodyLimit::max(limit))
-        .with_state(app)
+        .route("/backend-api/codex/responses/compact", post(direct_compact));
+    if compatibility {
+        for path in [
+            "/responses",
+            "/v1/responses",
+            "/backend-api/codex/responses",
+        ] {
+            router = router.route(path, get(crate::ast000_ws::handle));
+        }
+    }
+    router.layer(DefaultBodyLimit::max(limit)).with_state(app)
 }
 
-fn error(status: StatusCode, message: &str) -> Response {
+pub(crate) fn error(status: StatusCode, message: &str) -> Response {
     (
         status,
         axum::Json(json!({"error":{"type":"ostk_proxy_error", "message":message}})),
@@ -110,7 +119,9 @@ fn error(status: StatusCode, message: &str) -> Response {
         .into_response()
 }
 
-fn effective_headers(mut headers: HeaderMap) -> Result<HeaderMap, (StatusCode, &'static str)> {
+pub(crate) fn effective_headers(
+    mut headers: HeaderMap,
+) -> Result<HeaderMap, (StatusCode, &'static str)> {
     if headers.contains_key(HOP) {
         return Err((StatusCode::LOOP_DETECTED, "proxy loop detected"));
     }
@@ -147,7 +158,7 @@ fn effective_headers(mut headers: HeaderMap) -> Result<HeaderMap, (StatusCode, &
     Ok(headers)
 }
 
-fn strip_header(name: &str, headers: &HeaderMap) -> bool {
+pub(crate) fn strip_header(name: &str, headers: &HeaderMap) -> bool {
     matches!(
         name,
         "host"
@@ -180,8 +191,8 @@ fn request(
     let url = format!("{}{suffix}", app.config.upstream.trim_end_matches('/'));
     let mut r = app.client.post(url);
     for (k, v) in headers {
-        if !strip_header(k.as_str(), headers)
-            && !(compact
+        if !(strip_header(k.as_str(), headers)
+            || compact
                 && matches!(
                     k.as_str(),
                     "idempotency-key"
@@ -300,6 +311,48 @@ async fn handle(
     let compressed = headers
         .get("content-encoding")
         .is_some_and(|v| v != "identity");
+    if app.config.ast000_compat != Ast000::Disabled {
+        let prepared = if compressed {
+            Err(anyhow::anyhow!(
+                "AST000_COMPRESSED_HTTP_UNSUPPORTED: disable features.enable_request_compression for HTTP"
+            ))
+        } else {
+            serde_json::from_slice::<Value>(&body)
+                .map_err(|_| anyhow::anyhow!("AST000_INVALID_JSON"))
+                .and_then(|value| {
+                    crate::ast000::Connection::default().prepare(&value, app.config.ast000_compat)
+                })
+        };
+        let outgoing = match prepared {
+            Ok(p) => {
+                let outgoing = if p.changed {
+                    serde_json::to_vec(&p.body).unwrap()
+                } else {
+                    body.to_vec()
+                };
+                app.store.record(&json!({"kind":"ast000_request","transport":"http","bytes_in":body.len(),"bytes_out":outgoing.len(),"ts_ms":now_ms(),"evidence":p.evidence})).await;
+                outgoing
+            }
+            Err(e) => {
+                app.store.record(&json!({"kind":"ast000_rejected","transport":"http","mode":app.config.ast000_compat,"code":e.to_string(),"ts_ms":now_ms()})).await;
+                if app.config.ast000_compat != Ast000::Observe {
+                    return error(StatusCode::BAD_REQUEST, &e.to_string());
+                }
+                body.to_vec()
+            }
+        };
+        return forward(
+            app,
+            headers,
+            outgoing,
+            body.len(),
+            &suffix,
+            None,
+            "ast000_passthrough",
+            request_stream,
+        )
+        .await;
+    }
     if app.config.mode == Mode::Passthrough || compressed {
         return forward(
             app,

@@ -1,0 +1,27 @@
+schema_version = 1
+schema_status = "draft"
+id = "git-native-context-bootstrap"
+kind = "reviewable-design-context"
+subsystems = ["project-context"]
+handoff = "handoff.md"
+native_payload_in_repository = false
+
+[[sources]]
+id = "recovered-design-discussion"
+kind = "historical-native-conversation"
+scope = "Git context layout, subsystem command example, work-item format, AST-000 ordering discussion"
+availability = "private operator-local recovery archive; not distributed with this repository"
+locator_policy = "resolve outside portable identity fields"
+verification = "supported native fork, then original-ID resume and proxy restart; five recent-discussion checks; readable-history continuity"
+
+[[sources]]
+id = "current-development-request"
+kind = "accepted-user-requirements"
+scope = "conversation recovery, native lifecycle, minimal .astral bootstrap, no full launcher"
+availability = "requirements captured in core/project-context/rules/context-contract.md"
+
+[[sources]]
+id = "lifecycle-verification"
+kind = "sanitized-local-verification"
+scope = "tested Codex version, native route, controls, explicit remaining gaps"
+availability = "docs/ast000-lifecycle.md; detailed receipts remain private"

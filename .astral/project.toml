@@ -1,0 +1,15 @@
+schema_version = 1
+schema_status = "draft; documentation bootstrap, not a launcher contract"
+id = "astral"
+name = "Astral"
+description = "Native conversation continuity with capabilities rebound by the destination runtime"
+core = "core"
+projections = "projections"
+work_items = "work/items.jsonl"
+
+[identity]
+scope = "repository-local logical names"
+runtime_bindings = "private and external to Git"
+
+[subsystems]
+project-context = "core/project-context"
