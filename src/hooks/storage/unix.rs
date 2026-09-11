@@ -53,6 +53,20 @@ fn cname(value: &str) -> Result<CString> {
     CString::new(value).map_err(|_| error("HOOK_STORAGE_PATH", "invalid entry name"))
 }
 impl Directory {
+    /// Lock an existing project directory without adding private lock metadata.
+    pub fn lock_directory(&self) -> Result<Guard> {
+        let file = self
+            .file
+            .try_clone()
+            .map_err(|_| error("HOOK_STORAGE_IO", "cannot duplicate directory"))?;
+        fs2::FileExt::try_lock_exclusive(&file).map_err(|_| {
+            error(
+                "HOOK_STORAGE_BUSY",
+                "directory has another cooperating writer",
+            )
+        })?;
+        Ok(Guard(file))
+    }
     pub fn open(path: &Path, private: bool) -> Result<Self> {
         if !path.is_absolute() || path.as_os_str().len() > 4096 {
             return Err(error(

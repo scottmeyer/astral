@@ -38,13 +38,14 @@ format and a deliberately narrow runtime contract. These are separate paths:
 | Native save/import | Explicit export, Git transfer, new-thread import and cold resume | Codex 0.154.0, `gpt-6-astra`, built-in OpenAI provider, same account, explicit `--proxy` |
 | Recovery and completion | Evidence-based repairs and reviewed fast-forward integration; recognize ordinary Git work | Save, tests, commits and divergent merges remain explicit |
 | Git/Codex hooks | Per-repository Git setup and per-checkout Codex configuration; offline context advice | Opt-in and advisory; Codex trust is separate; no automatic save or global Codex hook installer |
+| Context freshness (source builds after v0.1.0) | Explicit subsystem code inputs and review fingerprints; working/index/HEAD diagnostics | Byte changes request review; equal fingerprints do not verify knowledge or tests |
 
 Project filesystem operations use Unix confinement. The standalone Responses
 proxy is a separate component; its rolling and cache policies do not qualify
 additional Codex versions or native checkpoint formats.
 
 Remaining work includes cross-account handoff, broader runtime qualification,
-external issue adapters, long-horizon retrieval/freshness, retention cleanup,
+external issue adapters, long-horizon retrieval and semantic freshness, retention cleanup,
 semantic context reconciliation and automatic delegated-worker orchestration.
 See the [current project context](.astral/core/project-context/README.md) and
 [work register](.astral/work/items.jsonl). Historical test receipts and completed
@@ -148,6 +149,12 @@ selections in your repository. A new project does not automatically contain `web
 Readable documents, work records and explicit exports travel through Git.
 Credentials, local thread bindings and proxy state stay outside tracked context.
 See the [manifest and selection contract](docs/project-context.md#manifest-and-selection-contract).
+
+Subsystems can also declare exact code files under `[freshness]`. Use
+`astral context freshness web` to compare them with an explicit review baseline,
+and `astral context review web` to preview an acknowledgement. The
+[freshness guide](docs/context-freshness.md) explains review, Git staging and limits.
+These commands are available in source builds after v0.1.0.
 
 The standalone proxy stores private state in `.astral-runtime/`, separately
 from Git-tracked `.astral/` context. Its upstream environment variable is

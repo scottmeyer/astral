@@ -189,7 +189,44 @@ impl GitSnapshot {
 
 impl ProjectSource for GitSnapshot {
     fn read_blob(&self, path: &str, limit: usize) -> Result<Vec<u8>> {
-        let entry = self.entries.get(path).ok_or_else(|| {
+        // Optional freshness inputs are exact files outside .astral. Never
+        // enumerate the repository or fall back to working bytes. Full snapshot
+        // evidence checks bracket the owning project/lifecycle observation.
+        let external;
+        let entry = if path.starts_with(".astral/") || path == ".astral" {
+            self.entries.get(path)
+        } else {
+            // Context fixes GIT_LITERAL_PATHSPECS=1 and executes at the root.
+            external = match self.kind {
+                SnapshotKind::Index => entries::index_path(
+                    &self.context.read(
+                        &[
+                            "ls-files",
+                            "--stage",
+                            "--debug",
+                            "--full-name",
+                            "-z",
+                            "--",
+                            path,
+                        ],
+                        MAX_METADATA_BYTES,
+                    )?,
+                    Some(path),
+                )?,
+                SnapshotKind::Head => match self.head.as_deref() {
+                    Some(head) => entries::tree_path(
+                        &self.context.read(
+                            &["ls-tree", "-r", "-z", "--full-tree", head, "--", path],
+                            MAX_METADATA_BYTES,
+                        )?,
+                        Some(path),
+                    )?,
+                    None => BTreeMap::new(),
+                },
+            };
+            external.get(path)
+        }
+        .ok_or_else(|| {
             error(
                 "PATH_UNAVAILABLE",
                 "declared file is absent from the Git snapshot",

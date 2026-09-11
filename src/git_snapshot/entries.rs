@@ -21,6 +21,7 @@ fn insert(
     path: &[u8],
     index: bool,
     intent: bool,
+    exact_path: Option<&str>,
 ) -> Result<()> {
     let fields: Vec<_> = header.split(|b| *b == b' ').collect();
     if fields.len() != 3 {
@@ -55,7 +56,10 @@ fn insert(
     }
     let path = string(path)?;
     if path.len() > 4096
-        || !(path == ".astral" || path.starts_with(".astral/"))
+        || !exact_path.map_or_else(
+            || path == ".astral" || path.starts_with(".astral/"),
+            |expected| path == expected,
+        )
         || path.contains(['\\', ':', '\0'])
         || path
             .split('/')
@@ -97,17 +101,26 @@ fn header_path(line: &[u8]) -> Result<(&[u8], &[u8])> {
     Ok((&line[..position], &line[position + 1..]))
 }
 pub(super) fn tree(raw: &[u8]) -> Result<BTreeMap<String, Entry>> {
+    tree_path(raw, None)
+}
+pub(super) fn tree_path(raw: &[u8], exact_path: Option<&str>) -> Result<BTreeMap<String, Entry>> {
     let mut entries = BTreeMap::new();
     if !raw.is_empty() && raw.last() != Some(&0) {
         return Err(error("SNAPSHOT_FORMAT", "truncated tree enumeration"));
     }
     for line in raw.split(|b| *b == 0).filter(|l| !l.is_empty()) {
         let (header, path) = header_path(line)?;
-        insert(&mut entries, header, path, false, false)?;
+        insert(&mut entries, header, path, false, false, exact_path)?;
     }
     Ok(entries)
 }
-pub(super) fn index(mut raw: &[u8]) -> Result<BTreeMap<String, Entry>> {
+pub(super) fn index(raw: &[u8]) -> Result<BTreeMap<String, Entry>> {
+    index_path(raw, None)
+}
+pub(super) fn index_path(
+    mut raw: &[u8],
+    exact_path: Option<&str>,
+) -> Result<BTreeMap<String, Entry>> {
     let mut entries = BTreeMap::new();
     let mut count = 0;
     while !raw.is_empty() {
@@ -156,7 +169,14 @@ pub(super) fn index(mut raw: &[u8]) -> Result<BTreeMap<String, Entry>> {
             }
         }
         let flags = flags.ok_or_else(|| error("SNAPSHOT_FORMAT", "invalid index flags"))?;
-        insert(&mut entries, header, path, true, flags & 0x2000_0000 != 0)?;
+        insert(
+            &mut entries,
+            header,
+            path,
+            true,
+            flags & 0x2000_0000 != 0,
+            exact_path,
+        )?;
     }
     Ok(entries)
 }

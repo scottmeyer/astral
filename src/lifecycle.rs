@@ -31,6 +31,8 @@ pub struct Context {
     pub digest: Option<String>,
     pub observed_files: usize,
     pub error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub freshness: Vec<crate::project::freshness::Observation>,
 }
 impl Context {
     fn observe(present: bool, project: &Result<Project>) -> Self {
@@ -45,6 +47,7 @@ impl Context {
                     )),
                     observed_files: handles.len(),
                     error_code: None,
+                    freshness: project.freshness().cloned().collect(),
                 }
             }
             Err(error) => Self {
@@ -53,6 +56,7 @@ impl Context {
                 digest: None,
                 observed_files: 0,
                 error_code: Some(error.code.into()),
+                freshness: Vec::new(),
             },
         }
     }
@@ -141,6 +145,19 @@ pub fn check(root: &Path, scope: Scope, work: Option<&str>) -> Result<Report> {
             report.diagnostics.push(code.into());
         }
     }
+    for (context, code) in [
+        (&report.index, "INDEX_FRESHNESS_NEEDS_REVIEW"),
+        (&report.committed, "COMMITTED_FRESHNESS_NEEDS_REVIEW"),
+        (&report.worktree, "WORKTREE_FRESHNESS_NEEDS_REVIEW"),
+    ] {
+        if context
+            .freshness
+            .iter()
+            .any(|o| o.state != crate::project::freshness::State::Unchanged)
+        {
+            report.diagnostics.push(code.into());
+        }
+    }
     if report.index.digest != report.worktree.digest {
         report
             .diagnostics
@@ -201,6 +218,13 @@ pub fn notice(report: &Report, claimed_session: Option<&str>) -> String {
         .is_some_and(|w| !w.bound_to_current_checkout || !w.diagnostics.is_empty())
     {
         return "Astral advisory: the recorded worker or selected context needs review. Inspect astral status and astral recover before an explicit continuation. No receipt was changed and no operation was retried.".into();
+    }
+    if report
+        .diagnostics
+        .iter()
+        .any(|c| c.ends_with("_FRESHNESS_NEEDS_REVIEW"))
+    {
+        return "Astral advisory: declared code inputs or subsystem knowledge need review, have no review baseline, or could not be read. Inspect astral lifecycle check and astral context freshness. Equal fingerprints only mean unchanged since explicit review; they do not verify prose, tests or historical claims. No review acknowledgement was changed.".into();
     }
     if !report.diagnostics.is_empty() {
         return "Astral advisory: committed, staged or working context differs. Inspect astral lifecycle check before the next handoff. A commit is not a native save, and changed context invalidates assumptions about earlier verification.".into();

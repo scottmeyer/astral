@@ -67,6 +67,11 @@ valid stages of the workflow; the command does not infer test success.
 selected core, subsystem, projection and work-item sources. Its `schema` module
 defines the public manifest/output types and limits; its `reader` module owns
 bounded, confined filesystem reads. Public `project::*` paths stay stable.
+`project::freshness` hashes opt-in exact code inputs and core/subsystem knowledge
+against explicit review baselines. Code bodies are discarded after hashing;
+metadata participates in selected worker digests. Its review writer reuses the
+confined publication primitive with a project-directory lock and a stale-preview
+check. Equal fingerprints mean unchanged bytes, not verified prose or tests.
 The `astral` binary provides `context validate`, `context list --plain`, and
 `project NAME --inspect`. Inspection returns bounded repository-relative handles
 and hashes with native state UNBOUND.

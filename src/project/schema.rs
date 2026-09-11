@@ -68,6 +68,8 @@ pub struct SubsystemManifest {
     pub projection: String,
     #[serde(default)]
     pub depends_on: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freshness: Option<super::freshness::Declaration>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -214,6 +216,8 @@ pub struct FreshContext {
     /// Core, selected subsystem/dependency documents, and an explicit handoff only.
     pub documents: Vec<FreshDocument>,
     pub work_item: Option<FreshWorkItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub freshness: Vec<super::freshness::Observation>,
 }
 
 /// Current selected documents and, when required, a separate immutable native

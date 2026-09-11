@@ -46,6 +46,11 @@ and stale-plan checks still run. Codex runtime trust remains separate.
 request `--json` when consuming their structured reports. Hook callback output
 retains its Git/Codex protocol and is unaffected by this display choice.
 
+With optional subsystem [freshness declarations](context-freshness.md), checks
+also compare code and knowledge against explicit review baselines in each view.
+Unreviewed, changed or unavailable inputs produce advisory diagnostics. Review
+acknowledgement remains explicit; hooks do not update its fingerprint.
+
 The plan hash identifies its exact repository, target, executable path and
 observed hook/configuration state. Astral retains it internally while you review
 the prompt and checks it again before writing. If files change during review,

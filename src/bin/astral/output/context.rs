@@ -1,5 +1,8 @@
 use super::{MAX_ROWS, Output, array, safe, scalar, text, yes};
 use serde_json::Value;
+#[path = "context/freshness.rs"]
+mod freshness;
+pub(super) use freshness::{freshness, freshness_rows};
 
 pub(super) fn validate(out: &mut Output, value: &Value) {
     out.line(format!(
@@ -17,6 +20,7 @@ pub(super) fn validate(out: &mut Output, value: &Value) {
         "Native bundles validated locally",
         &value["native_artifacts"],
     );
+    freshness_rows(out, value);
     out.command("Next", &["astral", "context", "list"]);
 }
 
@@ -80,6 +84,7 @@ pub(super) fn inspect(out: &mut Output, value: &Value) {
     out.strings("Included subsystems", array(selected, "subsystems"));
     out.field("Selected work", &selected["work_item"]);
     out.field("Selection digest", &value["selection_digest"]);
+    freshness_rows(out, value);
     let sources = array(value, "sources");
     out.line(format!("Sources: {} declared files/records", sources.len()));
     for source in sources.iter().take(MAX_ROWS) {

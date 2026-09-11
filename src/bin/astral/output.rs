@@ -23,6 +23,7 @@ pub fn render_in(value: &Value, root: &Path) -> Result<String> {
     match text(value, "operation") {
         "initialize" => context::initialize(&mut out, value),
         "lifecycle_check" => workflow::lifecycle(&mut out, value),
+        "context_freshness" | "context_review" => context::freshness(&mut out, value),
         "recovery_inventory" => workflow::recovery_inventory(&mut out, value),
         "recover" => workflow::recovered(&mut out, value),
         "finish_plan" => workflow::finish(&mut out, value, false),
@@ -97,7 +98,11 @@ fn error(error: &Error) -> String {
         }
         "WORKSPACE_LOCKED" | "WORKSPACE_BUSY" => "Wait for the current worker owner, then retry.",
         "NATIVE_PROXY_REQUIRED" => "Repeat the project command with explicit --proxy.",
-        "STALE_PLAN" | "FINISH_STALE_PLAN" | "RECOVERY_STALE_PLAN" | "HOOK_STALE_PLAN" => {
+        "STALE_PLAN"
+        | "FINISH_STALE_PLAN"
+        | "RECOVERY_STALE_PLAN"
+        | "HOOK_STALE_PLAN"
+        | "FRESHNESS_REVIEW_STALE" => {
             "Generate a fresh preview and review its new hash before applying it."
         }
         "WORKSPACE_STAGE_INCOMPLETE" | "WORKSPACE_CONTEXT_INCOMPLETE" => {

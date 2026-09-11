@@ -22,6 +22,11 @@ relying on a historical conversation or test receipt.
   Ordinary Git commits/merges remain valid workflow steps.
 - Git and Codex hooks provide opt-in offline advice. Setup confirms a plan in a
   terminal; `--yes` and `--dry-run` support scripts. `astral commit` forwards to Git.
+- Optional `[freshness]` inputs bind subsystem knowledge to explicit code files.
+  `context freshness` compares observations; `context review` previews an explicit
+  acknowledgement. Lifecycle checks keep working, staged and committed evidence
+  separate. Equal fingerprints do not establish semantic correctness or test success.
+  See the [freshness guide](../../../docs/context-freshness.md).
 
 CLI output is readable and actionable by default. Use global `--json` for
 machine-readable reports, help/version or errors; scripts must request it
@@ -93,7 +98,7 @@ as history, outside the default decision selection. The current
 ## Remaining work
 
 The [work register](../../work/items.jsonl) tracks broader runtime/protocol and
-cross-account qualification, long-horizon retrieval and freshness, artifact
+cross-account qualification, long-horizon retrieval and semantic freshness, artifact
 retention, external issue synchronization, semantic reconciliation, delegated
 worker orchestration and sustained quality/cost measurements. The initial
 implementation does not establish these capabilities or general savings.

@@ -23,6 +23,7 @@ pub(super) fn lifecycle(out: &mut Output, value: &Value) {
             scalar(&context["observed_files"])
         ));
         out.field("  Problem", &context["error_code"]);
+        super::context::freshness_rows(out, context);
     }
     let worker = &value["worker"];
     if !worker.is_null() {
@@ -66,6 +67,11 @@ fn lifecycle_diagnostics(out: &mut Output, value: &Value, diagnostics: &[Value])
     for diagnostic in diagnostics.iter().take(MAX_ROWS) {
         let code = diagnostic.as_str().unwrap_or("UNKNOWN_DIAGNOSTIC");
         let description = match code {
+            "INDEX_FRESHNESS_NEEDS_REVIEW"
+            | "COMMITTED_FRESHNESS_NEEDS_REVIEW"
+            | "WORKTREE_FRESHNESS_NEEDS_REVIEW" => {
+                "Subsystem code or knowledge needs review, has no baseline, or is unavailable in this view. Run astral context freshness for working inputs; stage reviewed code, documents and the review manifest together."
+            }
             "UNSTAGED_CONTEXT_DIFFERENCE" => {
                 working_diff = true;
                 "Working context differs from the index. Review the changes and stage intended context alongside its code."

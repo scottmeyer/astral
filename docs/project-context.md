@@ -144,6 +144,9 @@ combining the two continuation mechanisms is an error.
   configured core directory.
 - `subsystem.toml` selects its README, rules, decisions and optional subsystem
   dependencies. Dependencies are explicit and acyclic, never model-inferred.
+- Optional `[freshness]` declares exact repository-relative code `inputs` and an
+  explicitly recorded `reviewed_fingerprint`. See [context freshness](context-freshness.md)
+  for byte-change diagnostics, review acknowledgement and the precise scope.
 - Named projection directories contain `projection.toml`, a handoff reference,
   subsystem selections and scoped source provenance. Discovery is bounded.
 - A `native-checkpoint` projection declares an explicit digest-pinned

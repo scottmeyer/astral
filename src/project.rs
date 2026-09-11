@@ -4,6 +4,7 @@
 //! or provider-equivalent context. Nothing here launches an agent or binds native
 //! checkpoint state. Source provenance is inert data, never executable authority.
 
+pub mod freshness;
 mod reader;
 mod schema;
 
@@ -84,6 +85,7 @@ pub struct Project {
     sources: BTreeMap<String, SourceHandle>,
     /// Bounded bytes observed at load time; assembly never reopens these paths.
     contents: BTreeMap<String, Vec<u8>>,
+    freshness: BTreeMap<String, freshness::Observation>,
     limits: Limits,
 }
 
@@ -352,8 +354,9 @@ impl Project {
         &self.manifest.id
     }
 
-    /// Every declared file observed during validation, including unselected
-    /// contexts and complete work/native inputs. Handles describe cached bytes.
+    /// Declared context files, including unselected contexts and complete
+    /// work/native inputs. Code-input observations are exposed by `freshness()`;
+    /// their bodies are not cached as context documents.
     pub fn observed_sources(&self) -> impl Iterator<Item = &SourceHandle> {
         self.sources.values()
     }
@@ -478,6 +481,10 @@ impl Project {
             distinct(&m.decisions, "subsystem.decisions")?;
             distinct(&m.work_items, "subsystem.work_items")?;
             distinct(&m.depends_on, "subsystem.depends_on")?;
+            if let Some(freshness) = &m.freshness {
+                freshness.validate()?;
+                reader.charge(freshness.inputs.len())?;
+            }
             reader.charge(
                 m.rules.len() + m.decisions.len() + m.work_items.len() + m.depends_on.len(),
             )?;
@@ -575,8 +582,8 @@ impl Project {
             }
         }
         validate_native_document_roles(&reader, &core, &subsystems, &projections)?;
-        let contents = reader.contents;
-        let sources = contents
+        let sources = reader
+            .contents
             .iter()
             .map(|(path, bytes)| {
                 let handle = SourceHandle {
@@ -588,15 +595,19 @@ impl Project {
                 (path.clone(), handle)
             })
             .collect();
-        Ok(Self {
+        let mut project = Self {
             manifest,
             subsystems,
             projections,
             work,
             sources,
-            contents,
+            contents: BTreeMap::new(),
+            freshness: BTreeMap::new(),
             limits,
-        })
+        };
+        project.freshness = project.observe_freshness(&mut reader)?;
+        project.contents = reader.contents;
+        Ok(project)
     }
 
     fn output(&self, value: Value) -> Result<Value> {
@@ -613,6 +624,7 @@ impl Project {
             "work_items": self.work.len(), "observed_files": self.sources.len(),
             "native_artifacts": self.projections.values().filter(|p| p.native.is_some()).count(),
             "native_binding": native_binding(),
+            "freshness": self.freshness().collect::<Vec<_>>(),
             "verification_scope": "Declared local inputs only; per-file observations, not an atomic tree snapshot, native recall, or execution verification"
         }))
     }
@@ -737,9 +749,13 @@ impl Project {
             projection: projection.map(|p| p.manifest.id.clone()),
             work_item: work_id.map(str::to_owned),
         };
-        let selection_digest = crate::fingerprint(
-            &json!({"schema_version": 1, "selection": selection, "sources": sources}),
-        );
+        let mut fingerprint =
+            json!({"schema_version": 1, "selection": selection, "sources": sources});
+        let freshness = self.selected_freshness(&selection.subsystems);
+        if !freshness.is_empty() {
+            fingerprint["freshness"] = json!(freshness);
+        }
+        let selection_digest = crate::fingerprint(&fingerprint);
         Ok(ResolvedSelection {
             selection,
             selection_digest,
@@ -761,10 +777,11 @@ impl Project {
         self.output(json!({
             "schema_version": 1, "mode": "inspect", "project_id": self.manifest.id,
             "selection": resolved.selection, "sources": resolved.sources, "selection_digest": resolved.selection_digest,
-            "fingerprint_scope": "Selected declared source bytes and exact selected JSONL record; no machine path, time, provider semantics, or atomic snapshot claim",
+            "fingerprint_scope": "Selected declared source bytes, exact selected JSONL record and opt-in freshness observations; no machine path, time, provider semantics, test verification or atomic snapshot claim",
             "metadata": {"project": self.manifest, "subsystems": subsystem_metadata, "projection": resolved.projection.map(|p| &p.manifest)},
             "work_item": resolved.work.map(|w| &w.item), "native_binding": native_binding(),
-            "native_artifacts": self.selected_native_artifacts(&resolved)
+            "native_artifacts": self.selected_native_artifacts(&resolved),
+            "freshness": self.selected_freshness(&resolved.selection.subsystems)
         }))
     }
 
@@ -917,9 +934,13 @@ impl Project {
             });
         }
         let sources: Vec<_> = fresh_sources.into_values().collect();
-        let selection_digest = crate::fingerprint(
-            &json!({"schema_version": 1, "selection": resolved.selection, "sources": sources}),
-        );
+        let mut fingerprint =
+            json!({"schema_version": 1, "selection": resolved.selection, "sources": sources});
+        let freshness = self.selected_freshness(&resolved.selection.subsystems);
+        if !freshness.is_empty() {
+            fingerprint["freshness"] = json!(freshness);
+        }
+        let selection_digest = crate::fingerprint(&fingerprint);
         let context = FreshContext {
             schema_version: 1,
             project_id: self.manifest.id.clone(),
@@ -927,6 +948,7 @@ impl Project {
             selection_digest,
             sources,
             documents,
+            freshness,
             work_item: resolved.work.map(|work| FreshWorkItem {
                 item: work.item.clone(),
                 source: work.source.clone(),

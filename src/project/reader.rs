@@ -48,6 +48,7 @@ pub(super) struct Reader<'a> {
     pub(super) limits: Limits,
     total_bytes: usize,
     entries: usize,
+    files: usize,
     pub(super) contents: BTreeMap<String, Vec<u8>>,
 }
 
@@ -58,6 +59,7 @@ impl<'a> Reader<'a> {
             limits,
             total_bytes: 0,
             entries: 0,
+            files: 0,
             contents: BTreeMap::new(),
         })
     }
@@ -68,6 +70,7 @@ impl<'a> Reader<'a> {
             limits,
             total_bytes: 0,
             entries: 0,
+            files: 0,
             contents: BTreeMap::new(),
         }
     }
@@ -95,7 +98,7 @@ impl<'a> Reader<'a> {
             }
             return Ok(bytes.clone());
         }
-        if self.contents.len() >= self.limits.files {
+        if self.files >= self.limits.files {
             return Err(error("LIMIT_EXCEEDED", "file count"));
         }
         let remaining = self.limits.total_bytes.saturating_sub(self.total_bytes);
@@ -139,6 +142,7 @@ impl<'a> Reader<'a> {
             }
         };
         self.total_bytes += bytes.len();
+        self.files += 1;
         self.contents.insert(path.to_owned(), bytes.clone());
         Ok(bytes)
     }

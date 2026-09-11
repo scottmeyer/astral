@@ -7,7 +7,7 @@ use astral::{
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, IsTerminal, Read, Write},
+    io::{BufRead, IsTerminal, Write},
     path::Path,
 };
 
@@ -80,15 +80,7 @@ fn show_plan(plan: &Plan, output: &mut impl Write) -> std::io::Result<()> {
 }
 
 fn confirm(input: &mut impl BufRead, output: &mut impl Write) -> Result<bool> {
-    write!(output, "Apply this hook setup? [y/N] ").map_err(io_error)?;
-    output.flush().map_err(io_error)?;
-    let mut answer = String::new();
-    input.take(64).read_line(&mut answer).map_err(io_error)?;
-    // An unterminated/oversized answer and EOF never imply acceptance.
-    Ok(
-        answer.ends_with('\n')
-            && matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes"),
-    )
+    super::confirmation::ask(input, output, "Apply this hook setup?").map_err(io_error)
 }
 
 pub(super) fn run(root: &Path, command: HooksCommand, json: bool) -> Result<Option<Value>> {

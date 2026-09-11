@@ -10,6 +10,10 @@ use std::path::{Path, PathBuf};
 
 #[path = "astral/arguments.rs"]
 mod arguments;
+#[path = "astral/confirmation.rs"]
+mod confirmation;
+#[path = "astral/context_review.rs"]
+mod context_review;
 #[path = "astral/hooks_cli.rs"]
 mod hooks_cli;
 #[path = "astral/output.rs"]
@@ -216,6 +220,24 @@ enum ContextCommand {
     Validate,
     /// Pick a context in a terminal; use --plain or --json for a report.
     List,
+    /// Compare selected subsystem knowledge with its explicit code-input baseline.
+    Freshness {
+        #[arg(default_value = DEFAULT_CONTEXT)]
+        name: String,
+    },
+    /// Review and confirm a subsystem baseline in a terminal; otherwise preview.
+    Review {
+        #[arg(default_value = DEFAULT_CONTEXT)]
+        name: String,
+        #[arg(long, value_name = "PLAN_SHA256", conflicts_with_all = ["yes", "dry_run"])]
+        apply: Option<String>,
+        /// Acknowledge the current inputs without a terminal prompt.
+        #[arg(long, conflicts_with = "dry_run")]
+        yes: bool,
+        /// Preview without prompting or writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -407,6 +429,18 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
         Command::Context {
             command: ContextCommand::Validate,
         } => Project::load(&cli.root)?.validate().map(Some),
+        Command::Context {
+            command: ContextCommand::Freshness { name },
+        } => Project::load(&cli.root)?.inspect_freshness(&name).map(Some),
+        Command::Context {
+            command:
+                ContextCommand::Review {
+                    name,
+                    apply,
+                    yes,
+                    dry_run,
+                },
+        } => context_review::run(&cli.root, &name, apply.as_deref(), yes, dry_run, cli.json),
         Command::Context {
             command: ContextCommand::List,
         } => {
