@@ -137,16 +137,12 @@ impl Catalog {
         }];
         choices.extend(self.work.iter().map(|record| {
             let item = &record.item;
-            let mut detail = vec![
-                format!("Work status: {}", status(&item.status)),
-                "Existing workers use their recorded context; the next screen shows the binding."
-                    .into(),
-            ];
+            let mut detail = vec![item.title.chars().take(512).collect()];
             detail.extend(
                 item.acceptance
                     .iter()
-                    .take(3)
-                    .map(|s| s.chars().take(512).collect()),
+                    .take(1)
+                    .map(|s| format!("Goal: {}", s.chars().take(512).collect::<String>())),
             );
             Choice {
                 label: format!(

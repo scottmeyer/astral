@@ -611,18 +611,57 @@ mod backend {
     }
 
     fn list_rows(height: u16, choices: &[Prepared], state: &Search) -> usize {
-        let body = usize::from(height.saturating_sub(4));
-        let details = state
-            .selected()
-            .map_or(0, |index| choices[index].detail.len());
-        let detail_rows = if body >= 4 && details > 0 {
-            (details + 1).min(body / 2).min(9)
-        } else {
-            0
-        };
-        body.saturating_sub(detail_rows)
+        let end = summary_layout(height, choices, state)
+            .map(|(heading, _)| heading.saturating_sub(1))
+            .unwrap_or_else(|| height.saturating_sub(if height > 6 { 3 } else { 2 }));
+        usize::from(end.saturating_sub(3))
             .max(1)
             .min(state.matches.len().max(1))
+    }
+
+    // Keep the summary anchored above the footer, separated from both the list
+    // and key hints. Short terminals spend their available rows on navigation.
+    fn summary_layout(height: u16, choices: &[Prepared], state: &Search) -> Option<(u16, usize)> {
+        if height < 14
+            || state
+                .selected()
+                .is_none_or(|index| choices[index].detail.is_empty())
+        {
+            return None;
+        }
+        let rows = usize::from(((height - 12) / 2).clamp(2, 6));
+        Some((height - 2 - rows as u16 - 3, rows))
+    }
+
+    fn summary_lines(details: &[String], width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        for detail in details {
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            let mut current = String::new();
+            for word in detail.split_whitespace() {
+                let used = current.chars().map(cells).sum::<usize>();
+                let word_width = word.chars().map(cells).sum::<usize>();
+                if !current.is_empty() && used + 1 + word_width > width {
+                    lines.push(std::mem::take(&mut current));
+                }
+                if word_width > width {
+                    let mut parts = wrap(word, width);
+                    current = parts.pop().unwrap_or_default();
+                    lines.extend(parts);
+                } else {
+                    if !current.is_empty() {
+                        current.push(' ');
+                    }
+                    current.push_str(word);
+                }
+            }
+            if !current.is_empty() {
+                lines.push(current);
+            }
+        }
+        lines
     }
     // Encode without queue!'s legacy Windows WinAPI fallback. Building a frame
     // is pure; only the owned stdout write presents it to the ANSI terminal.
@@ -732,33 +771,35 @@ mod backend {
                 )?;
             }
         }
-        let detail_start = 3 + slots as u16;
-        if detail_start + 1 < height - 1 {
+        if let Some((heading, rows)) = summary_layout(height, choices, state) {
             if let Some(index) = state.selected() {
-                line(&mut frame, detail_start, "Details", width, false)?;
-                for (row, detail) in choices[index]
-                    .detail
-                    .iter()
-                    .take(usize::from(height - 2 - detail_start))
-                    .enumerate()
-                {
-                    line(
-                        &mut frame,
-                        detail_start + 1 + row as u16,
-                        detail,
-                        width,
-                        false,
-                    )?;
+                line(&mut frame, heading, "Summary", width, false)?;
+                let details = summary_lines(&choices[index].detail, width);
+                for (row, detail) in details.iter().take(rows).enumerate() {
+                    let text = if row + 1 == rows && details.len() > rows {
+                        format!("{detail} ...")
+                    } else {
+                        detail.clone()
+                    };
+                    line(&mut frame, heading + 2 + row as u16, &text, width, false)?;
                 }
             }
         }
-        line(
-            &mut frame,
-            height - 1,
-            "Type to search | Up/Down select | Enter choose | Esc back | Ctrl-C cancel",
-            width,
-            false,
-        )?;
+        let hints = if width >= 54 {
+            (
+                "Type to search  |  Up/Down select  |  Enter choose",
+                "Esc back  |  Ctrl-C cancel",
+            )
+        } else if width >= 36 {
+            (
+                "Type to search  |  Enter choose",
+                "Up/Down move  Esc back  Ctrl-C cancel",
+            )
+        } else {
+            ("Enter choose", "Esc / Ctrl-C cancel")
+        };
+        line(&mut frame, height - 2, hints.0, width, false)?;
+        line(&mut frame, height - 1, hints.1, width, false)?;
         Ok(frame)
     }
 

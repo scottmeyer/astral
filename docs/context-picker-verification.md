@@ -71,3 +71,22 @@ The verified release was archived and atomically promoted to
 `8a9e0ceb418bb4164988aeb02bf23b53538b6241c594fa82754c50754ff7aa26`.
 The previous binary remains archived. Nine Git/Codex hook and configuration
 files matched their pre-install hashes; runtime trust settings were not changed.
+
+## Summary spacing follow-up (2026-09-11)
+
+Work AST-qw2ky0p6btek separates the browsing summary from the list and footer,
+wraps its paragraphs, and splits keyboard hints across two shorter lines. Work
+previews show the title and first acceptance criterion instead of repeated
+binding instructions and several criteria. Short terminals prioritize navigation.
+
+The **46 relevant tests** (32 binary unit tests and 14 maintained PTY integration
+tests) passed again, as did formatting, strict all-target Clippy, Rust 1.85.0
+binary checking and the release build. Direct release-terminal checks at 80x24,
+40x16 and 20x6 confirmed layout and cancellation. An ad hoc Python PTY driver
+timed out waiting for cancellation; that attempt is not counted as a pass.
+The full Rust and Python suites above were not rerun for this display-only change.
+
+Staged UBS JSON and verbose scans exited 0 with no failed modules: zero critical,
+117 warning and 40 informational matches across two Rust files. The reviewed
+warnings concern existing bounded indexing, test assertions and display
+allocations; no defect was identified. Private logs are retained separately.
