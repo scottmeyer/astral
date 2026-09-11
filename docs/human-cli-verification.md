@@ -67,3 +67,16 @@ Cargo/audit phases were skipped with `--no-cargo`; the independent Cargo checks
 above ran against the full checkout.
 
 Private logs and release smoke output are retained outside tracked source.
+
+## Installed release
+
+Source commit: `0ae93ce50ac6055f2a0dbba5641759d1f431b438`.
+The verified binary was archived and atomically promoted to
+`~/.local/bin/astral` as an independent regular file, separate from build output.
+Its SHA-256 is
+`6854a6010d9e715db87fe4563fa35817d412907486556eb479160687b1b47d52`.
+
+The previous installed release remains archived. Git hook scripts, registration
+and `.codex/hooks.json` matched their pre-install hashes. PATH-based version,
+context-list, lifecycle and explicit-JSON hook-status controls passed in the
+main checkout. Codex runtime trust remains unobserved by this check.
