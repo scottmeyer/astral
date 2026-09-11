@@ -1,9 +1,9 @@
 # Native launch milestones
 
-We are ready to implement launch in bounded milestones. The current executable
-validates context, inspects selected inputs, allocates work ID proposals and
-constructs Codex argument vectors. It does not yet load a typed native bundle,
-stage a thread, verify an effective runtime binding or manage a proxy process.
+Launch is implemented in bounded milestones. The current executable validates
+context, inspects selected inputs, allocates work ID proposals, initializes new
+indexes and launches fresh document contexts in Codex. It does not yet load a
+typed native bundle, restore native state or manage a proxy process.
 The earlier successful native lifecycle tests establish a feasible route, with
 the version and protocol limits in [the lifecycle receipt](native-recovery-lifecycle.md).
 
@@ -47,8 +47,11 @@ does not turn a missing referenced checkpoint into a fresh-session fallback.
 | 4. Work and Git integration | `AST-nge5zwyyktzr` | `--work ID` binds a validated record to a branch/worktree; add bounded work-record creation/update and record-aware merge rules. | Dirty source work is preserved; repeated launches reuse the intended workspace without duplicate sessions; concurrent branches allocate distinct identities; divergent edits to one record surface as conflicts; references/graphs validate after merge. |
 | 5. Save, hand off, continue | `AST-hqx0p9xedayb` | An explicit save operation captures a completed native boundary, writes an immutable Git-trackable bundle, and advances a named projection. Import from another checkout and continue. | Work → compact → capture → new import → cold resume → continue passes with native hashes preserved, no observation-mode detour and no plaintext substitution. Concurrent native histories remain distinguishable. |
 
-The first milestone is the next implementation task; it launches fresh contexts
-and initializes new repositories. The third adds usable native restoration in
+The first milestone is complete with the runtime limits documented in
+[fresh launch](fresh-launch.md) and current results in its
+[verification receipt](fresh-launch-verification.md). The next task is the native
+bundle contract.
+The third milestone adds usable native restoration in
 the existing checkout. Milestone four introduces automatic worktree creation.
 Existing broad work items
 retain their IDs and close only when their acceptance criteria are actually met.
@@ -58,18 +61,24 @@ retain their IDs and close only when their acceptance criteria are actually met.
 Currently available:
 
 ```sh
+astral project
+astral project web -- --model gpt-6-astra
 astral project --inspect
 astral project web --inspect --work AST-3k9v4n6x2m7q
+astral init
+astral init --inspect
 astral work id
 ```
 
-Planned launch forms preserve the established interface:
+Later milestones extend the established interface:
 
 ```sh
-astral project web
 astral project that-really-hard-problem --proxy
 astral project web --work AST-3k9v4n6x2m7q -- --model gpt-6-astra
 ```
+
+`--work` currently adds the selected record to fresh context; milestone four adds
+automatic branch/worktree binding to that same command.
 
 The sample work ID is illustrative. `astral work id` proposes a random ID but
 does not yet persist a record. Capture/export command spelling will be settled

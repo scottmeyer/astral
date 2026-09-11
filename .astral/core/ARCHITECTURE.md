@@ -5,7 +5,8 @@
 Git should carry durable, reviewable project context: a small core, user-defined
 subsystems, named investigation projections, and committed JSONL work items.
 Branching and merging should carry that work state with the code. The requested
-example is `astral project web --work ISSUE-123`; it remains a future interface.
+example is `astral project web --work ISSUE-123`; it now selects document/work
+context, while automatic branch/worktree binding remains pending.
 
 Import preserves conversational work state. Resume supplies executable
 capabilities from the current trusted runtime. Native checkpoints must remain
@@ -15,12 +16,14 @@ recovery. Historical commands require a current instruction before execution.
 Explicit native exports will be tracked in Git. A context without any saved
 checkpoint starts fresh from selected documents; repositories without `.astral/`
 can opt into a best-effort inference initializer using a prompt embedded in the
-binary. These launch paths remain planned, as described in the milestone plan.
+binary. Fresh launch and initialization are implemented; native exports remain
+planned, as described in the milestone plan.
 
 ## Verified current structure
 
 The unified binary is `astral`; `astral proxy` starts the server, while `project`
-and `context` inspect project context. The internal Rust crate remains
+and `context` inspect project context. `project` also launches fresh contexts and
+`init` initializes missing indexes. The internal Rust crate remains
 `ostk-gpt-cache`. `src/server.rs` owns startup and shutdown; `src/proxy.rs` owns HTTP
 routing; `engine.rs`, `store.rs`, and `policy.rs` implement the existing projection,
 persistence, and cache policies. `working.rs` supports the optional explicit host.
@@ -45,13 +48,19 @@ returns bounded repository-relative handles and hashes with native state UNBOUND
 It reads confined regular files on Unix; it does not launch a runtime or execute
 documented commands. Source hashes observe declared inputs, not an atomic tree.
 
-A future launcher must bind the destination runtime and workspace explicitly.
+`src/launch.rs` orchestrates fresh launch and initialization; `src/codex.rs` stages
+selected documents as user context through an owned Codex app-server adapter,
+closes it, and opens the new thread with Codex resume. See
+[fresh launch](../../docs/fresh-launch.md) for supported arguments and limits.
+
+The future native launcher must bind the destination runtime and workspace explicitly.
 Direct Codex is the default; `--proxy` opts into Astral routing. User-supplied Codex
 arguments must be forwarded unchanged, with `--` disambiguating overlapping
 options. Native checkpoint requirements must be reported before launch.
 A private availability map would locate native
 artifacts without putting machine paths, credentials, or thread IDs in portable
-identity fields. Native payload storage and sharing policy remain undecided.
+identity fields. Explicit native exports will be committed through Git; their
+versioned bundle format and compatibility validation remain planned.
 
 ## Open questions
 

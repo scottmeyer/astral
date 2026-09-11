@@ -1,5 +1,5 @@
 schema_version = 1
-schema_status = "experimental v1; read-only resolver implemented, native launch pending"
+schema_status = "experimental v1; resolver and fresh launch implemented, native launch pending"
 id = "astral"
 name = "Astral"
 description = "Native conversation continuity with capabilities rebound by the destination runtime"

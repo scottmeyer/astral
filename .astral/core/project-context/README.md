@@ -15,5 +15,7 @@ The Rust context resolver now validates these files and exposes bounded read-onl
 inspection through `astral context validate`, `astral context list`, and
 `astral project NAME --inspect`. Native bindings remain explicitly UNBOUND.
 The branch launcher, native artifact registry, and context merger remain pending.
+Fresh document launch and embedded-prompt initialization are now implemented;
+see [fresh launch](../../../docs/fresh-launch.md) for usage and limits.
 See [the interface decision](decisions/0003-launcher-interface.md) for direct
 Codex by default, explicit proxy routing, and argument forwarding requirements.

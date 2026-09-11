@@ -20,6 +20,13 @@ independent sandbox-denial evidence. Synthetic passes do not prove provider supp
 selection, stable fingerprints and CLI errors. Validate the repository's own
 bootstrap with `./target/release/astral context validate` after building.
 
+`tests/codex.rs` and `tests/launch_cli.rs` cover fresh staging, argument fidelity,
+runtime errors, initialization and process exit behavior. Embedded initializer
+templates are checked by `tests/project_init_prompt.rs`. The dated
+[fresh launch receipt](../../docs/fresh-launch-verification.md) records actual
+disposable Codex execution, document recall and read-only denial independently;
+those checks do not establish native restoration or general repository discovery.
+
 `scripts/native_recovery_trial.py` runs explicit live-provider tests on disposable fixtures.
 Its output directory, capsule, and native captures must stay private and outside
 tracked source. It refuses to resume IDs absent from its own fixture index.

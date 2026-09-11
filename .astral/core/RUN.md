@@ -14,9 +14,11 @@ These commands return JSON and leave Git and runtime state untouched. `project`
 defaults to the `project-context` selection when no name is supplied. An explicit
 name goes immediately after `project`; use `--` to forward a prompt without a name.
 `astral proxy` runs the server. Bare `astral` and direct proxy flags also start it
-for compatibility with existing runners. The `project` command
-without `--inspect` reports `LAUNCH_NOT_IMPLEMENTED`.
-The full launcher is not implemented. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
+for compatibility with existing runners. `astral project` launches a fresh Codex
+session from selected documents in the current checkout. `astral init` starts
+best-effort repository indexing; `astral init --non-interactive` uses `codex exec`.
+See [fresh launch](../../docs/fresh-launch.md) for argument and platform limits.
+Native restoration and managed proxy launch remain pending. See [lifecycle instructions](../../docs/native-recovery-lifecycle.md)
 for the opt-in Codex route and tested resume procedure.
 
 For this experiment, start the proxy on loopback with `--mode passthrough

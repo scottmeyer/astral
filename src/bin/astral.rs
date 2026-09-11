@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand, error::ErrorKind};
 use ostk_gpt_cache::config::Config;
-use ostk_gpt_cache::launcher::{DEFAULT_CONTEXT, ProjectArguments, project_request};
+use ostk_gpt_cache::launcher::{
+    DEFAULT_CONTEXT, ProjectArguments, initialization_request, project_request,
+};
 use ostk_gpt_cache::project::{Error, Project};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -21,6 +23,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Ask Codex to build a best-effort .astral index in a repository without one.
+    #[command(
+        after_help = "Pass Codex options after --. The initializer supplies its own prompt. --non-interactive uses codex exec; otherwise Codex opens interactively. Generated files are validated after Codex exits."
+    )]
+    Init {
+        #[arg(long)]
+        non_interactive: bool,
+        #[arg(long)]
+        inspect: bool,
+    },
     /// Run the Responses proxy.
     Proxy {
         #[command(flatten)]
@@ -36,7 +48,7 @@ enum Command {
         command: WorkCommand,
     },
     #[command(
-        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect and --proxy before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. Direct Codex is the requested default; --proxy explicitly requests local proxy routing. Native launch is not implemented yet."
+        after_help = "The context defaults to project-context when NAME is omitted. An explicit NAME must come immediately after project. Astral recognizes --root, --work, --inspect and --proxy before the first literal --. Put all Codex arguments after -- if any flag value resembles an Astral option. Fresh document contexts launch directly in Codex. Native restoration and managed --proxy launch remain pending."
     )]
     Project {
         #[arg(default_value = DEFAULT_CONTEXT)]
@@ -63,10 +75,24 @@ enum WorkCommand {
 }
 
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
-    if matches!(cli.command, Command::Project { inspect: false, .. }) {
-        return Err(Error { code: "LAUNCH_NOT_IMPLEMENTED", message: "Native launch is not implemented; use project NAME --inspect for read-only context inspection".into() });
-    }
     match cli.command {
+        Command::Init {
+            non_interactive,
+            inspect,
+        } => {
+            run_init(
+                ProjectArguments {
+                    root: cli.root,
+                    name: DEFAULT_CONTEXT.into(),
+                    work: None,
+                    inspect,
+                    route: ostk_gpt_cache::launcher::Route::Direct,
+                    codex_args: Vec::new(),
+                },
+                non_interactive,
+            )
+            .await
+        }
         Command::Proxy { config } => run_proxy(*config).await,
         Command::Context {
             command: ContextCommand::Validate,
@@ -91,31 +117,53 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
             work,
             proxy,
             inspect,
-        } => inspect_project(ProjectArguments {
-            root: cli.root,
-            name,
-            work,
-            inspect,
-            route: if proxy {
-                ostk_gpt_cache::launcher::Route::Proxy
-            } else {
-                ostk_gpt_cache::launcher::Route::Direct
-            },
-            codex_args: Vec::new(),
-        })
-        .map(Some),
+        } => {
+            run_project(ProjectArguments {
+                root: cli.root,
+                name,
+                work,
+                inspect,
+                route: if proxy {
+                    ostk_gpt_cache::launcher::Route::Proxy
+                } else {
+                    ostk_gpt_cache::launcher::Route::Direct
+                },
+                codex_args: Vec::new(),
+            })
+            .await
+        }
     }
 }
 
 fn inspect_project(request: ProjectArguments) -> Result<Value, Error> {
-    if !request.inspect {
-        return Err(Error { code: "LAUNCH_NOT_IMPLEMENTED", message: "Native import/staging and launch are not implemented; use --inspect to review context and requested Codex arguments".into() });
-    }
     let preview = request.preview()?;
     let project = Project::load(&request.root)?;
     let mut output = project.inspect(&request.name, request.work.as_deref())?;
     output["launch_request"] = preview;
     Ok(output)
+}
+
+async fn run_project(request: ProjectArguments) -> Result<Option<Value>, Error> {
+    if request.inspect {
+        return inspect_project(request).map(Some);
+    }
+    let code = ostk_gpt_cache::launch::project(request).await?;
+    std::process::exit(code);
+}
+
+async fn run_init(
+    request: ProjectArguments,
+    non_interactive: bool,
+) -> Result<Option<Value>, Error> {
+    if request.inspect {
+        return Ok(Some(
+            json!({"mode": "inspect", "operation": "initialize", "prompt_version": ostk_gpt_cache::launch::INIT_PROMPT_VERSION, "prompt": ostk_gpt_cache::launch::INIT_PROMPT, "non_interactive": non_interactive, "launch_request": request.preview()?}),
+        ));
+    }
+    let code =
+        ostk_gpt_cache::launch::initialize(&request.root, &request.codex_args, non_interactive)
+            .await?;
+    std::process::exit(code);
 }
 
 async fn run_proxy(config: Config) -> Result<Option<Value>, Error> {
@@ -160,9 +208,20 @@ fn finish(result: Result<Option<Value>, Error>) {
 #[tokio::main]
 async fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    match initialization_request(&args) {
+        Ok(Some((request, non_interactive))) => {
+            finish(run_init(request, non_interactive).await);
+            return;
+        }
+        Err(error) => {
+            finish(Err(error));
+            return;
+        }
+        Ok(None) => {}
+    }
     match project_request(&args) {
         Ok(Some(request)) => {
-            finish(inspect_project(request).map(Some));
+            finish(run_project(request).await);
             return;
         }
         Err(error) => {

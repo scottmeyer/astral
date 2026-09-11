@@ -311,3 +311,52 @@ pub fn project_request(args: &[OsString]) -> Result<Option<ProjectArguments>> {
     }
     Ok(None)
 }
+
+/// Initialization owns its prompt but forwards explicit Codex options verbatim.
+pub fn initialization_request(args: &[OsString]) -> Result<Option<(ProjectArguments, bool)>> {
+    check_arguments(args)?;
+    let mut index = 0;
+    while let Some(arg) = args.get(index) {
+        if arg == "init" {
+            if args
+                .get(index + 1)
+                .is_some_and(|arg| arg == "--help" || arg == "-h")
+            {
+                return Ok(None);
+            }
+            let mut project_args = args[..index].to_vec();
+            project_args.extend(["project".into(), DEFAULT_CONTEXT.into()]);
+            let mut non_interactive = false;
+            let mut after_separator = false;
+            for arg in &args[index + 1..] {
+                if !after_separator && arg == "--non-interactive" {
+                    if non_interactive {
+                        return Err(error("CLI_USAGE", "duplicate --non-interactive"));
+                    }
+                    non_interactive = true;
+                } else {
+                    if arg == "--" {
+                        after_separator = true;
+                    }
+                    project_args.push(arg.clone());
+                }
+            }
+            let request = project_request(&project_args)?
+                .ok_or_else(|| error("CLI_USAGE", "invalid initialization arguments"))?;
+            if request.work.is_some() || request.route == Route::Proxy {
+                return Err(error("CLI_USAGE", "init does not accept --work or --proxy"));
+            }
+            return Ok(Some((request, non_interactive)));
+        }
+        if arg == "--root" {
+            index += 1;
+            if args.get(index).is_none_or(|v| v.is_empty() || v == "--") {
+                return Err(error("CLI_USAGE", "--root requires a path"));
+            }
+        } else if option_value(arg, "--root=").is_none() {
+            return Ok(None);
+        }
+        index += 1;
+    }
+    Ok(None)
+}

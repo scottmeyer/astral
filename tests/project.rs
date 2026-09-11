@@ -614,14 +614,14 @@ verification = "Historical only"
         assert_eq!(json["native_binding"]["launch"], false);
         assert!(output.stderr.is_empty());
         let output = Command::new(binary)
-            .args(["--root", "/nonexistent", "project", "web"])
+            .args(["--root", "/nonexistent", "project", "web", "--proxy"])
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
-            "LAUNCH_NOT_IMPLEMENTED"
+            "PROXY_LAUNCH_NOT_IMPLEMENTED"
         );
         for args in [["context", "validate"], ["context", "list"]] {
             let output = Command::new(binary)
@@ -663,5 +663,328 @@ verification = "Historical only"
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stderr.len() < 4096);
         serde_json::from_slice::<Value>(&output.stderr).unwrap();
+    }
+
+    #[test]
+    fn fresh_context_contains_only_selected_readable_documents_and_work() {
+        let root = fixture();
+        let project = Project::load(root.path()).unwrap();
+        let inspected = project.inspect("web", Some("AST-001")).unwrap();
+        let fresh = project.fresh_context("web", Some("AST-001")).unwrap();
+        assert_eq!(fresh.selection.subsystems, ["authentication", "web"]);
+        assert_eq!(fresh.documents.len(), 9);
+        assert!(
+            fresh
+                .documents
+                .iter()
+                .any(|doc| doc.source.path == ".astral/core/ARCHITECTURE.md")
+        );
+        assert!(
+            fresh
+                .documents
+                .iter()
+                .any(|doc| doc.source.path == ".astral/core/authentication/README.md")
+        );
+        assert!(
+            fresh
+                .documents
+                .iter()
+                .any(|doc| doc.text == "web scoped instructions, not executed")
+        );
+        assert!(
+            fresh
+                .documents
+                .iter()
+                .all(|doc| !doc.source.path.contains("other/")
+                    && !doc.source.path.ends_with(".toml")
+                    && !doc.source.path.contains("projections/"))
+        );
+        let work = fresh.work_item.as_ref().unwrap();
+        assert_eq!(work.item.id, "AST-001");
+        assert_eq!(work.source.record_id.as_deref(), Some("AST-001"));
+        assert!(
+            !fresh
+                .sources
+                .iter()
+                .any(|source| source.record_id.as_deref() == Some("AST-002"))
+        );
+        for doc in &fresh.documents {
+            assert_eq!(doc.source.bytes, doc.text.len());
+            assert_eq!(doc.source.sha256, ostk_gpt_cache::hash(doc.text.as_bytes()));
+        }
+        assert_eq!(work.source.bytes, work.text.len());
+        assert_eq!(
+            work.source.sha256,
+            ostk_gpt_cache::hash(work.text.as_bytes())
+        );
+        assert_eq!(project.inspect("web", Some("AST-001")).unwrap(), inspected);
+        assert!(
+            project
+                .fresh_context("web", None)
+                .unwrap()
+                .work_item
+                .is_none()
+        );
+
+        let explicit = project.fresh_context("projection:saved", None).unwrap();
+        assert!(explicit.documents.iter().any(|doc| doc.source.path
+            == ".astral/projections/saved/handoff.md"
+            && doc.text == "Readable context is not native state."));
+        assert_eq!(explicit.documents.len(), 10);
+    }
+
+    #[test]
+    fn fresh_context_reuses_observed_document_and_exact_work_bytes_after_edits() {
+        let root = fixture();
+        let exact = format!("  {}  ", item("AST-001", &["AST-002"]));
+        put(
+            root.path(),
+            ".astral/work/items.jsonl",
+            &format!("{exact}\r\n{}\r\n", item("AST-002", &[])),
+        );
+        let project = Project::load(root.path()).unwrap();
+        let before = project.fresh_context("web", Some("AST-001")).unwrap();
+        assert_eq!(before.work_item.as_ref().unwrap().text, exact);
+        let inspection_before = project.inspect("web", Some("AST-001")).unwrap();
+        put(
+            root.path(),
+            ".astral/core/web/README.md",
+            "Changed after load",
+        );
+        put(
+            root.path(),
+            ".astral/core/ARCHITECTURE.md",
+            "New architecture after load",
+        );
+        replace(
+            root.path(),
+            ".astral/project.toml",
+            "name = \"Test project\"",
+            "name = \"Different project name\"",
+        );
+        let mut changed_work = item("AST-001", &["AST-002"]);
+        changed_work["title"] = json!("Changed work after load");
+        write_work(root.path(), &[changed_work, item("AST-002", &[])]);
+        let after = project.fresh_context("web", Some("AST-001")).unwrap();
+        assert_eq!(
+            serde_json::to_value(&before).unwrap(),
+            serde_json::to_value(&after).unwrap()
+        );
+        assert_eq!(
+            inspection_before,
+            project.inspect("web", Some("AST-001")).unwrap()
+        );
+        let reloaded = Project::load(root.path())
+            .unwrap()
+            .fresh_context("web", Some("AST-001"))
+            .unwrap();
+        assert_ne!(before.selection_digest, reloaded.selection_digest);
+        assert_eq!(before.work_item.unwrap().item.title, "Implement AST-001");
+    }
+
+    #[test]
+    fn fresh_rejects_selected_invalid_utf8_without_reading_unselected_text_into_context() {
+        let root = fixture();
+        fs::write(root.path().join(".astral/core/other/README.md"), [0xff]).unwrap();
+        let project = Project::load(root.path()).unwrap();
+        assert!(project.fresh_context("web", None).is_ok());
+        assert_eq!(
+            project.fresh_context("other", None).unwrap_err().code,
+            "INVALID_UTF8"
+        );
+        assert!(project.inspect("other", None).is_ok());
+        for (path, selected) in [
+            (".astral/core/web/README.md", "web"),
+            (".astral/core/RUN.md", "web"),
+            (".astral/projections/saved/handoff.md", "saved"),
+        ] {
+            let root = fixture();
+            fs::write(root.path().join(path), [0xff, 0xfe]).unwrap();
+            let project = Project::load(root.path()).unwrap();
+            assert_eq!(
+                project.fresh_context(selected, None).unwrap_err().code,
+                "INVALID_UTF8"
+            );
+        }
+    }
+
+    #[test]
+    fn fresh_bounds_raw_text_and_serialized_expansion() {
+        let root = fixture();
+        let small = Project::load_with_limits(
+            root.path(),
+            Limits {
+                output_bytes: 64,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            small.fresh_context("web", None).unwrap_err().code,
+            "LIMIT_EXCEEDED"
+        );
+        put(
+            root.path(),
+            ".astral/core/web/README.md",
+            &"\u{0001}".repeat(60_000),
+        );
+        let project = Project::load_with_limits(
+            root.path(),
+            Limits {
+                output_bytes: 200_000,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        assert!(project.inspect("web", None).is_ok());
+        let error = project.fresh_context("web", None).unwrap_err();
+        assert_eq!(error.code, "LIMIT_EXCEEDED");
+        assert_eq!(error.message, "fresh context output byte limit");
+    }
+
+    #[test]
+    fn fresh_never_falls_back_from_native_or_unknown_projection_kinds() {
+        for kind in ["native-checkpoint", "native", "future-unknown-kind"] {
+            let root = fixture();
+            replace(
+                root.path(),
+                ".astral/projections/saved/projection.toml",
+                "kind = \"reviewable-design-context\"",
+                &format!("kind = \"{kind}\""),
+            );
+            let project = Project::load(root.path()).unwrap();
+            assert!(project.inspect("saved", None).is_ok());
+            for selector in ["saved", "web", "authentication"] {
+                assert_eq!(
+                    project.fresh_context(selector, None).unwrap_err().code,
+                    "UNSUPPORTED_FRESH_PROJECTION"
+                );
+            }
+        }
+        for kind in ["reviewable-design-context", "reviewable", "fresh-context"] {
+            let root = fixture();
+            replace(
+                root.path(),
+                ".astral/projections/saved/projection.toml",
+                "kind = \"reviewable-design-context\"",
+                &format!("kind = \"{kind}\""),
+            );
+            assert!(
+                Project::load(root.path())
+                    .unwrap()
+                    .fresh_context("saved", None)
+                    .is_ok()
+            );
+        }
+        let root = fixture();
+        replace(
+            root.path(),
+            ".astral/projections/saved/projection.toml",
+            "native_payload_in_repository = false",
+            "native_payload_in_repository = true",
+        );
+        assert_eq!(failure(root.path()), "UNSUPPORTED_NATIVE_BINDING");
+        let root = fixture();
+        replace(
+            root.path(),
+            ".astral/projections/saved/projection.toml",
+            "native_payload_in_repository = false",
+            "native_payload_in_repository = false\nnative_checkpoint = 'private external artifact'",
+        );
+        assert_eq!(failure(root.path()), "INVALID_MANIFEST");
+    }
+
+    #[test]
+    fn native_linked_projection_of_a_selected_dependency_is_not_bypassed() {
+        let root = fixture();
+        let saved = fs::read_to_string(
+            root.path()
+                .join(".astral/projections/saved/projection.toml"),
+        )
+        .unwrap();
+        put(
+            root.path(),
+            ".astral/projections/native/projection.toml",
+            &saved.replace("id = \"saved\"", "id = \"native\"").replace(
+                "kind = \"reviewable-design-context\"",
+                "kind = \"native-checkpoint\"",
+            ),
+        );
+        put(
+            root.path(),
+            ".astral/projections/native/handoff.md",
+            "Do not substitute this for a native checkpoint.",
+        );
+        replace(
+            root.path(),
+            ".astral/core/authentication/subsystem.toml",
+            "projection = \"saved\"",
+            "projection = \"native\"",
+        );
+        let project = Project::load(root.path()).unwrap();
+        assert_eq!(
+            project.fresh_context("web", None).unwrap_err().code,
+            "UNSUPPORTED_FRESH_PROJECTION"
+        );
+        assert_eq!(
+            project.fresh_context("saved", None).unwrap_err().code,
+            "UNSUPPORTED_FRESH_PROJECTION"
+        );
+        assert!(project.fresh_context("other", None).is_ok());
+    }
+
+    #[test]
+    fn fresh_preserves_existing_resolution_errors() {
+        let root = fixture();
+        let project = Project::load(root.path()).unwrap();
+        for (selector, work, code) in [
+            ("missing", None, "UNKNOWN_CONTEXT"),
+            ("web", Some("missing"), "UNKNOWN_WORK_ITEM"),
+            ("unknown:web", None, "INVALID_SELECTOR"),
+        ] {
+            assert_eq!(
+                project.fresh_context(selector, work).unwrap_err().code,
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn fresh_fingerprints_linked_projection_gate_without_changing_inspection() {
+        let root = fixture();
+        let project = Project::load(root.path()).unwrap();
+        let before = project.fresh_context("web", None).unwrap();
+        let inspected = project.inspect("web", None).unwrap();
+        assert!(
+            before
+                .sources
+                .iter()
+                .any(|source| source.path == ".astral/projections/saved/projection.toml")
+        );
+        assert!(
+            !before
+                .documents
+                .iter()
+                .any(|document| document.source.path.contains("projections/"))
+        );
+        replace(
+            root.path(),
+            ".astral/projections/saved/projection.toml",
+            "kind = \"reviewable-design-context\"",
+            "kind = \"fresh-context\"",
+        );
+        let reloaded = Project::load(root.path()).unwrap();
+        assert_ne!(
+            before.selection_digest,
+            reloaded
+                .fresh_context("web", None)
+                .unwrap()
+                .selection_digest
+        );
+        assert_eq!(inspected, reloaded.inspect("web", None).unwrap());
+        assert_eq!(
+            serde_json::to_value(before).unwrap(),
+            serde_json::to_value(project.fresh_context("web", None).unwrap()).unwrap()
+        );
     }
 }

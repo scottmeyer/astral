@@ -1,5 +1,9 @@
 # Git-native context: the first executable boundary
 
+Fresh launch and repository initialization are now available; see
+[fresh launch](fresh-launch.md). The resolver and inspection contract below
+remain applicable independently of launching.
+
 Astral's project-context work starts with **read-only inspection**, before a
 launcher creates worktrees, accesses native artifacts, or starts an agent. The
 repository carries the shared context; runtime credentials, native payloads and
@@ -28,7 +32,8 @@ astral --root /path/to/repository project git-native-context-bootstrap --inspect
 
 These commands return JSON; `--inspect` uses two-space indentation. The final
 output limit includes formatting and its trailing newline. Omitting `--inspect`
-from `project` must fail rather than imply that an agent was launched.
+starts a fresh session for a supported readable context; unsupported native
+contexts fail explicitly.
 The root defaults to the current directory;
 it is not an instruction to search other projects or the user's session archive.
 Without an explicit context, `astral project` selects `project-context`. An explicit

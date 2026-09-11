@@ -561,7 +561,7 @@ fn cli_inspection_previews_requested_route_but_never_claims_launch() {
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
-        "LAUNCH_NOT_IMPLEMENTED"
+        "PROXY_LAUNCH_NOT_IMPLEMENTED"
     );
 }
 
@@ -616,12 +616,13 @@ fn cli_default_context_inspects_both_direct_and_opt_in_proxy_requests() {
         .arg("--root")
         .arg(root.path())
         .arg("project")
+        .arg("--proxy")
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
-        "LAUNCH_NOT_IMPLEMENTED"
+        "PROXY_LAUNCH_NOT_IMPLEMENTED"
     );
 }
 

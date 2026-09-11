@@ -1,7 +1,8 @@
 # Launcher naming and argument contract
 
-Status: accepted user requirements, 2026-09-11. The project launcher is still
-pending; these rules apply to its implementation and argument inspection.
+Status: accepted user requirements, 2026-09-11. Fresh document launch is implemented
+with the [documented runtime limits](../../../../docs/fresh-launch.md). Native
+launch and managed proxy/worktree support remain pending.
 
 Use behavior names for modules, types, tests and commands. Work-item IDs belong
 in the work register and historical evidence. Native checkpoint handling is

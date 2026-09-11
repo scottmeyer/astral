@@ -166,6 +166,52 @@ pub struct SourceHandle {
     pub record_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextKind {
+    Subsystem,
+    Projection,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContextSelection {
+    pub kind: ContextKind,
+    pub id: String,
+    pub subsystems: Vec<String>,
+    pub projection: Option<String>,
+    pub work_item: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FreshDocument {
+    pub source: SourceHandle,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FreshWorkItem {
+    pub item: WorkItem,
+    pub source: SourceHandle,
+    /// Exact observed JSONL record, without its line ending.
+    pub text: String,
+}
+
+/// Selected readable inputs for a fresh session, never a restored native checkpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct FreshContext {
+    pub schema_version: u32,
+    pub project_id: String,
+    pub selection: ContextSelection,
+    /// Also binds linked projection manifests checked by the fresh-only kind gate,
+    /// so this can differ from the metadata-only inspection selection digest.
+    pub selection_digest: String,
+    /// Includes manifest fingerprints as well as selected document/record handles.
+    pub sources: Vec<SourceHandle>,
+    /// Core, selected subsystem/dependency documents, and an explicit handoff only.
+    pub documents: Vec<FreshDocument>,
+    pub work_item: Option<FreshWorkItem>,
+}
+
 struct Subsystem {
     manifest: SubsystemManifest,
     directory: String,
@@ -177,6 +223,16 @@ struct Projection {
 struct WorkRecord {
     item: WorkItem,
     source: SourceHandle,
+    text: String,
+}
+
+struct ResolvedSelection<'a> {
+    selection: ContextSelection,
+    selection_digest: String,
+    sources: Vec<SourceHandle>,
+    document_paths: BTreeSet<String>,
+    projection: Option<&'a Projection>,
+    work: Option<&'a WorkRecord>,
 }
 
 pub struct Project {
@@ -185,6 +241,8 @@ pub struct Project {
     projections: BTreeMap<String, Projection>,
     work: BTreeMap<String, WorkRecord>,
     sources: BTreeMap<String, SourceHandle>,
+    /// Bounded bytes observed at load time; assembly never reopens these paths.
+    contents: BTreeMap<String, Vec<u8>>,
     limits: Limits,
 }
 
@@ -637,7 +695,14 @@ impl Project {
                 record_id: Some(id.clone()),
             };
             if work
-                .insert(id.clone(), WorkRecord { item, source })
+                .insert(
+                    id.clone(),
+                    WorkRecord {
+                        item,
+                        source,
+                        text: line.to_owned(),
+                    },
+                )
                 .is_some()
             {
                 return Err(error("DUPLICATE_ID", format!("duplicate work item {id}")));
@@ -772,17 +837,17 @@ impl Project {
                 ));
             }
         }
-        let sources = reader
-            .contents
-            .into_iter()
+        let contents = reader.contents;
+        let sources = contents
+            .iter()
             .map(|(path, bytes)| {
                 let handle = SourceHandle {
                     path: path.clone(),
-                    sha256: crate::hash(&bytes),
+                    sha256: crate::hash(bytes),
                     bytes: bytes.len(),
                     record_id: None,
                 };
-                (path, handle)
+                (path.clone(), handle)
             })
             .collect();
         Ok(Self {
@@ -791,6 +856,7 @@ impl Project {
             projections,
             work,
             sources,
+            contents,
             limits,
         })
     }
@@ -827,7 +893,7 @@ impl Project {
         self.output(json!({"schema_version": 1, "project_id": self.manifest.id, "contexts": contexts, "native_binding": native_binding()}))
     }
 
-    pub fn inspect(&self, selector: &str, work_id: Option<&str>) -> Result<Value> {
+    fn resolve(&self, selector: &str, work_id: Option<&str>) -> Result<ResolvedSelection<'_>> {
         let (kind, id) = if let Some((kind, id)) = selector.split_once(':') {
             if kind != "subsystem" && kind != "projection" {
                 return Err(error(
@@ -878,11 +944,11 @@ impl Project {
             })
             .transpose()?;
         let mut paths = BTreeSet::from([".astral/project.toml".to_owned()]);
+        let mut document_paths = BTreeSet::new();
         let core = join(".astral", &self.manifest.core)?;
         for name in ["ARCHITECTURE.md", "RUN.md", "TEST.md"] {
-            paths.insert(join(&core, name)?);
+            document_paths.insert(join(&core, name)?);
         }
-        let mut subsystem_metadata = BTreeMap::new();
         for id in &selected {
             let subsystem = &self.subsystems[id];
             let m = &subsystem.manifest;
@@ -891,14 +957,14 @@ impl Project {
                 .chain(m.rules.iter())
                 .chain(m.decisions.iter())
             {
-                paths.insert(join(&subsystem.directory, doc)?);
+                document_paths.insert(join(&subsystem.directory, doc)?);
             }
-            subsystem_metadata.insert(id, m);
         }
         if let Some(projection) = projection {
             paths.insert(join(&projection.directory, "projection.toml")?);
-            paths.insert(join(&projection.directory, &projection.manifest.handoff)?);
+            document_paths.insert(join(&projection.directory, &projection.manifest.handoff)?);
         }
+        paths.extend(document_paths.iter().cloned());
         let mut sources: Vec<_> = paths
             .iter()
             .map(|path| self.sources[path].clone())
@@ -907,17 +973,127 @@ impl Project {
             sources.push(work.source.clone());
         }
         sources.sort_by(|a, b| (&a.path, &a.record_id).cmp(&(&b.path, &b.record_id)));
-        let selection = json!({"kind": kind, "id": id, "subsystems": selected, "projection": projection.map(|p| &p.manifest.id), "work_item": work_id});
+        let selection = ContextSelection {
+            kind: if kind == "projection" {
+                ContextKind::Projection
+            } else {
+                ContextKind::Subsystem
+            },
+            id: id.to_owned(),
+            subsystems: selected.into_iter().collect(),
+            projection: projection.map(|p| p.manifest.id.clone()),
+            work_item: work_id.map(str::to_owned),
+        };
         let selection_digest = crate::fingerprint(
             &json!({"schema_version": 1, "selection": selection, "sources": sources}),
         );
+        Ok(ResolvedSelection {
+            selection,
+            selection_digest,
+            sources,
+            document_paths,
+            projection,
+            work,
+        })
+    }
+
+    pub fn inspect(&self, selector: &str, work_id: Option<&str>) -> Result<Value> {
+        let resolved = self.resolve(selector, work_id)?;
+        let subsystem_metadata: BTreeMap<_, _> = resolved
+            .selection
+            .subsystems
+            .iter()
+            .map(|id| (id, &self.subsystems[id].manifest))
+            .collect();
         self.output(json!({
             "schema_version": 1, "mode": "inspect", "project_id": self.manifest.id,
-            "selection": selection, "sources": sources, "selection_digest": selection_digest,
+            "selection": resolved.selection, "sources": resolved.sources, "selection_digest": resolved.selection_digest,
             "fingerprint_scope": "Selected declared source bytes and exact selected JSONL record; no machine path, time, provider semantics, or atomic snapshot claim",
-            "metadata": {"project": self.manifest, "subsystems": subsystem_metadata, "projection": projection.map(|p| &p.manifest)},
-            "work_item": work.map(|w| &w.item), "native_binding": native_binding()
+            "metadata": {"project": self.manifest, "subsystems": subsystem_metadata, "projection": resolved.projection.map(|p| &p.manifest)},
+            "work_item": resolved.work.map(|w| &w.item), "native_binding": native_binding()
         }))
+    }
+
+    /// Assemble cached readable context for a fresh session. Explicit and linked
+    /// projections must be `reviewable-design-context`, `reviewable`, or
+    /// `fresh-context`; native and unknown kinds never become plaintext fallback.
+    /// Provenance descriptions remain inert. This is neither a native restore nor
+    /// an atomic workspace snapshot, and the usual serialized output limit applies.
+    pub fn fresh_context(&self, selector: &str, work_id: Option<&str>) -> Result<FreshContext> {
+        let resolved = self.resolve(selector, work_id)?;
+        let mut fresh_sources: BTreeMap<_, _> = resolved
+            .sources
+            .iter()
+            .map(|source| {
+                (
+                    (source.path.clone(), source.record_id.clone()),
+                    source.clone(),
+                )
+            })
+            .collect();
+        for projection in resolved.projection.into_iter().chain(
+            resolved
+                .selection
+                .subsystems
+                .iter()
+                .map(|id| &self.projections[&self.subsystems[id].manifest.projection]),
+        ) {
+            if !matches!(
+                projection.manifest.kind.as_str(),
+                "reviewable-design-context" | "reviewable" | "fresh-context"
+            ) {
+                return Err(error(
+                    "UNSUPPORTED_FRESH_PROJECTION",
+                    format!(
+                        "projection {} has unsupported fresh-context kind {:?}",
+                        projection.manifest.id, projection.manifest.kind
+                    ),
+                ));
+            }
+            let path = join(&projection.directory, "projection.toml")?;
+            fresh_sources.insert((path.clone(), None), self.sources[&path].clone());
+        }
+        let mut text_bytes = resolved.work.map_or(0, |work| work.text.len());
+        let mut documents = Vec::new();
+        for path in &resolved.document_paths {
+            let bytes = &self.contents[path];
+            text_bytes = text_bytes.saturating_add(bytes.len());
+            if text_bytes > self.limits.output_bytes {
+                return Err(error("LIMIT_EXCEEDED", "fresh context text byte limit"));
+            }
+            let text = std::str::from_utf8(bytes)
+                .map_err(|_| error("INVALID_UTF8", path))?
+                .to_owned();
+            documents.push(FreshDocument {
+                source: self.sources[path].clone(),
+                text,
+            });
+        }
+        let sources: Vec<_> = fresh_sources.into_values().collect();
+        let selection_digest = crate::fingerprint(
+            &json!({"schema_version": 1, "selection": resolved.selection, "sources": sources}),
+        );
+        let context = FreshContext {
+            schema_version: 1,
+            project_id: self.manifest.id.clone(),
+            selection: resolved.selection,
+            selection_digest,
+            sources,
+            documents,
+            work_item: resolved.work.map(|work| FreshWorkItem {
+                item: work.item.clone(),
+                source: work.source.clone(),
+                text: work.text.clone(),
+            }),
+        };
+        if serde_json::to_vec(&context)
+            .expect("fresh context serializes")
+            .len()
+            > self.limits.output_bytes
+        {
+            return Err(error("LIMIT_EXCEEDED", "fresh context output byte limit"));
+        }
+        Ok(context)
     }
 
     fn closure(&self, id: &str, selected: &mut BTreeSet<String>) {

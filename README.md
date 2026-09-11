@@ -11,7 +11,10 @@ validates the committed `.astral/` manifests and JSONL work register, then resol
 named subsystems or projections to source handles and hashes. Run
 `astral context list` or `astral project --inspect --work AST-001`; the omitted
 context defaults to `project-context`.
-The native `astral project` launcher remains pending.
+`astral project` now launches fresh document contexts in Codex; `astral init`
+asks Codex to build a best-effort index in an uninitialized repository. See
+[fresh launch](docs/fresh-launch.md) for commands and current runtime limits.
+Native checkpoint restoration remains pending.
 
 Inspection prints formatted JSON. `astral work id` proposes a short random work
 ID for new JSONL records, avoiding per-branch counters. See the
