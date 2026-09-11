@@ -126,6 +126,21 @@ fn readme(project: Project) -> String {
         .unwrap()
         .text
 }
+
+#[test]
+fn newline_checkout_paths_keep_their_identity_when_metadata_reads_are_batched() {
+    let mut fixture = Fixture::new(true, false);
+    let moved = fixture.root.with_file_name("repo\nwith newline");
+    fs::rename(&fixture.root, &moved).unwrap();
+    fixture.root = moved;
+    for kind in [SnapshotKind::Index, SnapshotKind::Head] {
+        let snapshot = fixture.capture(kind);
+        assert_eq!(snapshot.root(), fixture.root);
+        assert_eq!(readme(snapshot.load_project().unwrap()), "original\n");
+        snapshot.verify_unchanged().unwrap();
+    }
+}
+
 fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     fn walk(root: &Path, at: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for e in fs::read_dir(at).unwrap() {

@@ -81,6 +81,29 @@ fn canonical(value: String, root: &Path) -> Result<PathBuf> {
         .map_err(|_| error("SNAPSHOT_CONTEXT", "Git context path is unavailable"))
 }
 
+fn location_paths(read: impl Fn(&[&str]) -> Result<String>) -> Result<[String; 3]> {
+    // rev-parse can emit these independent paths in one process. Unusual paths
+    // containing newlines (or exceeding the combined scalar budget) retain the
+    // separate reads, so batching never changes path interpretation.
+    if let Ok(batch) = read(&[
+        "rev-parse",
+        "--path-format=absolute",
+        "--show-toplevel",
+        "--absolute-git-dir",
+        "--git-common-dir",
+    ]) {
+        let lines: Vec<_> = batch.split('\n').collect();
+        if let [root, git, common] = lines.as_slice() {
+            return Ok([(*root).into(), (*git).into(), (*common).into()]);
+        }
+    }
+    Ok([
+        read(&["rev-parse", "--path-format=absolute", "--show-toplevel"])?,
+        read(&["rev-parse", "--absolute-git-dir"])?,
+        read(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?,
+    ])
+}
+
 impl Context {
     pub fn discover(input: &Path) -> Result<Self> {
         let input = input
@@ -92,15 +115,10 @@ impl Context {
                 &args.iter().map(Into::into).collect::<Vec<_>>(),
             )?)
         };
-        let root = canonical(
-            isolated(&["rev-parse", "--path-format=absolute", "--show-toplevel"])?,
-            &input,
-        )?;
-        let git_dir = canonical(isolated(&["rev-parse", "--absolute-git-dir"])?, &input)?;
-        let common_dir = canonical(
-            isolated(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?,
-            &input,
-        )?;
+        let [root, git_dir, common_dir] = location_paths(isolated)?;
+        let root = canonical(root, &input)?;
+        let git_dir = canonical(git_dir, &input)?;
+        let common_dir = canonical(common_dir, &input)?;
         let object_bytes = match isolated(&["rev-parse", "--show-object-format"])?.as_str() {
             "sha1" => 20,
             "sha256" => 32,
@@ -205,18 +223,13 @@ impl Context {
         Ok(())
     }
     pub fn verify_identity(&self) -> Result<()> {
-        for (args, expected) in [
-            (
-                vec!["rev-parse", "--path-format=absolute", "--show-toplevel"],
-                &self.root,
-            ),
-            (vec!["rev-parse", "--absolute-git-dir"], &self.git_dir),
-            (
-                vec!["rev-parse", "--path-format=absolute", "--git-common-dir"],
-                &self.common_dir,
-            ),
-        ] {
-            if canonical(self.text(&args)?, &self.root)? != *expected {
+        let paths = location_paths(|args| self.text(args))?;
+        for (actual, expected) in
+            paths
+                .into_iter()
+                .zip([&self.root, &self.git_dir, &self.common_dir])
+        {
+            if canonical(actual, &self.root)? != *expected {
                 return Err(error(
                     "SNAPSHOT_CONTEXT_MISMATCH",
                     "Git-supplied context redirects to a different repository or worktree",
