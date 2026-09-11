@@ -37,7 +37,7 @@ Environment: macOS, Rust/Cargo 1.95.0, Python 3.14.7.
 - Python suite: **18 passed**.
 - Diff whitespace checks: pass.
 
-The optional UBS staged audit could not run: after the sandboxed attempt could
+The UBS staged audit could not run: after the sandboxed attempt could
 not download its Rust module, the authorized retry rejected that module because
 its checksum did not match the scanner's expected checksum. The integrity check
 was not bypassed. UBS is **unavailable**, not a passed source audit.
