@@ -350,9 +350,16 @@ pub fn render(report: &StatusReport) -> String {
         ));
     }
     for worker in &report.workers {
+        let progress = match worker.work_status {
+            WorkStatus::Open => "open",
+            WorkStatus::InProgress => "in_progress",
+            WorkStatus::Blocked => "blocked",
+            WorkStatus::Complete => "complete",
+        };
         out.push_str(&format!(
-            "{}  {}  {}\n",
+            "{}  {} / {}  {}\n",
             safe(&worker.work_id),
+            progress,
             worker.state,
             safe(&worker.title)
         ));

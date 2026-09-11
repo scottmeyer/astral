@@ -20,6 +20,8 @@ branch completion, hook installation and a potential `astral commit` command
 remain planned. A status observation cannot establish that a remote model is
 available, a recorded thread still exists, a checkpoint is decryptable, or a
 runtime command will execute. Launch retains its current preflights and locks.
+The [status verification receipt](status-verification.md) records local tests and
+the live owned-worker observation; it does not qualify later workflow stages.
 
 ## Current status and doctor commands
 

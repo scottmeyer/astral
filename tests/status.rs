@@ -182,6 +182,12 @@ fn unbound_status_is_read_only_and_cli_json_is_formatted() {
     assert!(String::from_utf8(output.stdout).unwrap().contains("\n  \""));
     assert_eq!(before, snapshot(&f.root));
     assert!(!f.root.join(".git/astral").exists());
+    let human = f.cli(&["status", "--work", WORK]);
+    assert!(
+        String::from_utf8(human.stdout)
+            .unwrap()
+            .contains("open / unbound")
+    );
     assert!(f.cli(&["doctor", "--work", WORK]).status.success());
 }
 
