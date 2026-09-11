@@ -1,0 +1,173 @@
+{
+  "model": "gpt-6-astra",
+  "date": "2026-09-11",
+  "threshold": 8192,
+  "expected": {
+    "deployment_label": "helios-731",
+    "region": "syd",
+    "budget": 23,
+    "recovery_code": "copper-otter",
+    "x": 3047
+  },
+  "calls": [
+    {
+      "turn": 1,
+      "seconds": 14.448,
+      "input_opaque": [],
+      "output_opaque": [
+        {
+          "type": "compaction",
+          "sha256": "989bfa8f9f7ca6b875554411c8536cb830f7564a87a2f7d84a84f19e762d295c",
+          "length": 3064
+        },
+        {
+          "type": "reasoning",
+          "sha256": "3378fc27e1560a73efa8da121d3fffd8af1691a7336a8f56f3986d728bacd1bd",
+          "length": 1484
+        }
+      ],
+      "output_types": [
+        "compaction",
+        "reasoning",
+        "message"
+      ],
+      "answer_correct": true,
+      "answer": {
+        "deployment_label": "helios-731",
+        "region": "syd",
+        "budget": 23,
+        "recovery_code": "copper-otter",
+        "x": 3047
+      },
+      "reasoning": {
+        "context": "all_turns",
+        "effort": "medium",
+        "mode": "standard",
+        "summary": null
+      },
+      "context_management": null,
+      "usage": {
+        "input_tokens": 18532,
+        "output_tokens": 122,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens_details": {
+          "reasoning_tokens": 83
+        }
+      }
+    },
+    {
+      "turn": 2,
+      "seconds": 3.384,
+      "input_opaque": [
+        {
+          "type": "compaction",
+          "sha256": "989bfa8f9f7ca6b875554411c8536cb830f7564a87a2f7d84a84f19e762d295c",
+          "length": 3064
+        },
+        {
+          "type": "reasoning",
+          "sha256": "3378fc27e1560a73efa8da121d3fffd8af1691a7336a8f56f3986d728bacd1bd",
+          "length": 1484
+        }
+      ],
+      "output_opaque": [],
+      "output_types": [
+        "message"
+      ],
+      "answer_correct": true,
+      "answer": {
+        "deployment_label": "helios-731",
+        "region": "syd",
+        "budget": 23,
+        "recovery_code": "copper-otter",
+        "x": 3047
+      },
+      "reasoning": {
+        "context": "all_turns",
+        "effort": "medium",
+        "mode": "standard",
+        "summary": null
+      },
+      "context_management": null,
+      "usage": {
+        "input_tokens": 526,
+        "output_tokens": 37,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "turn": 3,
+      "seconds": 4.335,
+      "input_opaque": [
+        {
+          "type": "compaction",
+          "sha256": "989bfa8f9f7ca6b875554411c8536cb830f7564a87a2f7d84a84f19e762d295c",
+          "length": 3064
+        },
+        {
+          "type": "reasoning",
+          "sha256": "3378fc27e1560a73efa8da121d3fffd8af1691a7336a8f56f3986d728bacd1bd",
+          "length": 1484
+        }
+      ],
+      "output_opaque": [],
+      "output_types": [
+        "message"
+      ],
+      "answer_correct": true,
+      "answer": {
+        "deployment_label": "helios-731",
+        "region": "syd",
+        "budget": 23,
+        "recovery_code": "copper-otter",
+        "x": 3047
+      },
+      "reasoning": {
+        "context": "all_turns",
+        "effort": "medium",
+        "mode": "standard",
+        "summary": null
+      },
+      "context_management": null,
+      "usage": {
+        "input_tokens": 591,
+        "output_tokens": 37,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    }
+  ],
+  "passed": true,
+  "checks": {
+    "recall": true,
+    "encrypted_reasoning_generated": true,
+    "opaque_replayed": true,
+    "native_inline_compaction": true,
+    "restart_replay": true
+  },
+  "proxy_exit_codes": [
+    0,
+    0
+  ],
+  "proxy_ingress": [
+    2,
+    1
+  ],
+  "owner": "provider inline context_management",
+  "astral_autonomous_rollover_verified": false,
+  "limitation": "Visible first answer repeated the facts. Later recall alone does not isolate opaque memory; use the separate canary trial for that check."
+}

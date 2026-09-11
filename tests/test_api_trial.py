@@ -6,6 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from api_trial import completed_response
+from inline_trial import prune_inline_history
 
 
 def wire(*events):
@@ -40,6 +41,32 @@ class ResponseItems(unittest.TestCase):
         )
         with self.assertRaisesRegex(RuntimeError, "incomplete_output_item_sequence"):
             completed_response(raw)
+
+
+class InlineHistory(unittest.TestCase):
+    def test_latest_inline_compaction_keeps_complete_ordered_suffix(self):
+        old = {"type": "compaction", "encrypted_content": "old-opaque"}
+        current = {"type": "compaction", "encrypted_content": "new-opaque", "id": "c2"}
+        tail = [
+            {"type": "reasoning", "encrypted_content": "reasoning+/=", "summary": []},
+            {"type": "function_call", "call_id": "a", "name": "read", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "a", "output": "fixture"},
+            {"type": "message", "role": "assistant", "phase": "final_answer", "content": []},
+        ]
+        history = [{"role": "user", "content": "old facts"}, old, current, *tail]
+        self.assertEqual(prune_inline_history(history), [current, *tail])
+        self.assertEqual(len(history), 7, "the original history must not be modified")
+
+    def test_reasoning_alone_does_not_authorize_pruning(self):
+        history = [{"role": "user", "content": "retain me"},
+                   {"type": "reasoning", "encrypted_content": "opaque"}]
+        self.assertEqual(prune_inline_history(history), history)
+
+    def test_malformed_inline_compaction_cannot_discard_history(self):
+        for payload in (None, "", 12, ["opaque"]):
+            with self.subTest(payload=payload), self.assertRaisesRegex(RuntimeError, "missing_encrypted_content"):
+                prune_inline_history([{"role": "user", "content": "retain me"},
+                                      {"type": "compaction", "encrypted_content": payload}])
 
 
 if __name__ == "__main__":

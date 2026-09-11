@@ -2,7 +2,7 @@
 
 A standalone Rust proxy for the **OpenAI Responses API**, with persistent rolling projections, a frozen prefix between rolls, model-aware cache controls, and an unmodified response stream. No `haystack` or other private dependencies.
 
-The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for fresh Codex sessions and a standalone Responses client. The [validation receipt](docs/validation.md) records passing live generation and recall, a failed native-rollover gate on the available gateway, and blocked Codex startup and GitHub publication.
+The crate and proxy executable are named `ostk-gpt-cache`. See [the trial runners](docs/codex-trials.md) for Codex and Responses clients. [Live inline compaction](docs/opaque-replay.md) passed two successive compactions and recall after restart with random facts absent from the final plaintext input. Astral's autonomous standalone compact endpoint remains unavailable on this gateway. The [validation receipt](docs/validation.md) separates these paths and records the Codex startup and GitHub publication blockers.
 
 The projection is the **complete native `/responses/compact` output**. The proxy maintains a mapping from the client's original full history to that compacted prefix, then appends the uncompressed recent tail. The next rollover compacts the previous projection plus newly completed turns. The client continues sending ordinary full-history requests.
 
