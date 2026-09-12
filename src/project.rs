@@ -5,6 +5,7 @@
 //! checkpoint state. Source provenance is inert data, never executable authority.
 
 pub mod freshness;
+pub mod knowledge;
 mod reader;
 mod schema;
 
@@ -463,6 +464,7 @@ impl Project {
 
         reader.charge(manifest.subsystems.len())?;
         let mut subsystems = BTreeMap::new();
+        let mut knowledge_count = 0;
         for (id, location) in &manifest.subsystems {
             identifier(id)?;
             let directory = join(".astral", location)?;
@@ -481,6 +483,24 @@ impl Project {
             distinct(&m.decisions, "subsystem.decisions")?;
             distinct(&m.work_items, "subsystem.work_items")?;
             distinct(&m.depends_on, "subsystem.depends_on")?;
+            knowledge_count += m.knowledge.len();
+            if knowledge_count > knowledge::MAX_ENTRIES {
+                return Err(error(
+                    "KNOWLEDGE_LIMIT",
+                    "project declares more than 256 knowledge entries",
+                ));
+            }
+            let mut knowledge_ids = BTreeSet::new();
+            for entry in &m.knowledge {
+                entry.validate(&m)?;
+                if !knowledge_ids.insert(&entry.id) {
+                    return Err(error(
+                        "DUPLICATE_KNOWLEDGE_ID",
+                        "knowledge IDs must be unique within a subsystem",
+                    ));
+                }
+                reader.charge(1 + entry.inputs.len())?;
+            }
             if let Some(freshness) = &m.freshness {
                 freshness.validate()?;
                 reader.charge(freshness.inputs.len())?;

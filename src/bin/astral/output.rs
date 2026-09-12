@@ -24,6 +24,7 @@ pub fn render_in(value: &Value, root: &Path) -> Result<String> {
         "initialize" => context::initialize(&mut out, value),
         "lifecycle_check" => workflow::lifecycle(&mut out, value),
         "context_freshness" | "context_review" => context::freshness(&mut out, value),
+        "context_knowledge" | "context_knowledge_show" => context::knowledge(&mut out, value),
         "recovery_inventory" => workflow::recovery_inventory(&mut out, value),
         "recover" => workflow::recovered(&mut out, value),
         "finish_plan" => workflow::finish(&mut out, value, false),

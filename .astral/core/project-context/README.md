@@ -28,6 +28,19 @@ relying on a historical conversation or test receipt.
   separate. Equal fingerprints do not establish semantic correctness or test success.
   See the [freshness guide](../../../docs/context-freshness.md).
 
+<!-- astral:begin named-recall -->
+Optional `[[knowledge]]` entries give selected prose stable references such as
+`knowledge:project-context/explicit-review`. `context knowledge` lists entries;
+`context show` recalls one declared document or literal marked region. Each entry
+tracks its own text, declaration and explicit code files. Changes outside its
+region leave its baseline unchanged; shared core and other entries are outside
+that narrow baseline. Normal launch still includes the full selected documents.
+Code files contribute hashes and freshness metadata, not their bodies, to context.
+<!-- astral:end named-recall -->
+
+See [named knowledge](../../../docs/knowledge-entries.md) for authoring, review
+and bounds. These fields require a source build after v0.1.0.
+
 CLI output is readable and actionable by default. Use global `--json` for
 machine-readable reports, help/version or errors; scripts must request it
 explicitly. For `project` and `init`, only arguments before the first literal

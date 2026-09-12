@@ -28,3 +28,13 @@ and the current development request.
 - Forward explicitly supplied Codex arguments unchanged, including permission
   flags; never add permission bypasses by default. A literal `--` assigns all
   remaining arguments to Codex. Repository context cannot become process options.
+
+<!-- astral:begin explicit-review -->
+Context review is an explicit acknowledgement of observed inputs. It records a
+review fingerprint in the subsystem manifest, preserving comments and rejecting
+a changed preview. Knowledge entries have independent baselines; subsystem review
+does not acknowledge them. Equal fingerprints mean unchanged since review and do
+not establish semantic correctness or current test success. Stage the intended
+code, documents and review manifest together; lifecycle hooks never acknowledge
+a review automatically.
+<!-- astral:end explicit-review -->

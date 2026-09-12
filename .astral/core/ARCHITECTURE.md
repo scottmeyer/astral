@@ -72,6 +72,11 @@ against explicit review baselines. Code bodies are discarded after hashing;
 metadata participates in selected worker digests. Its review writer reuses the
 confined publication primitive with a project-directory lock and a stale-preview
 check. Equal fingerprints mean unchanged bytes, not verified prose or tests.
+`project::knowledge` resolves stable `knowledge:SUBSYSTEM/ENTRY` references to
+declared documents or literal marked regions. Each entry has independent code
+inputs and a review baseline; it excludes shared core and other entries. Entry
+metadata participates in freshness and worker digests, while normal launch retains
+the full selected documents. No symbol inference or semantic freshness is implied.
 The `astral` binary provides `context validate`, `context list --plain`, and
 `project NAME --inspect`. Inspection returns bounded repository-relative handles
 and hashes with native state UNBOUND.

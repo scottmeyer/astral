@@ -20,11 +20,13 @@ inputs = ["src/web.rs", "src/web/routes.rs", "tests/web.rs"]
 ```
 
 Paths are exact files relative to the repository root. There is no glob expansion
-or directory traversal. Subsystems without this table remain untracked for
-freshness; absence of a declaration is not a claim that their knowledge is current.
+or directory traversal. Subsystems without this table have no whole-subsystem
+baseline; absence of a declaration is not a claim that their knowledge is current.
 Use `astral context freshness web` to inspect a selection and its dependencies,
 or omit `web` for `project-context`. Projections can be inspected with
-`projection:NAME`; review acknowledgement targets one subsystem at a time.
+`projection:NAME`; review acknowledgement targets one subsystem or named entry at
+a time. Optional [knowledge entries](knowledge-entries.md) add independent baselines
+and references such as `knowledge:web/session-revocation`.
 
 The fingerprint covers declared code bytes, shared `ARCHITECTURE.md`, `RUN.md`
 and `TEST.md`, and the selected subsystem/dependency manifests and documents.
@@ -117,6 +119,6 @@ file, and a later change requires another observation. A storage error after
 publication may require inspection before retrying; retained temporary files are
 not review authority.
 
-This slice supplies byte-change diagnostics. Per-claim evidence, supersession,
-budgeted retrieval over long histories, semantic stale-claim detection, glob or
+This slice supplies byte-change diagnostics. Named entries add explicit per-entry
+evidence; supersession, budgeted retrieval over long histories, semantic stale-claim detection, glob or
 directory discovery, and evaluations of recall quality remain future work.

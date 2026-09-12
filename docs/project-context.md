@@ -147,6 +147,10 @@ combining the two continuation mechanisms is an error.
 - Optional `[freshness]` declares exact repository-relative code `inputs` and an
   explicitly recorded `reviewed_fingerprint`. See [context freshness](context-freshness.md)
   for byte-change diagnostics, review acknowledgement and the precise scope.
+- Optional `[[knowledge]]` entries name selected documents or explicit regions,
+  with independent code inputs and review baselines. Use references such as
+  `knowledge:web/session-revocation` with `context show`, `freshness` and `review`.
+  See [named knowledge](knowledge-entries.md) for authoring and scope.
 - Named projection directories contain `projection.toml`, a handoff reference,
   subsystem selections and scoped source provenance. Discovery is bounded.
 - A `native-checkpoint` projection declares an explicit digest-pinned

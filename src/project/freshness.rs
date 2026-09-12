@@ -26,6 +26,16 @@ pub enum State {
     NeedsReview,
     Unavailable,
 }
+impl State {
+    pub(super) fn compare(current: Option<&str>, reviewed: Option<&str>) -> Self {
+        match (current, reviewed) {
+            (None, _) => Self::Unavailable,
+            (Some(_), None) => Self::Unreviewed,
+            (Some(current), Some(reviewed)) if current == reviewed => Self::Unchanged,
+            _ => Self::NeedsReview,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Input {
@@ -38,11 +48,23 @@ pub struct Input {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Observation {
     pub subsystem: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub knowledge: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document: Option<super::knowledge::Document>,
     pub state: State,
     pub fingerprint: Option<String>,
     pub reviewed_fingerprint: Option<String>,
-    /// Includes inputs declared by the subsystem's dependency closure.
+    /// Entry inputs, or the subsystem's complete declared dependency closure.
     pub inputs: Vec<Input>,
+}
+impl Observation {
+    pub fn reference(&self) -> String {
+        match &self.knowledge {
+            Some(entry) => format!("knowledge:{}/{entry}", self.subsystem),
+            None => format!("subsystem:{}", self.subsystem),
+        }
+    }
 }
 
 fn digest(value: &str) -> bool {
@@ -96,8 +118,7 @@ impl Project {
         let paths: BTreeSet<_> = self
             .subsystems
             .values()
-            .filter_map(|s| s.manifest.freshness.as_ref())
-            .flat_map(|f| f.inputs.iter())
+            .flat_map(|s| s.manifest.code_inputs())
             .collect();
         if paths.len() > MAX_INPUTS {
             return Err(error(
@@ -143,11 +164,9 @@ impl Project {
             for dependency in selected {
                 let s = &self.subsystems[&dependency];
                 let mut manifest = s.manifest.clone();
-                if let Some(f) = &mut manifest.freshness {
-                    f.reviewed_fingerprint = None;
-                    for path in &f.inputs {
-                        observed_inputs.insert(path.clone(), inputs[path].clone());
-                    }
+                manifest.clear_reviews();
+                for path in manifest.code_inputs() {
+                    observed_inputs.insert(path.clone(), inputs[path].clone());
                 }
                 for name in std::iter::once(&manifest.readme)
                     .chain(&manifest.rules)
@@ -165,16 +184,16 @@ impl Project {
                     "manifests": manifests, "documents": documents, "inputs": inputs,
                 }))
             });
-            let state = match (&fingerprint, &declaration.reviewed_fingerprint) {
-                (None, _) => State::Unavailable,
-                (Some(_), None) => State::Unreviewed,
-                (Some(current), Some(reviewed)) if current == reviewed => State::Unchanged,
-                _ => State::NeedsReview,
-            };
+            let state = State::compare(
+                fingerprint.as_deref(),
+                declaration.reviewed_fingerprint.as_deref(),
+            );
             observations.insert(
                 id.clone(),
                 Observation {
                     subsystem: id.clone(),
+                    knowledge: None,
+                    document: None,
                     state,
                     fingerprint,
                     reviewed_fingerprint: declaration.reviewed_fingerprint.clone(),
@@ -182,6 +201,7 @@ impl Project {
                 },
             );
         }
+        observations.extend(self.observe_knowledge(&reader.contents, &inputs)?);
         Ok(observations)
     }
 
@@ -190,18 +210,22 @@ impl Project {
     }
 
     pub(super) fn selected_freshness(&self, subsystems: &[String]) -> Vec<Observation> {
-        subsystems
-            .iter()
-            .filter_map(|id| self.freshness.get(id).cloned())
+        self.freshness
+            .values()
+            .filter(|observation| subsystems.contains(&observation.subsystem))
+            .cloned()
             .collect()
     }
 
     pub fn inspect_freshness(&self, selector: &str) -> Result<Value> {
+        if selector.starts_with("knowledge:") {
+            return self.knowledge_freshness(selector);
+        }
         let resolved = self.resolve(selector, None)?;
         self.output(json!({
             "schema_version": 1, "operation": "context_freshness", "project_id": self.manifest.id,
             "selection": resolved.selection, "freshness": self.selected_freshness(&resolved.selection.subsystems),
-            "scope": "Declared code files, shared core documents and subsystem/dependency manifests and documents. Equal fingerprints mean unchanged since explicit review, not semantic correctness or current verification. No directory or glob discovery; unlisted files, work records, projection handoffs and native history are outside this review baseline."
+            "scope": "Subsystem baselines cover declared code files, shared core and subsystem/dependency manifests and documents. Knowledge entries cover only their declaration, selected text and explicit code inputs. Equal fingerprints mean unchanged since explicit review, not semantic correctness or current verification. No directory or glob discovery; unlisted files, work records, projection handoffs and native history are outside these baselines."
         }))
     }
 }

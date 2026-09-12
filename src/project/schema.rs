@@ -70,6 +70,8 @@ pub struct SubsystemManifest {
     pub depends_on: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub freshness: Option<super::freshness::Declaration>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub knowledge: Vec<super::knowledge::Entry>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

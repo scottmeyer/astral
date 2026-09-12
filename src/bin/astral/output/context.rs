@@ -3,6 +3,9 @@ use serde_json::Value;
 #[path = "context/freshness.rs"]
 mod freshness;
 pub(super) use freshness::{freshness, freshness_rows};
+#[path = "context/knowledge.rs"]
+mod knowledge;
+pub(super) use knowledge::knowledge;
 
 pub(super) fn validate(out: &mut Output, value: &Value) {
     out.line(format!(

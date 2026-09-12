@@ -220,12 +220,19 @@ enum ContextCommand {
     Validate,
     /// Pick a context in a terminal; use --plain or --json for a report.
     List,
-    /// Compare selected subsystem knowledge with its explicit code-input baseline.
+    /// List named knowledge entries in a context and its dependencies.
+    Knowledge {
+        #[arg(default_value = DEFAULT_CONTEXT)]
+        name: String,
+    },
+    /// Recall one knowledge:SUBSYSTEM/ENTRY document or marked region.
+    Show { reference: String },
+    /// Compare a context or knowledge reference with its explicit review baseline.
     Freshness {
         #[arg(default_value = DEFAULT_CONTEXT)]
         name: String,
     },
-    /// Review and confirm a subsystem baseline in a terminal; otherwise preview.
+    /// Review a subsystem or knowledge reference; confirm in a terminal or preview.
     Review {
         #[arg(default_value = DEFAULT_CONTEXT)]
         name: String,
@@ -432,6 +439,14 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
         Command::Context {
             command: ContextCommand::Freshness { name },
         } => Project::load(&cli.root)?.inspect_freshness(&name).map(Some),
+        Command::Context {
+            command: ContextCommand::Knowledge { name },
+        } => Project::load(&cli.root)?.list_knowledge(&name).map(Some),
+        Command::Context {
+            command: ContextCommand::Show { reference },
+        } => Project::load(&cli.root)?
+            .show_knowledge(&reference)
+            .map(Some),
         Command::Context {
             command:
                 ContextCommand::Review {

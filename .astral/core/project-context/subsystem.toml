@@ -5,10 +5,28 @@ purpose = "Git-native project context, projections, and work tracking"
 readme = "README.md"
 rules = ["rules/context-contract.md"]
 decisions = ["decisions/0003-launcher-interface.md", "decisions/work-identifiers.md", "decisions/portable-native-launch.md"]
-work_items = ["AST-009", "AST-g3krn1a1918m", "AST-cfqs5ngqcyg2", "AST-005", "AST-006", "AST-010", "AST-4mhgqjrtxxdd", "AST-64rmpqdvq263", "AST-9zdzsmzdvxpy", "AST-vm5rkdk0w42c", "AST-w5z6g1mgm8cn", "AST-b1q2xsxh3qcb"]
+work_items = ["AST-009", "AST-g3krn1a1918m", "AST-cfqs5ngqcyg2", "AST-005", "AST-006", "AST-010", "AST-4mhgqjrtxxdd", "AST-64rmpqdvq263", "AST-9zdzsmzdvxpy", "AST-vm5rkdk0w42c", "AST-w5z6g1mgm8cn", "AST-b1q2xsxh3qcb", "AST-qfsf83fb1kf0"]
 projection = "project-workflow"
 
 # First freshness scope: resolver and lifecycle code, not complete code coverage.
 [freshness]
 inputs = ["src/project.rs", "src/project/schema.rs", "src/project/reader.rs", "src/project/freshness.rs", "src/project/freshness/review.rs", "src/git_snapshot.rs", "src/git_snapshot/entries.rs", "src/lifecycle.rs", "tests/freshness.rs"]
-reviewed_fingerprint = "572bf805c48c5c7daa1c4c2eda563fbfec4487e54e93135ece0946294bb164f1"
+reviewed_fingerprint = "e7f17f5244e138b39bf765eae911fd5cf0eb551d7ff662f739ee777907aa2209"
+
+[[knowledge]]
+id = "explicit-review"
+kind = "rule"
+title = "Explicit context review and its limits"
+document = "rules/context-contract.md"
+region = "explicit-review"
+inputs = ["src/project/freshness.rs", "src/project/freshness/review.rs", "src/bin/astral/context_review.rs", "tests/freshness.rs"]
+reviewed_fingerprint = "d8d376050febfe5167d13a72a69eb0581e94a19b0fbac92232732abd47d060b1"
+
+[[knowledge]]
+id = "named-recall"
+kind = "observation"
+title = "Stable references and narrow knowledge recall"
+document = "README.md"
+region = "named-recall"
+inputs = ["src/project.rs", "src/project/schema.rs", "src/project/knowledge.rs", "tests/knowledge.rs"]
+reviewed_fingerprint = "74a7b111f6d1f1a1f4e5cbc4cf6b41c2edb5e4beb521273b03a422959d50e71b"

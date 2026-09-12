@@ -38,7 +38,7 @@ format and a deliberately narrow runtime contract. These are separate paths:
 | Native save/import | Explicit export, Git transfer, new-thread import and cold resume | Codex 0.154.0, `gpt-6-astra`, built-in OpenAI provider, same account, explicit `--proxy` |
 | Recovery and completion | Evidence-based repairs and reviewed fast-forward integration; recognize ordinary Git work | Save, tests, commits and divergent merges remain explicit |
 | Git/Codex hooks | Per-repository Git setup and per-checkout Codex configuration; offline context advice | Opt-in and advisory; Codex trust is separate; no automatic save or global Codex hook installer |
-| Context freshness (source builds after v0.1.0) | Explicit subsystem code inputs and review fingerprints; working/index/HEAD diagnostics | Byte changes request review; equal fingerprints do not verify knowledge or tests |
+| Context freshness (source builds after v0.1.0) | Subsystem and named-entry code inputs and review fingerprints; working/index/HEAD diagnostics | Byte changes request review; equal fingerprints do not verify knowledge or tests |
 
 Project filesystem operations use Unix confinement. The standalone Responses
 proxy is a separate component; its rolling and cache policies do not qualify
@@ -155,6 +155,12 @@ Subsystems can also declare exact code files under `[freshness]`. Use
 and `astral context review web` to preview an acknowledgement. The
 [freshness guide](docs/context-freshness.md) explains review, Git staging and limits.
 These commands are available in source builds after v0.1.0.
+
+For individual rules, decisions or observations, declare `[[knowledge]]` entries
+with stable IDs. `astral context knowledge web` lists them;
+`astral context show knowledge:web/session-revocation` recalls one document or
+marked region. Each entry has its own code dependencies and review baseline, so
+an edit can flag the affected entries. See [named knowledge](docs/knowledge-entries.md).
 
 The standalone proxy stores private state in `.astral-runtime/`, separately
 from Git-tracked `.astral/` context. Its upstream environment variable is
@@ -337,6 +343,7 @@ invoice savings, lossless compaction or a general performance advantage.
 | --- | --- |
 | Initialize a project and launch from documents | [Fresh launch](docs/fresh-launch.md) |
 | Define subsystems and inspect selections | [Project contexts](docs/project-context.md) |
+| Reference individual knowledge and review changed inputs | [Named entries](docs/knowledge-entries.md) · [Freshness](docs/context-freshness.md) |
 | Bind worktrees, resume work and export a handoff | [Workers and handoff](docs/worktree-handoff.md) |
 | Inspect worker state and diagnose blockers | [Status and doctor](docs/finish-resume.md) |
 | Understand native formats and compatibility | [Bundles](docs/native-bundles.md) · [Native launch](docs/native-launch.md) |
