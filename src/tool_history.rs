@@ -205,9 +205,10 @@ fn collect(
     Ok(candidates)
 }
 
-fn explicit_failure(text: &str) -> bool {
+pub(crate) fn explicit_failure(text: &str) -> bool {
     serde_json::from_str::<Value>(text).is_ok_and(|value| {
         value["is_error"] == true
+            || value["isError"] == true
             || value["success"] == false
             || value["ok"] == false
             || value["failed"].as_u64().is_some_and(|n| n > 0)
@@ -242,7 +243,7 @@ fn text_payload(value: &Value, wire: Wire) -> Option<(String, &'static str, Stri
     Some((serde_json::to_string(value).unwrap(), "json", display))
 }
 
-fn preview(text: &str, budget: usize) -> String {
+pub(crate) fn preview(text: &str, budget: usize) -> String {
     if text.len() <= budget {
         return text.into();
     }

@@ -64,6 +64,26 @@ enum Command {
         )]
         proxy_url: String,
     },
+    /// Wrap a stdio MCP server with stable compact output and exact retrieval.
+    McpWrap {
+        #[arg(
+            long,
+            env = "ASTRAL_PROXY_URL",
+            default_value = "http://127.0.0.1:8088"
+        )]
+        proxy_url: String,
+        /// Explicit workspace-local session identity; otherwise isolated per wrapper process.
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Keep the same retrieval tools but pass original results through for comparison.
+        #[arg(long)]
+        passthrough: bool,
+        /// Fold repeated lines by default; preview selects a bounded head/tail view.
+        #[arg(long, value_enum, default_value = "repetitions")]
+        policy: astral::tool_intake::Policy,
+        #[arg(last = true, required = true, allow_hyphen_values = true)]
+        command: Vec<OsString>,
+    },
     /// Observe committed, staged and working context without changing worker state.
     Lifecycle {
         #[command(subcommand)]
@@ -299,6 +319,29 @@ async fn run(cli: Cli) -> Result<Option<Value>, Error> {
                 message: e.to_string(),
             })?;
             Ok(None)
+        }
+        Command::McpWrap {
+            proxy_url,
+            session_id,
+            passthrough,
+            policy,
+            command,
+        } => {
+            astral::mcp_wrap::serve(
+                &proxy_url,
+                session_id.as_deref(),
+                passthrough,
+                policy,
+                &command,
+            )
+            .await
+            .map_err(|e| Error {
+                code: "MCP_WRAPPER_FAILED",
+                message: e.to_string(),
+            })?;
+            // Tokio's stdin reader may still block after the child closes its stdout.
+            // The relay has already stopped its tasks and reaped its child process.
+            std::process::exit(0);
         }
         Command::Lifecycle {
             command: LifecycleCommand::Check { scope, work },

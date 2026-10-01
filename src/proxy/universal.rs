@@ -204,9 +204,50 @@ fn page_size() -> usize {
 }
 
 pub(super) fn artifact_router(app: App) -> Router {
+    let limit = app.config.max_body_bytes;
     Router::new()
         .route("/_astral/artifacts/{handle}", get(retrieve))
+        .route("/_astral/intake", post(intake))
+        .layer(DefaultBodyLimit::max(limit))
         .with_state(app)
+}
+
+async fn intake(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    if headers.contains_key("origin") || !app.config.listen.ip().is_loopback() {
+        return error(
+            StatusCode::FORBIDDEN,
+            "tool intake requires a loopback listener without browser origins",
+        );
+    }
+    let Ok(mut request) = serde_json::from_slice::<crate::tool_intake::Request>(&body) else {
+        return error(StatusCode::BAD_REQUEST, "invalid tool intake request");
+    };
+    if !crate::archive::valid_handle(&request.scope)
+        || request.tool.is_empty()
+        || request.tool.len() > 256
+    {
+        return error(StatusCode::BAD_REQUEST, "invalid tool intake scope or name");
+    }
+    let worker = app.clone();
+    let scope = request.scope.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        // Keep the Store's writer lock through durable publication on cancellation.
+        let report = crate::tool_intake::compact(&mut request, &worker.config, &worker.archive);
+        drop(worker);
+        (request.result, report)
+    })
+    .await;
+    let Ok((result, report)) = result else {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "tool intake unavailable");
+    };
+    app.store
+        .record(&json!({"kind":"tool_intake", "scope":scope, "ts_ms":now_ms(), "report":report}))
+        .await;
+    let mut response = axum::Json(json!({"result":result, "report":report})).into_response();
+    response
+        .headers_mut()
+        .insert("cache-control", "no-store".parse().unwrap());
+    response
 }
 
 async fn retrieve(

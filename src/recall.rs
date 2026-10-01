@@ -65,7 +65,7 @@ pub async fn fetch(
     serde_json::from_slice(&bytes).context("invalid retrieval response")
 }
 
-fn definitions() -> Value {
+pub(crate) fn definitions() -> Value {
     json!({"tools":[
         {"name":"astral_recall","description":"Retrieve exact original tool output archived by the Astral proxy. Use a handle from an archived-output marker. Returns a byte page; continue with next_offset. Does not rerun any tool.","inputSchema":{"type":"object","properties":{"handle":{"type":"string"},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":16384}},"required":["handle"],"additionalProperties":false}},
         {"name":"astral_search","description":"Find literal text in an archived tool output. Returns byte offsets for astral_recall. Use offset to paginate results. Does not rerun tools.","inputSchema":{"type":"object","properties":{"handle":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":1024},"offset":{"type":"integer","minimum":0}},"required":["handle","query"],"additionalProperties":false}}
@@ -86,7 +86,7 @@ fn default_limit() -> usize {
     4096
 }
 
-async fn dispatch(proxy: &str, request: Value, initialized: &mut bool) -> Option<Value> {
+pub(crate) async fn dispatch(proxy: &str, request: Value, initialized: &mut bool) -> Option<Value> {
     let id = request.get("id")?.clone();
     let error =
         |code, message| json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}});

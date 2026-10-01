@@ -1,8 +1,9 @@
 # Shared proxy live verification — macOS, 2026-10-01
 
-**Real archival and model recall passed with explicit full-history Codex HTTP and
-Claude Code configurations. Ordinary Codex and Claude Code demonstrated routing
-and tool execution, but did not activate archival.** One compatibility defect
+**Real archival and model recall passed with explicit full-history configurations
+and, subsequently, an MCP intake wrapper using ordinary Codex and Claude history
+management. Unwrapped ordinary harnesses demonstrated routing and tools, but did
+not activate history archival.** One compatibility defect
 was reproduced and fixed on the test branch: Responses `input_text` tool-output
 blocks were previously ignored.
 
@@ -20,6 +21,12 @@ review task in both arms, omitting known padding before it entered history used
 15.08% fewer total input tokens and 18.70% fewer uncached input tokens. Both scored
 10/10; cached input remained about 88%. This is one synthetic pair using a private
 MCP adapter, not a shipped Astral feature or a default Codex archival result.
+
+**The implemented MCP wrapper reduced tokens with its repetition policy.** A
+fresh native Codex pair used 13.47% fewer total input tokens and 58.13% fewer
+uncached input tokens, with both answers correct. Cached share rose from 92.32%
+to 96.28%, but elapsed time increased from 52.62 to 70.25 seconds. See
+[the implementation qualification](#mcp-intake-implementation-and-live-qualification).
 
 ## Baseline and changes
 
@@ -776,10 +783,9 @@ The result supports further work on **stable, smaller tool outputs from their
 first appearance**, with exact originals available through targeted retrieval.
 It does not establish a general-purpose summarizer: the omitted text was known
 synthetic padding, and this test did not assess relevance selection on unfamiliar
-logs. Production integration and qualification under ordinary Codex and Claude
-history management remain **NOT TESTED**. Current ordinary harnesses still only
-demonstrate routing through Astral; changing their output path would need its
-own implementation and validation.
+logs. This private prototype did not qualify ordinary harness integration. The
+subsequent MCP wrapper implementation and its separate live qualification are
+documented below. Unwrapped ordinary harness history continues to pass through.
 
 ### HTTP accounting correction
 
@@ -869,17 +875,177 @@ python3 /private/tmp/astral-benefit-20261001/trial_intake.py passthrough review-
 ```
 
 The controller starts/stops only its own standalone proxy and saves each exact
-CLI invocation. Each label must be new. No production source changes were needed
-after the 520 Rust / 18 Python validation run. The intake experiment adds private
+CLI invocation. Each label must be new. These prototype trials needed no source
+changes after the 520 Rust / 18 Python validation run. That experiment adds private
 controller and MCP scripts; the repository change records their results and
 reproduction commands. The unchanged release binary's SHA-256 is
 `ec6519cd5645425b9940d2a62a438793c30203d2ae1f775451186fb9d0fe2094`.
 All test-owned proxies and harnesses have stopped; port 18088 has no listener.
 
+## MCP intake implementation and live qualification
+
+The implementation is on `feat/stable-tool-intake`, based on
+`854b677ed244739e07035f72bf5d8605514b44a9`. Origin was fetched before branching;
+the clean test branch already contained current `origin/main` plus its five
+verified follow-up commits. The earlier patches were not reapplied.
+OS, Rust and harness versions remain those recorded above.
+
+`astral mcp-wrap` now wraps an existing stdio MCP server, saves eligible output
+to the shared proxy before returning it, and exposes exact search and recall.
+The default repetition policy retains distinct text and folds only consecutive
+repeated sequences. A head/tail `--policy preview` is available explicitly.
+The proxy runs in **passthrough** mode: no later provider-history rewriting is
+used in these trials. Setup and policy boundaries are in the
+[MCP intake guide](universal-proxy.md#compact-mcp-output-from-the-first-read).
+
+The final binary's SHA-256 is
+`d525ad339c089c46c7d86b557ab99d5371cfa020268476a863fa425e8348487e`.
+`final-build.json` fingerprints its source files; the tested binary is retained
+at `/private/tmp/astral-intake-20261001/astral-intake-final`. Recorded compiled-source
+fingerprints match the reviewed tree. Tested controller copies are retained in
+`qualifying-controllers/`; formatting and removal of one unused import were
+separately checked for unchanged executable syntax trees.
+
+### Workload and normal harness settings
+
+Each fresh session receives a **33,708-byte** one-shot synthetic fixture, then
+six pulse calls across two turns and two intervening short user turns. The sixth
+and final turn asks for `hidden_marker_beta`, allowing either retained evidence
+or targeted retrieval. The producer deletes the fixture on its first read;
+expected random values remain in the controller. No shell, files, transcript
+rereads or regeneration are allowed. Both Codex arms use the same fixture hash,
+six prompts and model. The final question does not require an archive handle.
+
+The installed Codex runs with its built-in provider and normal transport/history
+settings. It uses the named ChatGPT route via `openai_base_url`, compression
+disabled, `gpt-6-astra`, low reasoning, `--ignore-user-config`, shell disabled,
+and temporary approved fixture MCP configuration. There is no custom HTTP
+provider or WebSocket-disable setting. The fixture tool's output limit is
+200,000 tokens; the first prompt requests code-mode output limits of 120,000.
+The raw control uses the same wrapper and tool schemas with `--passthrough`.
+
+Claude Code uses `ANTHROPIC_BASE_URL=http://127.0.0.1:18088`, existing keychain
+authentication, `claude-opus-5-5`, a temporary strict MCP configuration and an
+allowlist containing only the fixture and its retrieval tools. Its usual
+context management is retained; no `context_management=null` override is used.
+
+### Why repetition reduction is the default
+
+An initial development build used generic head/tail previewing. Both native
+Codex sessions completed with the correct marker. Previewing archived the full
+fixture and the model successfully searched and recalled it, but the task used
+**275,572** input tokens versus **256,503** for raw output, including **42,996**
+uncached tokens versus **20,343**. Elapsed times were **70.31** versus **45.16**
+seconds. The preview arm added one search and one recall; trajectories and cache
+behavior also differed before recall. Its 256-byte recall page matches the saved
+original exactly. This negative result is preserved as `matched-native-raw` and
+`matched-native-compact`, rather than replaced by the later pair.
+
+The final default therefore folds repeated lines while preserving all other
+text. It also recognizes consecutive leading decimal integers when the rest of
+each line and the number width are identical. It does not guess which unfamiliar
+facts to discard. Dense unique output passes through. The next pair uses a fresh
+raw control and fresh repetition session on the final build.
+
+### Final matched Codex result
+
+| Native Codex, six turns | Raw output | Repetition reduction |
+| --- | ---: | ---: |
+| Completed turns / correct final marker | 6 / PASS | 6 / PASS |
+| Fixture reads / pulse calls | 1 / 6 | 1 / 6 |
+| Intake artifacts created | 0 | 1 |
+| Model recall calls during comparison | 0 | 0 |
+| Total input tokens, including cache reads | 339,706 | 293,939 |
+| Cached input tokens | 313,600 | 283,008 |
+| Input tokens excluding cache reads | 26,106 | 10,931 |
+| Share of input reported cached | 92.32% | 96.28% |
+| Output tokens | 364 | 580 |
+| Sum of turn wall times | 52.62 s | 70.25 s |
+| Tool failures | 0 | 0 |
+| Complete forwarded provider-request bytes | Unavailable | Unavailable |
+
+Total input fell **13.47%** and uncached input fell **58.13%**. Absolute cached
+input also fell; the **share** cached increased. Elapsed time increased **33.50%**.
+There was one session per arm, executed raw first, and the agents grouped their
+tool calls differently. Claude's separate qualification began during the final
+2.282 seconds of the repetition run. These are observed totals, not a causal
+latency estimate or a billing measurement.
+
+The intake ledger separately records **34,734 → 2,219 bytes** across the fixture
+result and six unchanged pulse results, with one archived original. These are
+serialized MCP-result bytes, not provider request bytes. Native Codex transport
+does not have complete per-request byte accounting here; unavailable values
+have not been replaced with intake counts or health-check counters. Provider
+token totals come from the final Codex cumulative usage receipt.
+
+### Recall, persistence and Anthropic
+
+- **PASS — ordinary Codex plus repetition wrapper:** immediate archival and
+  correct retained facts during the comparison. The fixture's unique marker
+  remains visible under this policy; answering it is not a recall demonstration.
+- **PASS — separate Codex recall after restart:** after the comparison and an
+  Astral restart, the same session performed one actual `astral_search` and one
+  `astral_recall`, returning the correct marker. The 100-byte page exactly
+  matches the persisted original. This 22.65-second probe is excluded from the
+  matched totals and explicitly requests retrieval.
+- **PASS — ordinary Claude Code plus preview wrapper:** six completed turns,
+  one fixture read, six pulses, one search and one recall, correct hidden marker,
+  zero tool errors. Its 300-byte recall page matches the archived original. This
+  proves live intake and retrieval while keeping normal Claude history handling.
+  There is no matched Claude performance claim. The six usage receipts sum to
+  40 uncached input tokens, 5,968 cache-creation input tokens, 67,484 cache-read
+  input tokens and 814 output tokens; cache creation is reported separately.
+- **PASS — complete original recovery:** all three live artifacts reconstruct
+  their original 34,308-byte MCP result JSON, in nine pages each, before and
+  after restart. Text extracted from each recovered value matches the controller
+  fixture's SHA-256. The three archive scopes are distinct, including the two
+  copies of the same Codex fixture. These checks establish complete storage
+  before harness truncation; they do not assert full raw provider delivery in
+  the passthrough controls.
+
+### Validation and reproduction
+
+The final code passed **532 Rust tests**, including 12 new intake/wrapper tests,
+the existing **18 Python tests**, formatting, strict all-target Clippy, Rust
+1.85 all-target checking, and the locked release build of every binary. Coverage
+includes immutable recovery, rich/error-result preservation, archive failure,
+output schemas, paginated discovery, concurrent replies, progress/cancellation
+relay, server requests, child-group termination, and a server exiting with an
+unanswered call. The new Python files also passed syntax and Ruff checks.
+No user authentication or persistent harness settings changed.
+
+From the repository root, with fresh labels and an outside-repository evidence
+directory:
+
+```sh
+export ASTRAL_TEST_ROOT=/private/tmp/astral-intake-repeat
+export ASTRAL_TEST_URL=http://127.0.0.1:18088
+# Start in a separate terminal; the driver does not manage this listener.
+./target/release/astral proxy --listen 127.0.0.1:18088 --mode passthrough \
+  --state-dir "$ASTRAL_TEST_ROOT/state"
+
+python3 scripts/shared_proxy_live/intake_workload.py matched-native-raw --passthrough
+python3 scripts/shared_proxy_live/intake_workload.py matched-native-repetitions
+python3 scripts/shared_proxy_live/intake_workload.py claude-native-preview --harness claude --policy preview
+python3 scripts/shared_proxy_live/verify_intake.py
+# Restart only the test-owned proxy with the same state, then repeat verification.
+python3 scripts/shared_proxy_live/verify_intake.py
+```
+
+Private evidence is retained under `/private/tmp/astral-intake-20261001/`:
+the final binary, `final-build.json`, per-session exact `command-*.json` arrays,
+summaries and receipts, `logs/` with transcripts and validation output,
+`controller/` with expected values, `state/` with ledger and artifacts,
+`evaluation.json`, `recall-audit.json`, before/after `intake-recovery` receipts,
+and the separate `post-restart-recall-command.json`. Raw transcripts, source
+fixtures, archive handles and credentials are not committed. All test-owned
+processes have stopped and port 18088 is free.
+
 ## Remaining limits
 
-- Ordinary Codex and Claude Code did not demonstrate context reduction; their
-  provider-managed histories intentionally pass through.
+- Unwrapped ordinary Codex and Claude Code did not demonstrate history archival;
+  their provider-managed histories intentionally pass through. The new MCP
+  wrapper reduces eligible output before either harness records that history.
 - Complete Codex forwarded-byte accounting is unavailable for the original runs
   and WebSocket traffic. The follow-up HTTP correction gives complete accounting
   for the new review requests. Tools-arm terminal usage is unavailable for the
@@ -887,6 +1053,7 @@ All test-owned proxies and harnesses have stopped; port 18088 has no listener.
 - The successful full-history configurations are explicit diagnostics. The
   initial recall qualification and subsequent synthetic review experiments do
   not establish general quality, latency, or billing benefits.
-- The intake prototype preserved cached usage while reducing tokens in one
-  matched pair. Its fixture-specific filter is not implemented in Astral's
-  production proxy, and exact MCP returns do not prove untruncated provider input.
+- The implemented default folds specific repetitive text patterns. It is not a
+  general summarizer, and broad usefulness on everyday tools remains unqualified.
+  Built-in shell tools and remote HTTP MCP servers are outside this wrapper's
+  scope. The single final Codex pair improved token counts but was slower.

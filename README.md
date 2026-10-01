@@ -32,6 +32,12 @@ Anthropic Messages together**, independently of project or model. Its default
 and exposes exact retrieval through CLI, HTTP and an optional MCP server. Native
 rolling remains available with `--mode rolling`. See [one shared proxy](docs/universal-proxy.md).
 
+For stable output from the first read, `astral mcp-wrap` wraps an existing stdio
+MCP server, folds repetitive text, and keeps exact originals available through
+search and paging. Use it with a passthrough proxy to avoid later history
+rewrites. See [MCP intake](docs/universal-proxy.md#compact-mcp-output-from-the-first-read)
+for setup, the optional preview policy, and current limits.
+
 ```sh
 astral proxy --state-dir "$HOME/.local/state/astral/proxy"
 # Set the equivalent base URL in each harness:

@@ -93,7 +93,87 @@ explicitly configured. A configured built-in name replaces that route. Upstream
 URLs include the API version path and cannot contain credentials, query strings
 or fragments. Configuration is read at startup and accepts at most 32 entries.
 
-## What gets removed from model input
+## Compact MCP output from the first read
+
+`astral mcp-wrap` launches an existing **stdio MCP server** and reduces eligible
+text before the harness records it. The compact view stays in conversation
+history; Astral does not replace it later as it ages. The wrapper exposes the
+server's tools plus `astral_search` and `astral_recall` on the same connection.
+
+Run the shared proxy in passthrough mode to keep later provider requests stable:
+
+```sh
+astral proxy --mode passthrough --state-dir /absolute/path/to/private-state
+astral mcp-wrap --proxy-url http://127.0.0.1:8088 -- existing-mcp-server its-arguments
+```
+
+In a Codex stdio MCP configuration, replace the existing server command with
+Astral and put the original executable and arguments after `--`:
+
+```toml
+[mcp_servers.logs]
+command = "/absolute/path/to/astral"
+args = ["mcp-wrap", "--proxy-url", "http://127.0.0.1:8088", "--", "python3", "/absolute/path/to/logs_mcp.py"]
+```
+
+Keep the server's existing environment, working directory and tool approval
+settings. This uses the harness's [stdio MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+No separate retrieval server is needed for wrapped tools. Provider authentication
+and base URLs can remain unchanged: intake uses the local proxy independently
+of the model connection. Provider routing through Astral is optional for this
+path. It can coexist with provider-managed history, including incremental
+Responses requests and Claude's normal context management.
+
+The default `--policy repetitions` reduces only consecutive runs of identical
+lines, or lines with consecutive leading decimal integers and otherwise
+identical text. It retains the first and last line, the original count, and all
+text outside those runs. Runs require at least four lines of at least 32 bytes
+each; numbered runs must retain the same number width. Distinct observations,
+changed values, numbering gaps and unfamiliar patterns remain present. There
+is no semantic summarizer or relevance classifier. Dense unique output passes
+through even when large.
+
+`--policy preview` explicitly selects a head/tail view for large text results.
+It can omit relevant facts and require extra retrieval. The live trial found
+that this policy could increase tokens and latency, so it is not the default.
+Both policies apply the proxy's `--tool-result-bytes` threshold (16 KiB by
+default); preview uses `--tool-preview-bytes` (2 KiB). Repetition reduction must
+remove more than 1 KiB before adding its retrieval notice and must reduce the
+serialized result size. These controls do not use recent-turn retention.
+
+Before returning any changed result, the proxy durably stores the complete
+original MCP **result JSON value**, including exact text strings and block
+boundaries. Search and paging retrieve that original without rerunning the
+tool. JSON wire whitespace is not preserved. Views and handles are deterministic
+within a scope and policy, including after proxy restart with the same state.
+Use targeted search and pages when exact omitted data matters.
+
+Errors, recognized JSON failures, annotated content, images, structured results,
+unknown result fields and tools declaring `outputSchema` pass through. Existing
+archive markers also pass through. Archive capacity, network or storage failure
+returns the original result unchanged; a compact result is never returned
+without a saved original. The wrapper retains MCP request IDs, notifications,
+server requests, upstream pagination, and tool definitions. The reserved tool
+names `astral_recall` and `astral_search` must not exist in the wrapped server.
+See the MCP [stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
+and [structured output contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools).
+
+The default archive scope is unique to each wrapper process. Optional
+`--session-id ID` scopes equal output to the working directory, wrapped command,
+and explicit session ID. Use distinct IDs for independent sessions. Saved
+handles remain usable after either process restarts. Handles are bearer
+capabilities, with the same private archive and paging limits as history
+archival. The intake endpoint `POST /_astral/intake` requires a loopback listener,
+rejects browser origins, and logs sizes, policy, hashed scope and outcome without
+tool contents or handles. The wrapper accepts loopback proxy URLs only.
+
+For a matched control, add `--passthrough` to `mcp-wrap`: the same tools remain
+available, but original results are returned. Compare accuracy, provider input
+and cached-token counts, retrieval calls and elapsed time. Byte reduction alone
+does not establish a billing benefit. This wrapper currently covers stdio MCP
+tools; built-in shell tools and remote HTTP MCP servers are outside its scope.
+
+## Archive older tool history
 
 The default `--mode tools` archives eligible **text tool-result bodies**, leaving
 a short head/tail preview, the original byte count and a retrieval handle.
