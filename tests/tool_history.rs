@@ -230,6 +230,81 @@ fn archive_detects_corruption_and_exact_json_arrays_are_recoverable() {
 }
 
 #[test]
+fn codex_responses_input_text_blocks_archive_and_recover_exactly() {
+    let root = tempfile::tempdir().unwrap();
+    let archive = Archive::open(root.path(), 1_000_000).unwrap();
+    let config = Config::parse_from(["test"]);
+    let text = format!(
+        "{}hidden-marker{}",
+        "padding ".repeat(2200),
+        "tail ".repeat(2200)
+    );
+    // Codex 0.159.2 code-mode output observed during live HTTP verification.
+    let payload = json!([
+        {"type":"input_text","text":"Script completed\nWall time 0.0 seconds\nOutput:\n"},
+        {"type":"input_text","text":json!({"content":[{"type":"text","text":text}],"isError":false}).to_string()}
+    ]);
+    let mut request = body(Wire::Responses, payload.clone());
+    request["input"][2]["type"] = json!("custom_tool_call");
+    request["input"][3]["type"] = json!("custom_tool_call_output");
+    request["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role":"user","content":"recall"}));
+    let original = request.clone();
+    let report = reduce(
+        &mut request,
+        Wire::Responses,
+        &config,
+        &archive,
+        &"a".repeat(64),
+    );
+    assert_eq!(report.archived, 1);
+    assert!(report.bytes_saved > 16_384);
+    let replacement = request.pointer(path(Wire::Responses)).unwrap().clone();
+    assert!(!replacement.as_str().unwrap().contains("hidden-marker"));
+    let token = handle(&replacement).to_owned();
+    let mut restored = Vec::new();
+    let mut offset = 0;
+    loop {
+        let page = archive.recall(&token, offset, 4096).unwrap();
+        restored.extend_from_slice(page["data"].as_str().unwrap().as_bytes());
+        if page["eof"] == true {
+            break;
+        }
+        offset = page["next_offset"].as_u64().unwrap() as usize;
+    }
+    assert_eq!(serde_json::from_slice::<Value>(&restored).unwrap(), payload);
+    *request.pointer_mut(path(Wire::Responses)).unwrap() = payload;
+    assert_eq!(request, original);
+}
+
+#[test]
+fn responses_input_text_support_preserves_annotations_images_and_other_protocols() {
+    let root = tempfile::tempdir().unwrap();
+    let archive = Archive::open(root.path(), 1_000_000).unwrap();
+    let text = "x".repeat(20_000);
+    for (wire, payload) in [
+        (
+            Wire::Responses,
+            json!([{"type":"input_text","text":text,"annotations":[]}]),
+        ),
+        (
+            Wire::Responses,
+            json!([{"type":"input_text","text":text},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]),
+        ),
+        (Wire::Messages, json!([{"type":"input_text","text":text}])),
+        (Wire::Chat, json!([{"type":"input_text","text":text}])),
+    ] {
+        let mut request = body(wire, payload);
+        let original = request.clone();
+        let report = reduce(&mut request, wire, &config(), &archive, &"a".repeat(64));
+        assert_eq!(report.archived, 0);
+        assert_eq!(request, original);
+    }
+}
+
+#[test]
 fn long_turns_archive_consumed_results_but_keep_the_entire_latest_parallel_batch() {
     let root = tempfile::tempdir().unwrap();
     let archive = Archive::open(root.path(), 1_000_000).unwrap();

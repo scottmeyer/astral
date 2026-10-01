@@ -219,14 +219,14 @@ fn explicit_failure(text: &str) -> bool {
 }
 
 /// Only plain text or arrays of unannotated text blocks can be replaced.
-fn text_payload(value: &Value) -> Option<(String, &'static str, String)> {
+fn text_payload(value: &Value, wire: Wire) -> Option<(String, &'static str, String)> {
     if let Some(text) = value.as_str() {
         return Some((text.into(), "utf8", text.into()));
     }
     let blocks = value.as_array()?;
     if blocks.is_empty()
         || !blocks.iter().all(|b| {
-            b["type"] == "text"
+            (b["type"] == "text" || (wire == Wire::Responses && b["type"] == "input_text"))
                 && b["text"].is_string()
                 && b.as_object()
                     .is_some_and(|o| o.keys().all(|k| k == "type" || k == "text"))
@@ -286,7 +286,7 @@ pub fn reduce(
         let Some(value) = body.pointer(&candidate.path) else {
             continue;
         };
-        let Some((original, format, display)) = text_payload(value) else {
+        let Some((original, format, display)) = text_payload(value, wire) else {
             continue;
         };
         if original.len() < config.tool_result_bytes
