@@ -15,6 +15,12 @@ The reviewer also found that the original qualification's final prompt favored
 archive retrieval: passthrough was told to return `NO_ARCHIVE_HANDLE` rather than
 attempt recovery from retained history. See [the follow-up review](#follow-up-review-of-the-test).
 
+**A separate intake prototype showed a narrower benefit.** With the same focused
+review task in both arms, omitting known padding before it entered history used
+15.08% fewer total input tokens and 18.70% fewer uncached input tokens. Both scored
+10/10; cached input remained about 88%. This is one synthetic pair using a private
+MCP adapter, not a shipped Astral feature or a default Codex archival result.
+
 ## Baseline and changes
 
 - Repository: `scottmeyer/astral`.
@@ -640,15 +646,140 @@ older reading chunks and repeatedly changed the request prefix. The transcript
 supports that sequence, while the relative contribution of each factor would
 require a controlled follow-up.
 
-The narrow next experiment is to set `--keep-recent-tool-results 0`, retaining
-the default two recent user turns and the same task, to isolate within-turn
+The controlled follow-up set `--keep-recent-tool-results 0`, retaining the
+default two recent user turns and the same task, to isolate within-turn
 archival. The existing
 `long_turns_archive_consumed_results_but_keep_the_entire_latest_parallel_batch`
 regression verifies that zero disables archival within the first long turn.
-A separate, more representative comparison should ask the evidence questions
-without requiring every padding byte to be read, and use bounded source pages
-whose forwarded contents are verified. Both arms must receive the same revised
-task. Neither follow-up has **run**; this audit does not establish its benefit.
+That experiment and a separate intake-reduction prototype are evaluated below.
+
+### Retaining active turns
+
+The controlled follow-up used the same immutable packets, four exhaustive
+prompts, model, settings, release binary, and 240-second per-turn deadline.
+Only the proxy's `--keep-recent-tool-results 0` setting changed. The default
+two-user-turn retention remained in effect. The checkout was at `373bed0`;
+there were no new production source changes.
+
+**Task completion: PASS. Cost benefit: not demonstrated.** All four turns
+completed, with all ten factual checks correct and no failed tools. The ledger
+confirms zero archival during the first two turns; archival started in the third.
+The first turn took 88.449 seconds, compared with 80.233 for passthrough and the
+240-second timeout under default tools settings.
+
+| Same exhaustive review workload | Passthrough | Tools, `--keep-recent-tool-results 0` |
+| --- | ---: | ---: |
+| Completed turns / factual checks correct | 4 / 10 of 10 | 4 / 10 of 10 |
+| Model requests / observed terminal events | 24 / 24 | 23 / 23 |
+| Request body bytes before Astral | 9,638,228 | 9,418,483 |
+| Forwarded request body bytes | 9,638,228 | 7,669,087 |
+| Archive replacements / saved bytes | 0 / 0 | 57 / 1,749,396 |
+| Unique stored artifacts | 0 | 13 |
+| Agent Astral recall calls | 0 | 0 |
+| Input tokens including cache reads | 2,005,087 | 1,585,855 |
+| Cached input tokens | 1,867,008 | 1,369,472 |
+| Input tokens excluding cache reads | 138,079 | 216,383 |
+| Output tokens | 3,330 | 3,621 |
+| Sum of four turn wall times | 233.792 s | 212.112 s |
+| Failed tools / non-200 model responses | 0 / 0 | 0 / 0 |
+
+The run used 20.91% fewer total input tokens but **56.71% more uncached input**
+than passthrough. Its elapsed time was 9.27% shorter, with a different agent
+trajectory. One run per configuration cannot establish a general latency effect.
+Retaining active turns avoided the observed timeout but did not establish lower
+billing or elimination of cache disruption when older turns were archived.
+
+All 13 artifact hashes validate. Ten artifacts exactly match local tool-output
+records; three differ and contain harness truncation markers. No agent recall
+occurred in this run, so this is an archival-and-task-completion result. The
+earlier explicit recall qualification remains the retrieval evidence.
+
+### Reducing output before it enters history
+
+This experiment used a private MCP adapter, `intake_mcp.py`, over the same six
+immutable evidence packets. It is a prototype of intake reduction, **not a new
+Astral production feature**. It removes only runs of the exact known synthetic
+padding phrase, replacing each with a stable notice and original character
+offsets. All other text is retained. It does not generate summaries or decide
+which unfamiliar log lines matter.
+
+Both arms expose identical tool schemas:
+
+- `evidence.read(key)` returns a view, original SHA-256, original byte count,
+  and any explicitly omitted character ranges.
+- `evidence.search(key, query)` searches the immutable original and returns up
+  to six exact excerpts with character offsets.
+- `evidence.read_range(key, offset, limit)` returns exact original text, up to
+  8,000 Unicode characters, with `next_offset` for paging.
+
+The raw arm returns the original view; the compact arm omits known padding.
+Both use Astral **passthrough**, so previous tool outputs are not rewritten as
+they age. The objective is a smaller, stable conversation from the first read.
+The same full-history HTTP configuration, `gpt-6-astra` with low reasoning,
+existing ChatGPT login, and 240-second per-turn deadline apply to both.
+
+Both receive the same focused review task. It replaces the earlier requirement
+to read every packet completely with “Answer the review questions using the
+evidence you need” and states that routine synthetic padding is unnecessary.
+The final ten scored fields are unchanged. Compare these two arms with each
+other; the changed prompt prevents attributing differences from the exhaustive
+review solely to intake reduction.
+
+The first raw attempt failed tool selection after 25.348 seconds: the model
+discovered only Astral tools, then used two packet names as archive handles.
+Both calls failed. The transcript contains no attempt to discover evidence
+tools, so it does not show that the evidence server was unavailable. The run is
+preserved as `review-intake-raw-1`, with no final factual score. The corrected
+prompt explicitly distinguishes evidence keys from archive handles and names
+the evidence tools. **Both** matched arms use that correction, fresh sessions,
+and fresh proxy state; execution order is raw followed by compact.
+
+Local stdio MCP validation passed before inference: identical tool schemas,
+stable repeated compact reads, exact search results, and complete paged recovery
+of all six originals. Restoring omitted spans reconstructs each original hash
+exactly. Source and report packets have no matching padding and remain intact.
+Actual model-call audits separately compare returned MCP values with the
+controller. These local records do not prove that every large result reached
+the provider untruncated; harness truncation remains a limitation.
+
+**Matched task and retrieval checks: PASS.** Both completed four turns and all
+ten factual checks, with 14 upstream requests and 14 observed terminal events.
+All responses were HTTP 200; no tools failed. Ledger usage matches the final
+Codex cumulative usage exactly in each arm. The nine evidence returns per arm
+match their controller values exactly: seven reads, one search, and one original
+range retrieval. Neither agent called Astral retrieval.
+
+| Focused review, stable history | Raw intake | Compact intake |
+| --- | ---: | ---: |
+| Completed turns / factual checks correct | 4 / 10 of 10 | 4 / 10 of 10 |
+| Model requests / observed terminal events | 14 / 14 | 14 / 14 |
+| Forwarded request body bytes | 3,699,979 | 3,043,516 |
+| Astral archive replacements / saved bytes | 0 / 0 | 0 / 0 |
+| Unique Astral artifacts / agent Astral recall calls | 0 / 0 | 0 / 0 |
+| Successful original-range retrievals | 1 | 1 |
+| Input tokens including cache reads | 809,432 | 687,405 |
+| Cached input tokens | 708,608 | 605,440 |
+| Input tokens excluding cache reads | 100,824 | 81,965 |
+| Share of input reported cached | 87.54% | 88.08% |
+| Output tokens | 2,481 | 2,398 |
+| Sum of four turn wall times | 152.027 s | 135.886 s |
+| Failed tools / non-200 model responses | 0 / 0 | 0 / 0 |
+
+Compact intake reduced forwarded bytes by **17.74%**, total input tokens by
+**15.08%**, and uncached input by **18.70%**. Elapsed time was **10.62%** shorter.
+Both cached and uncached token counts fell, while the share cached remained
+similar. These are task-level measurements from one fresh session per arm,
+executed in a fixed order. They do not isolate model or service variability,
+establish a general latency improvement, or measure billing amounts.
+
+The result supports further work on **stable, smaller tool outputs from their
+first appearance**, with exact originals available through targeted retrieval.
+It does not establish a general-purpose summarizer: the omitted text was known
+synthetic padding, and this test did not assess relevance selection on unfamiliar
+logs. Production integration and qualification under ordinary Codex and Claude
+history management remain **NOT TESTED**. Current ordinary harnesses still only
+demonstrate routing through Astral; changing their output path would need its
+own implementation and validation.
 
 ### HTTP accounting correction
 
@@ -683,6 +814,10 @@ Private evidence and the exact controllers are retained outside the repository:
   controller-manifest.json, completed-controller-manifest.json
   comparison-derived.json
   trace_review.py, transcript-trace.json
+  trial_turns.py, turns-variant.json
+  trial_intake.py, trial_intake_v1.py, intake-variant.json
+  intake_mcp.py, verify_intake.py, intake-verification.json, audit_intake.py
+  stable-context-results.json, stable-context-manifest.json
   review-pass-1/
     command-*.json, receipt-*.json, answer-*.txt, turn-*.jsonl
     proxy.stderr, health.json, state/ledger.jsonl, audit.json
@@ -690,6 +825,15 @@ Private evidence and the exact controllers are retained outside the repository:
     command-0.json, turn-0.jsonl, turn-0.stderr, proxy.stderr
     run-outcome.json, timeout-summary.json, audit.json
     state/ledger.jsonl, state/artifacts/
+  review-tools-turns-1/
+    command-*.json, receipt-*.json, answer-*.txt, turn-*.jsonl
+    audit.json, turn-accounting.json, state/ledger.jsonl, state/artifacts/
+  review-intake-raw-1/
+    command-0.json, receipt-0.json, turn-0.jsonl, run-outcome.json
+    state/ledger.jsonl
+  review-intake-raw-2/, review-intake-compact-2/
+    command-*.json, receipt-*.json, answer-*.txt, turn-*.jsonl
+    audit.json, health.json, proxy.stderr, state/ledger.jsonl
   logs/
     accounting-before.log, affected.log, clippy.log, build.log
     full-test.log, python-test.log, msrv.log
@@ -706,17 +850,31 @@ includes timed-out arms instead of silently omitting runs without a final answer
 python3 /private/tmp/astral-benefit-20261001/evaluate.py
 python3 /private/tmp/astral-benefit-20261001/audit_review.py review-pass-1
 python3 /private/tmp/astral-benefit-20261001/audit_review.py review-tools-1
+python3 /private/tmp/astral-benefit-20261001/audit_review.py review-tools-turns-1
 python3 /private/tmp/astral-benefit-20261001/trace_review.py
+python3 /private/tmp/astral-benefit-20261001/verify_intake.py
+python3 /private/tmp/astral-benefit-20261001/audit_intake.py review-intake-raw-2 raw
+python3 /private/tmp/astral-benefit-20261001/audit_intake.py review-intake-compact-2 compact
 
 # Fresh review sessions; these send packet contents to the Codex service.
 python3 /private/tmp/astral-benefit-20261001/trial.py passthrough review-pass-2
 python3 /private/tmp/astral-benefit-20261001/trial.py tools review-tools-2
+
+# Retain active turns; only this retention setting differs from trial.py.
+python3 /private/tmp/astral-benefit-20261001/trial_turns.py tools review-tools-turns-2
+
+# Matched intake comparison: use the same revised prompt in both fresh arms.
+python3 /private/tmp/astral-benefit-20261001/trial_intake.py passthrough review-intake-raw-3 raw
+python3 /private/tmp/astral-benefit-20261001/trial_intake.py passthrough review-intake-compact-3 compact
 ```
 
 The controller starts/stops only its own standalone proxy and saves each exact
-CLI invocation. Each label must be new. Both review proxies and their harnesses
-have been stopped. No source changes were needed after the 520 Rust / 18 Python
-validation run; the final changes record the observed outcome and local audits.
+CLI invocation. Each label must be new. No production source changes were needed
+after the 520 Rust / 18 Python validation run. The intake experiment adds private
+controller and MCP scripts; the repository change records their results and
+reproduction commands. The unchanged release binary's SHA-256 is
+`ec6519cd5645425b9940d2a62a438793c30203d2ae1f775451186fb9d0fe2094`.
+All test-owned proxies and harnesses have stopped; port 18088 has no listener.
 
 ## Remaining limits
 
@@ -727,5 +885,8 @@ validation run; the final changes record the observed outcome and local audits.
   for the new review requests. Tools-arm terminal usage is unavailable for the
   one response interrupted at its timeout; reported usage is a lower bound.
 - The successful full-history configurations are explicit diagnostics. The
-  initial synthetic recall qualification and one review pair do not establish
-  general quality, latency, or billing benefits.
+  initial recall qualification and subsequent synthetic review experiments do
+  not establish general quality, latency, or billing benefits.
+- The intake prototype preserved cached usage while reducing tokens in one
+  matched pair. Its fixture-specific filter is not implemented in Astral's
+  production proxy, and exact MCP returns do not prove untruncated provider input.
