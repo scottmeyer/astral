@@ -39,6 +39,9 @@ impl Usage {
 /// Bounded observer. Forwarded bytes never pass through a serializer.
 /// A complete SSE terminal event AND clean EOF are needed to commit a lane.
 pub struct Observer {
+    wire: crate::providers::Wire,
+    wire_usage: Value,
+    wire_error: bool,
     sse: bool,
     limit: usize,
     buffer: Vec<u8>,
@@ -54,6 +57,9 @@ pub struct Observer {
 impl Observer {
     pub fn new(sse: bool, limit: usize) -> Self {
         Self {
+            wire: crate::providers::Wire::Responses,
+            wire_usage: serde_json::json!({}),
+            wire_error: false,
             sse,
             limit,
             buffer: Vec::new(),
@@ -66,6 +72,11 @@ impl Observer {
             output_bytes: 0,
             output_invalid: false,
         }
+    }
+    pub fn with_wire(sse: bool, limit: usize, wire: crate::providers::Wire) -> Self {
+        let mut observer = Self::new(sse, limit);
+        observer.wire = wire;
+        observer
     }
     pub fn capture_output(&mut self) {
         self.capture_output = true;
@@ -154,7 +165,17 @@ impl Observer {
     }
     fn dispatch(&mut self) {
         let data = std::mem::take(&mut self.data);
+        if self.wire == crate::providers::Wire::Chat && data == b"[DONE]" {
+            if !self.wire_error {
+                self.terminal = Some("completed".into());
+            }
+            return;
+        }
         if let Ok(v) = serde_json::from_slice::<Value>(&data) {
+            if self.wire != crate::providers::Wire::Responses {
+                self.wire_response(&v);
+                return;
+            }
             match v["type"].as_str().unwrap_or("") {
                 "response.output_item.done" if self.capture_output => {
                     if let Some(index) = v["output_index"]
@@ -174,7 +195,84 @@ impl Observer {
             }
         }
     }
+    fn wire_response(&mut self, v: &Value) {
+        if v["type"] == "error" || v.get("error").is_some_and(|e| !e.is_null()) {
+            self.wire_error = true;
+            self.terminal = Some("error".into());
+            return;
+        }
+        match self.wire {
+            crate::providers::Wire::Messages => {
+                let usage = if v["type"] == "message_start" {
+                    &v["message"]["usage"]
+                } else {
+                    &v["usage"]
+                };
+                if let Some(fields) = usage.as_object() {
+                    for key in [
+                        "input_tokens",
+                        "cache_read_input_tokens",
+                        "cache_creation_input_tokens",
+                        "output_tokens",
+                    ] {
+                        if let Some(value) = fields.get(key) {
+                            self.wire_usage[key] = value.clone();
+                        }
+                    }
+                }
+                let u = &self.wire_usage;
+                if let Some(input) = u["input_tokens"].as_u64() {
+                    let cached = u["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                    let writes = u["cache_creation_input_tokens"].as_u64();
+                    self.usage = input
+                        .checked_add(cached)
+                        .and_then(|n| n.checked_add(writes.unwrap_or(0)))
+                        .map(|total| Usage {
+                            input_tokens: total,
+                            cached_tokens: cached,
+                            cache_write_tokens: writes,
+                            output_tokens: u["output_tokens"].as_u64().unwrap_or(0),
+                        });
+                }
+                if !self.wire_error
+                    && (v["type"] == "message_stop"
+                        || (!self.sse && v["type"] == "message" && v["stop_reason"].is_string()))
+                {
+                    self.terminal = Some("completed".into());
+                }
+            }
+            crate::providers::Wire::Chat => {
+                let u = &v["usage"];
+                if let Some(input) = u["prompt_tokens"].as_u64() {
+                    let cached = u["prompt_tokens_details"]["cached_tokens"]
+                        .as_u64()
+                        .unwrap_or(0);
+                    if cached <= input {
+                        self.usage = Some(Usage {
+                            input_tokens: input,
+                            cached_tokens: cached,
+                            cache_write_tokens: None,
+                            output_tokens: u["completion_tokens"].as_u64().unwrap_or(0),
+                        });
+                    }
+                }
+                if !self.sse
+                    && !self.wire_error
+                    && v["choices"].as_array().is_some_and(|c| {
+                        !c.is_empty() && c.iter().all(|x| x["finish_reason"].is_string())
+                    })
+                {
+                    self.terminal = Some("completed".into());
+                }
+            }
+            crate::providers::Wire::Responses => {}
+        }
+    }
     fn response(&mut self, v: &Value) {
+        if self.wire != crate::providers::Wire::Responses {
+            self.wire_response(v);
+            return;
+        }
         if self.capture_output {
             if let Some(items) = v["output"].as_array() {
                 if !items.is_empty() {

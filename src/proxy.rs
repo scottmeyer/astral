@@ -26,8 +26,9 @@ use std::{
 use tokio::sync::OwnedMutexGuard;
 
 mod http;
+mod universal;
+pub(crate) use http::strip_header;
 use http::{bounded_body, request, response_builder};
-pub(crate) use http::{effective_headers, strip_header};
 
 type Pending = (
     String,
@@ -43,11 +44,15 @@ pub struct App {
     client: reqwest::Client,
     pub store: Arc<Store>,
     pub(crate) requests_received: Arc<AtomicU64>,
+    pub(crate) archive: Arc<crate::archive::Archive>,
+    pub(crate) provider: crate::providers::Provider,
+    providers: Arc<Vec<crate::providers::Provider>>,
 }
 
 impl App {
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         config.validate()?;
+        let providers = crate::providers::load(&config)?;
         let store = Arc::new(
             Store::open(
                 config.state_dir.clone(),
@@ -75,18 +80,100 @@ impl App {
             }
         }
         let client = client.build()?;
+        let provider = providers
+            .iter()
+            .find(|p| p.name == "openai")
+            .unwrap()
+            .clone();
+        let archive = Arc::new(crate::archive::Archive::open(
+            &config.state_dir.join("artifacts"),
+            config.archive_max_bytes,
+        )?);
         Ok(Self {
             config: Arc::new(config),
             client,
             store,
             requests_received: Arc::new(AtomicU64::new(0)),
+            archive,
+            provider,
+            providers: Arc::new(providers),
         })
+    }
+
+    fn routed(&self, provider: &crate::providers::Provider) -> Self {
+        let mut routed = self.clone();
+        let mut config = (*self.config).clone();
+        config.upstream = provider.upstream.clone();
+        routed.config = Arc::new(config);
+        routed.provider = provider.clone();
+        routed
+    }
+
+    pub(crate) fn headers(
+        &self,
+        headers: HeaderMap,
+    ) -> Result<HeaderMap, (StatusCode, &'static str)> {
+        http::effective_headers_for(
+            headers,
+            self.provider.protocol,
+            self.provider.api_key_env.as_deref(),
+        )
+    }
+
+    pub(crate) async fn reduce_tools(
+        &self,
+        value: &mut Value,
+        headers: &HeaderMap,
+        wire: crate::providers::Wire,
+    ) -> bool {
+        if self.config.mode != Mode::Tools {
+            return false;
+        }
+        let scope = universal::archive_scope(self, headers, value);
+        let mut owned = value.clone();
+        let config = self.config.clone();
+        let archive = self.archive.clone();
+        let store = self.store.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            // Keep the process lock alive if shutdown cancels this request.
+            let _store = store;
+            let report = crate::tool_history::reduce(&mut owned, wire, &config, &archive, &scope);
+            (owned, report)
+        })
+        .await;
+        let Ok((outgoing, report)) = result else {
+            return false;
+        };
+        let changed = report.archived > 0;
+        self.store.record(&json!({"kind":"tool_history","provider":self.provider.name,"ts_ms":now_ms(),"report":report})).await;
+        if changed {
+            *value = outgoing;
+        }
+        changed
     }
 }
 
 pub fn router(app: App) -> Router {
-    let limit = app.config.max_body_bytes;
     let compatibility = app.config.native_tool_binding != NativeToolBindingMode::Disabled;
+    let mut result = openai_router(app.routed(&app.provider));
+    if !compatibility {
+        for provider in app.providers.iter() {
+            let routed = app.routed(provider);
+            let routes = match provider.protocol {
+                crate::providers::Protocol::Openai => openai_router(routed),
+                crate::providers::Protocol::Anthropic => universal::anthropic_router(routed),
+            };
+            result = result.nest(&format!("/providers/{}", provider.name), routes);
+        }
+        if let Some(provider) = app.providers.iter().find(|p| p.name == "anthropic") {
+            result = result.merge(universal::anthropic_messages(app.routed(provider)));
+        }
+    }
+    result.merge(universal::artifact_router(app))
+}
+
+fn openai_router(app: App) -> Router {
+    let limit = app.config.max_body_bytes;
     let mut router = Router::new()
         .route(
             "/healthz",
@@ -105,7 +192,12 @@ pub fn router(app: App) -> Router {
         .route("/responses/compact", post(direct_compact))
         .route("/compact", post(direct_compact))
         .route("/backend-api/codex/responses/compact", post(direct_compact));
-    if compatibility {
+    if app.config.native_tool_binding == NativeToolBindingMode::Disabled {
+        router = router
+            .route("/v1/chat/completions", post(universal::chat))
+            .route("/chat/completions", post(universal::chat));
+    }
+    {
         for path in [
             "/responses",
             "/v1/responses",
@@ -166,6 +258,14 @@ fn lane_id(app: &App, headers: &HeaderMap, value: &Value) -> Option<String> {
             .get("openai-project")
             .and_then(|v| v.to_str().ok())
             .unwrap_or(""),
+        headers
+            .get("x-astral-workspace-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or(""),
+        headers
+            .get("x-astral-harness-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or(""),
         session,
         value["model"],
     ]);
@@ -179,7 +279,7 @@ async fn direct_compact(
     body: Bytes,
 ) -> Response {
     app.requests_received.fetch_add(1, Ordering::Relaxed);
-    let headers = match effective_headers(headers) {
+    let headers = match app.headers(headers) {
         Ok(h) => h,
         Err((status, message)) => return error(status, message),
     };
@@ -208,7 +308,7 @@ async fn handle(
     body: Bytes,
 ) -> Response {
     app.requests_received.fetch_add(1, Ordering::Relaxed);
-    let headers = match effective_headers(headers) {
+    let headers = match app.headers(headers) {
         Ok(h) => h,
         Err((status, message)) => return error(status, message),
     };
@@ -274,6 +374,28 @@ async fn handle(
             &suffix,
             None,
             "passthrough",
+            request_stream,
+        )
+        .await;
+    }
+    if app.config.mode == Mode::Tools {
+        let mut outgoing = body.to_vec();
+        if let Ok(mut value) = serde_json::from_slice::<Value>(&body) {
+            if app
+                .reduce_tools(&mut value, &headers, crate::providers::Wire::Responses)
+                .await
+            {
+                outgoing = serde_json::to_vec(&value).unwrap();
+            }
+        }
+        return forward(
+            app,
+            headers,
+            outgoing,
+            body.len(),
+            &suffix,
+            None,
+            "tool_history",
             request_stream,
         )
         .await;

@@ -1,0 +1,8 @@
+# Start once: astral proxy --providers examples/providers.toml --state-dir /your/private/proxy-state
+# Client base URL: http://127.0.0.1:8088/providers/local/v1
+[[providers]]
+name = "local"
+protocol = "openai"
+upstream = "http://127.0.0.1:11434/v1"
+# Custom providers never inherit another provider's key. If required:
+# api_key_env = "LOCAL_MODEL_API_KEY"

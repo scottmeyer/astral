@@ -11,8 +11,10 @@ use std::sync::atomic::Ordering;
 
 const HOP: &str = "x-astral-hop";
 
-pub(crate) fn effective_headers(
+pub(crate) fn effective_headers_for(
     mut headers: HeaderMap,
+    protocol: crate::providers::Protocol,
+    key_env: Option<&str>,
 ) -> Result<HeaderMap, (StatusCode, &'static str)> {
     if headers.contains_key(HOP) {
         return Err((StatusCode::LOOP_DETECTED, "proxy loop detected"));
@@ -25,6 +27,8 @@ pub(crate) fn effective_headers(
         "openai-organization",
         "openai-project",
         "x-astral-session-id",
+        "x-astral-workspace-id",
+        "x-astral-harness-id",
         "session_id",
         "openai-session-id",
         "x-astral-roll-estimate",
@@ -37,14 +41,27 @@ pub(crate) fn effective_headers(
         .iter()
         .any(|name| headers.contains_key(*name))
     {
-        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-            let value = HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| {
+        if let Some(key) = key_env.and_then(|name| std::env::var(name).ok()) {
+            let anthropic = protocol == crate::providers::Protocol::Anthropic;
+            let value = HeaderValue::from_str(&if anthropic {
+                key
+            } else {
+                format!("Bearer {key}")
+            })
+            .map_err(|_| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "invalid configured authorization",
                 )
             })?;
-            headers.insert("authorization", value);
+            headers.insert(
+                if anthropic {
+                    "x-api-key"
+                } else {
+                    "authorization"
+                },
+                value,
+            );
         }
     }
     Ok(headers)
@@ -73,7 +90,7 @@ pub(crate) fn strip_header(name: &str, headers: &HeaderMap) -> bool {
             .any(|v| v.trim().eq_ignore_ascii_case(name))
 }
 
-fn upstream_request(
+pub(super) fn upstream_request(
     app: &App,
     headers: &HeaderMap,
     method: Method,
@@ -153,7 +170,7 @@ pub(super) async fn models(
     headers: HeaderMap,
 ) -> Response {
     app.requests_received.fetch_add(1, Ordering::Relaxed);
-    let headers = match effective_headers(headers) {
+    let headers = match app.headers(headers) {
         Ok(headers) => headers,
         Err((status, message)) => return error(status, message),
     };

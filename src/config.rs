@@ -3,6 +3,8 @@ use std::{net::SocketAddr, path::PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Mode {
+    /// Archive older tool output without requiring provider-native compaction.
+    Tools,
     Rolling,
     Passthrough,
 }
@@ -44,6 +46,28 @@ pub struct Config {
         default_value = "https://api.openai.com/v1"
     )]
     pub upstream: String,
+    /// Anthropic API base, including /v1. Served alongside the OpenAI routes.
+    #[arg(
+        long,
+        env = "ASTRAL_ANTHROPIC_UPSTREAM",
+        default_value = "https://api.anthropic.com/v1"
+    )]
+    pub anthropic_upstream: String,
+    /// Optional TOML file containing named [[providers]] routes.
+    #[arg(long, env = "ASTRAL_PROVIDERS")]
+    pub providers: Option<PathBuf>,
+    /// Minimum text tool-result size eligible for archival.
+    #[arg(long, default_value_t = 16_384)]
+    pub tool_result_bytes: usize,
+    /// Total head/tail preview bytes retained for an archived result.
+    #[arg(long, default_value_t = 2048)]
+    pub tool_preview_bytes: usize,
+    /// Keep this many recent tool results inside a long turn; zero disables intra-turn archival.
+    #[arg(long, default_value_t = 4)]
+    pub keep_recent_tool_results: usize,
+    /// Archive capacity. Full archives preserve original input instead of evicting artifacts.
+    #[arg(long, default_value_t = 536_870_912)]
+    pub archive_max_bytes: u64,
     /// Additional trusted PEM certificates, including managed local proxy CAs.
     #[arg(long, env = "SSL_CERT_FILE")]
     pub upstream_ca_bundle: Option<PathBuf>,
@@ -62,12 +86,16 @@ pub struct Config {
     /// Honor x-astral-roll-estimate when supplied; otherwise retain byte scheduling.
     #[arg(long)]
     pub economic_roll_policy: bool,
-    #[arg(long, value_enum, default_value = "rolling")]
+    #[arg(long, value_enum, default_value = "tools")]
     pub mode: Mode,
     /// Native checkpoint tool binding. Observe is an unmodified transport control.
     #[arg(long, alias = "ast000-compat", value_enum, default_value = "disabled")]
     pub native_tool_binding: NativeToolBindingMode,
-    #[arg(long, default_value = ".astral-runtime")]
+    #[arg(
+        long,
+        env = "ASTRAL_PROXY_STATE_DIR",
+        default_value = ".astral-runtime"
+    )]
     pub state_dir: PathBuf,
     /// Explicit opt-in to native compaction on a compatible upstream.
     #[arg(long)]
@@ -104,6 +132,16 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&self) -> anyhow::Result<()> {
+        crate::providers::validate_upstream(&self.anthropic_upstream)?;
+        anyhow::ensure!(
+            self.tool_preview_bytes >= 128
+                && self.tool_preview_bytes.saturating_add(1024) < self.tool_result_bytes,
+            "tool-result-bytes must exceed tool-preview-bytes by more than 1024; preview must be at least 128"
+        );
+        anyhow::ensure!(
+            self.archive_max_bytes > 0,
+            "archive-max-bytes must be positive"
+        );
         let url = reqwest::Url::parse(&self.upstream)?;
         anyhow::ensure!(
             matches!(url.scheme(), "http" | "https"),

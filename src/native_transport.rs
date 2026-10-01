@@ -4,7 +4,7 @@ use crate::{
     config::NativeToolBindingMode,
     native_binding::Connection,
     now_ms,
-    proxy::{App, effective_headers, error, strip_header},
+    proxy::{App, error, strip_header},
 };
 use axum::{
     extract::{
@@ -44,7 +44,7 @@ pub(crate) async fn handle(
     ws: WebSocketUpgrade,
 ) -> Response {
     app.requests_received.fetch_add(1, Ordering::Relaxed);
-    let headers = match effective_headers(headers) {
+    let headers = match app.headers(headers) {
         Ok(h) => h,
         Err((s, m)) => return error(s, m),
     };
@@ -116,7 +116,13 @@ pub(crate) async fn handle(
     let mut response = ws
         .max_message_size(limit)
         .max_frame_size(limit)
-        .on_upgrade(move |socket| bridge(app, socket, upstream))
+        .on_upgrade(move |socket| async move {
+            if app.config.native_tool_binding == NativeToolBindingMode::Disabled {
+                bridge_plain(app, headers, socket, upstream).await;
+            } else {
+                bridge(app, socket, upstream).await;
+            }
+        })
         .into_response();
     copy_metadata(handshake.headers(), &mut response, HANDSHAKE_METADATA);
     response
@@ -146,6 +152,56 @@ async fn tls_connector(app: &App) -> anyhow::Result<Connector> {
         .with_root_certificates(roots)
         .with_no_client_auth();
     Ok(Connector::Rustls(Arc::new(config)))
+}
+
+/// Stateless transport for ordinary Responses clients. Incremental/server-owned
+/// history is forwarded intact; full-history requests can use tool archival.
+async fn bridge_plain(
+    app: App,
+    headers: HeaderMap,
+    mut downstream: WebSocket,
+    mut upstream: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) {
+    let timeout = Duration::from_secs(app.config.request_timeout_seconds);
+    loop {
+        tokio::select! {
+            message = tokio::time::timeout(timeout, downstream.next()) => {
+                let Ok(Some(Ok(message))) = message else { break; };
+                let outgoing = match message {
+                    Message::Text(text) => {
+                        let mut outgoing = text.to_string();
+                        if let Ok(mut value) = serde_json::from_str::<Value>(&text) {
+                            if value["type"] == "response.create" && app.reduce_tools(&mut value, &headers, crate::providers::Wire::Responses).await {
+                                outgoing = value.to_string();
+                            }
+                        }
+                        tungstenite::Message::Text(outgoing.into())
+                    }
+                    Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
+                    Message::Ping(bytes) => tungstenite::Message::Ping(bytes),
+                    Message::Pong(bytes) => tungstenite::Message::Pong(bytes),
+                    Message::Close(_) => break,
+                };
+                if upstream.send(outgoing).await.is_err() { break; }
+            }
+            message = tokio::time::timeout(timeout, upstream.next()) => {
+                let Ok(Some(Ok(message))) = message else { break; };
+                let outgoing = match message {
+                    tungstenite::Message::Text(text) => Message::Text(text.to_string().into()),
+                    tungstenite::Message::Binary(bytes) => Message::Binary(bytes),
+                    tungstenite::Message::Ping(bytes) => Message::Ping(bytes),
+                    tungstenite::Message::Pong(bytes) => Message::Pong(bytes),
+                    tungstenite::Message::Close(_) => break,
+                    tungstenite::Message::Frame(_) => continue,
+                };
+                if downstream.send(outgoing).await.is_err() { break; }
+            }
+        }
+    }
+    let _ = upstream.close(None).await;
+    let _ = downstream.close().await;
 }
 
 async fn bridge(

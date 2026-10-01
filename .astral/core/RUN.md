@@ -80,13 +80,18 @@ Codex overrides and shutdown. Do not manually start a recovery proxy for ordinar
 with Astral rolling disabled. A fresh launch without `--work` does not support
 `--proxy`; use a bound worker when that route is needed.
 
-`astral proxy` separately runs the standalone Responses server. Its default
-state path is `.astral-runtime/`; use `--state-dir` to keep an existing private
-location. Astral does not migrate or delete old directories. Set `ASTRAL_UPSTREAM`
-for an environment upstream override; client controls use `x-astral-*` headers.
-See the [proxy guide](../../docs/responses-proxy.md) for client identity headers,
-roll policies and accounting. `.astral/` is the portable project context, not
-the standalone proxy's runtime store.
+`astral proxy` separately runs one shared OpenAI Responses/Chat Completions and
+Anthropic Messages server. Default `--mode tools` archives older large text tool
+results; `astral recall` and `astral mcp` retrieve exact saved output. Use
+`--mode rolling` explicitly for the original native Responses projection planner.
+Its default state path is `.astral-runtime/`; use `--state-dir` or
+`ASTRAL_PROXY_STATE_DIR` for a persistent location outside any one repository.
+Astral does not migrate or delete old directories. Set `ASTRAL_UPSTREAM` and
+`ASTRAL_ANTHROPIC_UPSTREAM` for upstream overrides; client controls use
+`x-astral-*` headers. See the [shared proxy guide](../../docs/universal-proxy.md)
+for routing and retrieval and the [rolling guide](../../docs/responses-proxy.md)
+for native policies and accounting. `.astral/` is the portable project context,
+not the standalone proxy's runtime store.
 
 `astral project` selects current document guidance. The historical bootstrap and
 native worktree review are explicit selections shown by `context list`; their

@@ -21,7 +21,7 @@ mod picker;
 #[command(
     name = "astral",
     version,
-    about = "Responses proxy and Git-native project context",
+    about = "Multi-provider context proxy and Git-native project context",
     after_help = "Run astral proxy for the proxy server. With no arguments, or direct proxy options such as --listen, astral also starts the proxy. Project inspection does not start a proxy or Codex."
 )]
 struct Cli {
@@ -39,6 +39,31 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Retrieve or search exact tool output archived by the running proxy.
+    Recall {
+        handle: String,
+        #[arg(
+            long,
+            env = "ASTRAL_PROXY_URL",
+            default_value = "http://127.0.0.1:8088"
+        )]
+        proxy_url: String,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 4096)]
+        limit: usize,
+        #[arg(long)]
+        query: Option<String>,
+    },
+    /// Expose astral_recall and astral_search through a stdio MCP server.
+    Mcp {
+        #[arg(
+            long,
+            env = "ASTRAL_PROXY_URL",
+            default_value = "http://127.0.0.1:8088"
+        )]
+        proxy_url: String,
+    },
     /// Observe committed, staged and working context without changing worker state.
     Lifecycle {
         #[command(subcommand)]
@@ -142,7 +167,7 @@ enum Command {
         #[arg(long)]
         inspect: bool,
     },
-    /// Run the Responses proxy.
+    /// Run the shared OpenAI/Anthropic context proxy.
     Proxy {
         #[command(flatten)]
         config: Box<Config>,
@@ -253,6 +278,28 @@ enum WorkCommand {
 
 async fn run(cli: Cli) -> Result<Option<Value>, Error> {
     match cli.command {
+        Command::Recall {
+            handle,
+            proxy_url,
+            offset,
+            limit,
+            query,
+        } => {
+            let value = astral::recall::fetch(&proxy_url, &handle, offset, limit, query.as_deref())
+                .await
+                .map_err(|e| Error {
+                    code: "ARTIFACT_RETRIEVAL_FAILED",
+                    message: e.to_string(),
+                })?;
+            print_output(&value, true, &cli.root)
+        }
+        Command::Mcp { proxy_url } => {
+            astral::recall::serve(&proxy_url).await.map_err(|e| Error {
+                code: "MCP_SERVER_FAILED",
+                message: e.to_string(),
+            })?;
+            Ok(None)
+        }
         Command::Lifecycle {
             command: LifecycleCommand::Check { scope, work },
         } => Ok(Some(json!(astral::lifecycle::check(

@@ -33,6 +33,14 @@ construction, response metadata and bounded-body handling across inference,
 compaction and model discovery. Catalog GETs have no conversation state.
 `engine.rs`, `store.rs`, and `policy.rs` implement the existing projection,
 persistence, and cache policies. `working.rs` supports the optional explicit host.
+The standalone default is now `--mode tools`: `tool_history.rs` reduces older
+completed text tool results, `archive.rs` persists exact output, and `recall.rs`
+exposes CLI/MCP retrieval. `providers.rs` and `proxy/universal.rs` route OpenAI
+Responses, Chat Completions and Anthropic Messages through one listener, with
+explicit named upstreams. Native rolling remains available as `--mode rolling`;
+the managed native-launch proxy keeps its existing passthrough contract. See
+[the shared proxy guide](../../docs/universal-proxy.md) for retention, isolation,
+retrieval and unsupported transport boundaries.
 The standalone proxy uses `.astral-runtime/`, `ASTRAL_UPSTREAM` and `x-astral-*`
 headers. These are separate from portable `.astral/` documents and managed
 project proxies' private state paths. Existing private directories remain

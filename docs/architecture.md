@@ -1,6 +1,10 @@
 # Rolling projection contract
 
-This describes the default standalone backend. The opt-in [inline backend](inline-backend.md) uses the same original-history mapping and commit discipline, with a cut extending through the latest provider checkpoint in the completed response output.
+This describes the standalone backend in `--mode rolling`. The default `tools`
+mode uses the independent [tool-history archive](universal-proxy.md). The opt-in
+[inline backend](inline-backend.md) uses the same original-history mapping and
+commit discipline, with a cut extending through the latest provider checkpoint
+in the completed response output.
 
 ## Representation
 

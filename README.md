@@ -22,9 +22,23 @@ session.
 - **Use your normal Git workflow.** Optional Git and Codex hooks report context
   drift. Ordinary commits and merges remain supported.
 
-Astral also includes a standalone Responses proxy for rolling native context
-projections and an optional host for compact tool observations, exact artifact
-retrieval and verification tied to file versions.
+Astral also includes a standalone context proxy with native rolling projections
+and an optional host for compact tool observations, exact artifact retrieval and
+verification tied to file versions.
+
+The standalone proxy now serves **OpenAI Responses, Chat Completions and
+Anthropic Messages together**, independently of project or model. Its default
+`tools` mode archives older large tool results, keeps bounded previews in context,
+and exposes exact retrieval through CLI, HTTP and an optional MCP server. Native
+rolling remains available with `--mode rolling`. See [one shared proxy](docs/universal-proxy.md).
+
+```sh
+astral proxy --state-dir "$HOME/.local/state/astral/proxy"
+# Set the equivalent base URL in each harness:
+export OPENAI_BASE_URL=http://127.0.0.1:8088/v1
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8088
+# Register `astral mcp` once in MCP-capable harnesses for exact retrieval.
+```
 
 ## Current scope
 
@@ -39,7 +53,7 @@ format and a deliberately narrow runtime contract. These are separate paths:
 | Recovery and completion | Evidence-based repairs and reviewed fast-forward integration; recognize ordinary Git work | Save, tests, commits and divergent merges remain explicit |
 | Git/Codex hooks | Per-repository Git setup and per-checkout Codex configuration; offline context advice | Opt-in and advisory; Codex trust is separate; no automatic save or global Codex hook installer |
 
-Project filesystem operations use Unix confinement. The standalone Responses
+Project filesystem operations use Unix confinement. The standalone context
 proxy is a separate component; its rolling and cache policies do not qualify
 additional Codex versions or native checkpoint formats.
 
@@ -299,7 +313,7 @@ next review. See [recovery](docs/worker-recovery.md),
 
 ## Responses proxy and working-state host
 
-`astral proxy` maps a client's full original history to a persisted native
+`astral proxy --mode rolling` maps a client's full original history to a persisted native
 projection plus its recent tail. The projection stays fixed between rolls.
 Standalone compaction uses the complete native `/responses/compact` output;
 the optional inline backend adopts a completed provider checkpoint. Response
@@ -307,7 +321,7 @@ streams are forwarded unchanged.
 
 ```sh
 # Authentication may come from the client or OPENAI_API_KEY.
-astral proxy
+astral proxy --mode rolling
 ```
 
 The default endpoint is `http://127.0.0.1:8088/v1/responses`.
@@ -334,7 +348,8 @@ invoice savings, lossless compaction or a general performance advantage.
 | Inspect worker state and diagnose blockers | [Status and doctor](docs/finish-resume.md) |
 | Understand native formats and compatibility | [Bundles](docs/native-bundles.md) · [Native launch](docs/native-launch.md) |
 | Integrate Git and Codex lifecycle hooks | [Lifecycle integration](docs/lifecycle-integration.md) |
-| Operate the proxy or explicit host | [Proxy](docs/responses-proxy.md) · [Working state](docs/working-state.md) |
+| Share one proxy across projects and providers | [Shared proxy and exact retrieval](docs/universal-proxy.md) |
+| Use native rolling or the explicit host | [Responses proxy](docs/responses-proxy.md) · [Working state](docs/working-state.md) |
 | Review dated verification and open boundaries | [Context audit](docs/context-refresh-verification.md) · [Lifecycle receipt](docs/lifecycle-verification.md) · [Native launch receipt](docs/native-launch-verification.md) · [Milestones](docs/launch-plan.md) |
 
 ## Development

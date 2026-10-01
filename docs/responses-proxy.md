@@ -1,4 +1,9 @@
-# Responses proxy
+# Responses rolling proxy
+
+For the default multi-provider tool-history mode, configuration and retrieval,
+see [one shared proxy](universal-proxy.md). This guide describes the existing
+native planner, selected explicitly with `--mode rolling`. Anthropic Messages and
+Chat Completions use the separate tool-history adapter in `--mode tools`.
 
 Astral's standalone Rust proxy supports persistent rolling projections, a frozen
 prefix between rolls, model-aware cache controls and an unmodified response stream.
@@ -16,7 +21,7 @@ cargo test --locked
 
 # Authentication can be supplied by the client, or inherited from this environment.
 export OPENAI_API_KEY='your-api-key'
-./target/release/astral proxy
+./target/release/astral proxy --mode rolling
 
 # In another terminal, run a full-history client:
 python3 examples/chat.py --model gpt-5.5
@@ -64,6 +69,7 @@ An accepted roll requires a nonempty canonical output containing an encrypted co
 
 ```sh
 ./target/release/astral proxy \
+  --mode rolling \
   --roll-bytes 160000 \
   --keep-recent-turns 2 \
   --min-compact-bytes 32000 \

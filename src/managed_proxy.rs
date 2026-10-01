@@ -33,6 +33,12 @@ fn configuration(state_dir: &Path) -> Config {
     Config {
         listen: SocketAddr::from(([127, 0, 0, 1], 0)),
         upstream: UPSTREAM.into(),
+        anthropic_upstream: "https://api.anthropic.com/v1".into(),
+        providers: None,
+        tool_result_bytes: 16_384,
+        tool_preview_bytes: 2048,
+        keep_recent_tool_results: 4,
+        archive_max_bytes: 536_870_912,
         upstream_ca_bundle: None,
         compact_path: "/responses/compact".into(),
         compaction_backend: CompactionBackend::Standalone,

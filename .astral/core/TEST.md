@@ -28,6 +28,13 @@ incremental state. `tests/native_transport.rs` uses real local HTTP/WS transport
 with synthetic upstream events. Python tests cover native fixture capture and
 independent sandbox-denial evidence. Synthetic passes do not prove provider support.
 
+`tests/tool_history.rs` checks archival across Responses, Chat Completions and
+Messages, conservative tool pairing/retention, exact text/JSON recovery, scope,
+quota, integrity and restart behavior. `tests/universal_proxy.rs` exercises a
+shared listener against local HTTP/SSE/WebSocket providers, credential fallback,
+custom routing, passthrough, usage accounting and an actual MCP recall process.
+These tests do not qualify live providers or establish quality or billing savings.
+
 `tests/model_catalog.rs` exercises all catalog aliases through real local HTTP,
 including exact queries, identity isolation, conditional/error responses, header
 filtering, byte limits, deadlines and interrupted bodies. Catalog tests check
