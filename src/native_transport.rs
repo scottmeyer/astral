@@ -182,7 +182,14 @@ async fn bridge_plain(
                     Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
                     Message::Ping(bytes) => tungstenite::Message::Ping(bytes),
                     Message::Pong(bytes) => tungstenite::Message::Pong(bytes),
-                    Message::Close(_) => break,
+                    Message::Close(frame) => {
+                        let frame = frame.map(|frame| tungstenite::protocol::CloseFrame {
+                            code: frame.code.into(),
+                            reason: frame.reason.to_string().into(),
+                        });
+                        let _ = upstream.send(tungstenite::Message::Close(frame)).await;
+                        break;
+                    }
                 };
                 if upstream.send(outgoing).await.is_err() { break; }
             }
@@ -193,7 +200,14 @@ async fn bridge_plain(
                     tungstenite::Message::Binary(bytes) => Message::Binary(bytes),
                     tungstenite::Message::Ping(bytes) => Message::Ping(bytes),
                     tungstenite::Message::Pong(bytes) => Message::Pong(bytes),
-                    tungstenite::Message::Close(_) => break,
+                    tungstenite::Message::Close(frame) => {
+                        let frame = frame.map(|frame| axum::extract::ws::CloseFrame {
+                            code: frame.code.into(),
+                            reason: frame.reason.to_string().into(),
+                        });
+                        let _ = downstream.send(Message::Close(frame)).await;
+                        break;
+                    }
                     tungstenite::Message::Frame(_) => continue,
                 };
                 if downstream.send(outgoing).await.is_err() { break; }

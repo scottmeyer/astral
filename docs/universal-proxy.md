@@ -40,6 +40,20 @@ that hardcodes its destination or uses a different protocol needs an adapter.
 Codex authentication and backend selection remain the client's responsibility;
 an API key is not a substitute for a ChatGPT account credential.
 
+For a Codex CLI already signed in with ChatGPT, retain that login and configure
+the built-in OpenAI provider's destination:
+
+```sh
+codex -c 'openai_base_url="http://127.0.0.1:8088/providers/codex/backend-api/codex"' \
+  -c 'features.enable_request_compression=false'
+```
+
+Codex supplies the credential; Astral forwards it to the configured ChatGPT
+backend. A custom Codex provider can instead use `requires_openai_auth=true`.
+See [Codex authentication](https://learn.chatgpt.com/docs/auth) and the
+[base-URL setting](https://learn.chatgpt.com/docs/config-file/config-reference).
+Disabling request compression lets Astral inspect full request histories.
+
 Default destinations are `https://api.openai.com/v1`,
 `https://api.anthropic.com/v1`, and `https://chatgpt.com/backend-api/codex`.
 `--upstream` / `ASTRAL_UPSTREAM` change the OpenAI destination;
@@ -231,6 +245,10 @@ and restart. `tests/universal_proxy.rs` uses real local HTTP, SSE and WebSocket
 servers, routes multiple providers through one listener, and retrieves a hidden
 detail through the actual MCP subprocess. These tests do not establish live
 provider compatibility or a quality/performance result for arbitrary workloads.
+
+The [2026-10-01 verification record](universal-proxy-verification.md) includes
+clean-patch checks, concurrent compiled-binary measurements, the WebSocket close
+regression and the unsuccessful live-provider startup probes.
 
 Wire references: [Anthropic tool use](https://platform.claude.com/docs/en/build-with-claude/tool-use/overview),
 [Anthropic streaming](https://platform.claude.com/docs/en/build-with-claude/streaming),

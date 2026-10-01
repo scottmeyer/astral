@@ -80,6 +80,16 @@ async fn ws_mock(
     ws: WebSocketUpgrade,
 ) -> Response {
     ws.on_upgrade(move |mut socket| async move {
+        if headers.contains_key("x-test-close") {
+            socket
+                .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: 1013,
+                    reason: "retry later".into(),
+                })))
+                .await
+                .unwrap();
+            return;
+        }
         while let Some(Ok(message)) = socket.next().await {
             match message {
                 Message::Text(text) => {
@@ -100,6 +110,17 @@ async fn ws_mock(
                     if socket.send(Message::Binary(bytes)).await.is_err() {
                         break;
                     }
+                }
+                Message::Close(frame) => {
+                    records.lock().unwrap().push(Record {
+                        path: "ws-close".into(),
+                        headers: headers.clone(),
+                        body: serde_json::to_vec(&frame.map(
+                            |frame| json!({"code":frame.code,"reason":frame.reason.as_str()}),
+                        ))
+                        .unwrap(),
+                    });
+                    break;
                 }
                 _ => break,
             }
@@ -426,6 +447,56 @@ async fn ordinary_websocket_reduces_full_history_but_forwards_incremental_and_bi
     let rows = f.records.lock().unwrap().clone();
     assert!(String::from_utf8_lossy(&rows[0].body).contains("astral archived"));
     assert_eq!(rows[1].body, raw.as_bytes());
+}
+
+#[tokio::test]
+async fn ordinary_websocket_preserves_close_metadata_in_both_directions() {
+    use tokio_tungstenite::tungstenite::{
+        Message as ClientMessage, client::IntoClientRequest, protocol::CloseFrame,
+    };
+    let f = Fixture::new(Mode::Tools).await;
+    let url = f.url.replacen("http://", "ws://", 1) + "/v1/responses";
+    let mut request = url.clone().into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("x-test-close", "1".parse().unwrap());
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let received = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let ClientMessage::Close(Some(frame)) = received else {
+        panic!("upstream close metadata was lost: {received:?}");
+    };
+    assert_eq!(u16::from(frame.code), 1013);
+    assert_eq!(frame.reason, "retry later");
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    socket
+        .send(ClientMessage::Close(Some(CloseFrame {
+            code: 1001.into(),
+            reason: "client done".into(),
+        })))
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Some(record) = f
+                .records
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|record| record.path == "ws-close")
+            {
+                break serde_json::from_slice::<Value>(&record.body).unwrap();
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(frame, json!({"code":1001,"reason":"client done"}));
 }
 
 #[tokio::test]
