@@ -6,12 +6,14 @@ and tool execution, but did not activate archival.** One compatibility defect
 was reproduced and fixed on the test branch: Responses `input_text` tool-output
 blocks were previously ignored.
 
-**Practical savings remain unproven.** A subsequent real Codex session reviewed
-the saved setup and transcripts and correctly answered all ten factual checks.
-It found that the original comparison's final prompt favored archive retrieval:
-passthrough was told to return `NO_ARCHIVE_HANDLE` rather than attempt recovery
-from its retained history. See [the follow-up review](#follow-up-review-of-the-test)
-for the corrected interpretation and a new, partially completed comparison.
+**The follow-up review workload performed worse with tools mode.** Passthrough
+completed four turns and all ten factual checks in 234 seconds. Tools mode
+archived and recalled outputs successfully, but timed out at 240 seconds during
+its first turn. Its observed uncached input was already at least 4.90 times the
+entire baseline. This is one diagnostic workload, not a general performance result.
+The reviewer also found that the original qualification's final prompt favored
+archive retrieval: passthrough was told to return `NO_ARCHIVE_HANDLE` rather than
+attempt recovery from retained history. See [the follow-up review](#follow-up-review-of-the-test).
 
 ## Baseline and changes
 
@@ -430,9 +432,11 @@ failed/unexpected tool calls, count fixture/pulse calls, and distinguish
 ## Follow-up review of the test
 
 A real Codex session reviewed the saved synthetic test transcripts, controller,
-implementation, report, and selected ledger rows. It ran after qualification
-commit `7297754`, on the same test branch, with the HTTP accounting correction
-described below. Model and installed versions were unchanged.
+implementation, report, and selected ledger rows. Both comparison arms used the
+same release binary with the HTTP accounting correction committed in `1bd3bf6`,
+after qualification commit `7297754`, on the same test branch. Model and installed
+versions were unchanged. The tools arm ran after explicit approval of the data
+transfer to the Codex service; the earlier approval block is resolved.
 
 The reviewer confirmed:
 
@@ -448,7 +452,7 @@ The reviewer confirmed:
   were **175,963** versus **153,835**: **22,128 more (14.38%)**. These include cache
   reads and are not billing measurements.
 
-### Review workload and partial comparison
+### Review workload and outcome
 
 The new workload asks both configurations to review the same six evidence
 packets, over four user turns. Each can reread or search the original evidence;
@@ -468,13 +472,20 @@ the controller, outside the prompts.
 
 Packets retain completed tool outputs, including repetitive synthetic fixture
 text. They are a test-review workload, not a representative coding benchmark.
-The reviewer independently reread and paginated some packets, so even a completed
-pair would compare agent trajectories, not identical sequences of tool calls.
-The intended initial reads are not truncated by the evidence MCP server; its
-configured output limit is 200,000 tokens, and the prompt requests code-mode
-output limits of 120,000 tokens.
-Inspection of the completed session's saved tool outputs found each full packet
-byte-for-byte; `packet-delivery.json` records matching hashes and occurrences.
+The reviewers independently reread and paginated packets, so the runs compare
+agent trajectories, not identical sequences of tool calls. Both had the same
+240-second limit per user turn. The evidence MCP server returns complete strings;
+its configured output limit is 200,000 tokens, and the prompt requests code-mode
+output limits of 120,000 tokens. All six packets appear intact in the baseline's
+local tool records. The tools run reached only the first two, also present intact
+in its local records.
+
+Those local records do **not** prove untruncated provider input. Of 21 stored
+artifacts, 17 exactly match a recorded tool-output JSON value; four differ and
+contain token-truncation or omitted-text markers. The earlier claim based solely
+on full local records was too strong. This review does not qualify untruncated
+delivery of all raw packets through Codex. The original, smaller one-shot fixture
+qualification remains separate. Per-arm `audit.json` files preserve these checks.
 
 Each arm uses a fresh session and state directory, one standalone proxy on
 `127.0.0.1:18088`, and default archival thresholds. The process-local settings are:
@@ -518,30 +529,61 @@ arrays contain the exact prompts and settings for every turn.
 
 | New review metric | Passthrough | Tools |
 | --- | ---: | --- |
-| Completed turns / factual checks correct | 4 / 10 of 10 | NOT TESTED |
-| Upstream model requests / observed terminal events | 24 / 24 | NOT TESTED |
-| Forwarded request body bytes | 9,638,228 | Unavailable |
-| Archive replacements / saved bytes | 0 / 0 | Unavailable |
-| Agent Astral search / recall calls | 0 / 0 | NOT TESTED |
-| Input tokens including cache reads | 2,005,087 | Unavailable |
-| Cached input tokens | 1,867,008 | Unavailable |
-| Input tokens excluding cache reads | 138,079 | Unavailable |
-| Output tokens | 3,330 | Unavailable |
-| Sum of four turn wall times | 233.792 s | Unavailable |
-| Failed tools / non-200 model responses | 0 / 0 | NOT TESTED |
+| Task completion | PASS | FAIL: first turn timed out |
+| Completed turns / factual checks correct | 4 / 10 of 10 | 0 / unscored: no final answer |
+| Upstream model requests / observed terminal events | 24 / 24 | 29 / 28 |
+| Request body bytes before Astral | 9,638,228 | 14,859,180 |
+| Forwarded request body bytes | 9,638,228 | 6,532,552 |
+| Archive replacements / saved bytes | 0 / 0 | 271 / 8,326,628 |
+| Unique stored artifacts | 0 | 21 |
+| Agent Astral search / successful recall calls | 0 / 0 | 0 / 16 |
+| Observed input tokens including cache reads | 2,005,087 | 1,250,182+ |
+| Observed cached input tokens | 1,867,008 | 573,952+ |
+| Observed input tokens excluding cache reads | 138,079 | 676,230+ |
+| Observed output tokens | 3,330 | 2,718+ |
+| Sum of four turn wall times | 233.792 s | Unavailable: first turn stopped at 240 s |
+| Failed tools / non-200 model responses | 0 / 0 | 1 / 0 |
 
-The ledger's input/cache/output totals exactly match the final Codex cumulative
-counters. All 24 request IDs have one matching terminal event. Eight evidence
-MCP reads completed; no shell, file-editing, or web tools were used. The proxy's
-health counter also includes non-model requests and is not the model request
-denominator. This one completed baseline cannot establish a benefit comparison.
+The `+` marks a lower bound: usage is available for 28 tools-arm responses; the
+29th request had received HTTP 200 headers but was interrupted at the deadline
+before its terminal usage arrived. There is no final Codex usage counter for
+that run. For passthrough, all 24 request IDs have one terminal event and ledger
+usage exactly matches the final Codex cumulative counters. Forwarded bytes cover
+requests that received upstream headers, as defined by the accounting below.
+The proxy health counter includes non-model traffic and is not this denominator.
 
-The tools arm was rejected before launch by automatic approval review: it would
-send saved transcripts, source excerpts, and test evidence to the external Codex
-service, and the reviewer required explicit authorization for that transfer.
-The passthrough review had already completed through that same service. No
-tools-arm process started after the rejection. The paired comparison remains
-**NOT TESTED**, pending approval of that specific data transfer.
+The task did not finish in tools mode, so its smaller forwarded total cannot be
+called a task-level saving. Within that incomplete run, Astral reduced forwarded
+bodies by **56.04%**. Yet even its first-turn usage exceeded the baseline's first
+turn: **1,250,182+ versus 865,061 input tokens**, and **676,230+ versus 90,021
+uncached input tokens** (at least **7.51 times** as many). The baseline finished
+that turn in **80.233 seconds**. These observations show why byte reduction alone
+is insufficient; they do not establish billing amounts or a general causal
+estimate for prompt-cache losses.
+
+### Timeout and retrieval investigation
+
+The tools run completed five evidence reads and 16 `astral_recall` calls before
+the deadline. One earlier recall requested `limit=60000` and failed with
+`limit must be 1..16384 bytes`; the model corrected it and continued. The MCP
+schema already declares that maximum, so this was a caller error, not an absent
+schema bound. No shell, file-editing, or web calls occurred. All model requests
+received HTTP 200; the failure was not an authentication or routing stall.
+
+The successful recall pages exactly match their stored bytes and hashes. They
+cover **seven complete archived outputs**, including full paginated recovery;
+all **21** stored-artifact hashes validate. Thus archival and retrieval succeeded
+while the review task failed to complete. The trajectory spent additional calls
+rereading evidence and paging archived outputs. The incomplete reviewer had no
+final answer to grade. The original 240-second cap was retained, and no selective
+retry was used to replace this result.
+
+This is a negative result for the tested review configuration. It supports
+keeping normal harness settings for everyday work rather than adopting this
+configuration for savings. A future candidate would need to preserve outputs
+still being actively read and demonstrate that retrieval and cache overhead do
+not erase the reduction. This run does not establish which policy change would
+achieve that. No new proxy defect was confirmed in this comparison.
 
 ### HTTP accounting correction
 
@@ -569,13 +611,19 @@ Private evidence and the exact controllers are retained outside the repository:
 
 ```text
 /private/tmp/astral-benefit-20261001/
-  prepare.py, evidence_mcp.py, trial.py, evaluate.py
+  prepare.py, evidence_mcp.py, trial.py, evaluate.py, audit_review.py
+  evaluate-complete-only.py     # original scorer, retained for provenance
   packets.json, packet-manifest.json, packet-delivery.json
   evaluation.json, followup-validation.json, blocked-comparison.json
-  controller-manifest.json
+  controller-manifest.json, completed-controller-manifest.json
+  comparison-derived.json
   review-pass-1/
     command-*.json, receipt-*.json, answer-*.txt, turn-*.jsonl
-    proxy.stderr, health.json, state/ledger.jsonl
+    proxy.stderr, health.json, state/ledger.jsonl, audit.json
+  review-tools-1/
+    command-0.json, turn-0.jsonl, turn-0.stderr, proxy.stderr
+    run-outcome.json, timeout-summary.json, audit.json
+    state/ledger.jsonl, state/artifacts/
   logs/
     accounting-before.log, affected.log, clippy.log, build.log
     full-test.log, python-test.log, msrv.log
@@ -583,21 +631,25 @@ Private evidence and the exact controllers are retained outside the repository:
 
 `packet-manifest.json` records each immutable packet's SHA-256. Preserve those
 packets for comparison: rerunning `prepare.py` after editing this report changes
-the evidence. The saved `review-pass-1/command-*.json` arrays are authoritative
-for the completed run. Raw transcripts and packet contents are not committed.
+the evidence. The saved per-arm `command-*.json` arrays are authoritative for
+the runs. Raw transcripts and packet contents are not committed. The scorer now
+includes timed-out arms instead of silently omitting runs without a final answer.
 
 ```sh
 # Local scoring only; no inference or credential access:
 python3 /private/tmp/astral-benefit-20261001/evaluate.py
+python3 /private/tmp/astral-benefit-20261001/audit_review.py review-pass-1
+python3 /private/tmp/astral-benefit-20261001/audit_review.py review-tools-1
 
 # Fresh review sessions; these send packet contents to the Codex service.
-# The tools arm below has not run and requires the pending transfer approval.
 python3 /private/tmp/astral-benefit-20261001/trial.py passthrough review-pass-2
-python3 /private/tmp/astral-benefit-20261001/trial.py tools review-tools-1
+python3 /private/tmp/astral-benefit-20261001/trial.py tools review-tools-2
 ```
 
 The controller starts/stops only its own standalone proxy and saves each exact
-CLI invocation. Each label must be new. The first review proxy has been stopped.
+CLI invocation. Each label must be new. Both review proxies and their harnesses
+have been stopped. No source changes were needed after the 520 Rust / 18 Python
+validation run; the final changes record the observed outcome and local audits.
 
 ## Remaining limits
 
@@ -605,7 +657,8 @@ CLI invocation. Each label must be new. The first review proxy has been stopped.
   provider-managed histories intentionally pass through.
 - Complete Codex forwarded-byte accounting is unavailable for the original runs
   and WebSocket traffic. The follow-up HTTP correction gives complete accounting
-  for the new passthrough review; its tools comparison has not run.
-- The successful full-history configurations are explicit diagnostics. This is
-  a small synthetic recall qualification, not a general quality, latency, or
-  billing benchmark.
+  for the new review requests. Tools-arm terminal usage is unavailable for the
+  one response interrupted at its timeout; reported usage is a lower bound.
+- The successful full-history configurations are explicit diagnostics. The
+  initial synthetic recall qualification and one review pair do not establish
+  general quality, latency, or billing benefits.
