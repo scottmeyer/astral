@@ -585,6 +585,71 @@ still being actively read and demonstrate that retrieval and cache overhead do
 not erase the reduction. This run does not establish which policy change would
 achieve that. No new proxy defect was confirmed in this comparison.
 
+### What the transcripts show
+
+A subsequent local audit matched the visible tool calls, returned data, ledger
+timestamps, and archive contents. It excluded private reasoning and required no
+new model calls. The timeout involved an interaction between the exhaustive test
+prompt, harness truncation, and archival during a single long user turn.
+
+1. **The prompt made the review unnecessarily exhaustive.** It said “Read each
+   requested packet completely.” The first packet was 48,681 bytes; 32,940 bytes
+   were repeated padding text. The second was 207,457 bytes, including at least
+   98,820 bytes of repeated padding. Much of that content was irrelevant to the
+   factual review. Both runs attempted full reads, encountered truncation, and
+   paginated. The per-tool and code-mode output-limit overrides did not establish
+   untruncated forwarding through every harness layer.
+2. **The tools run made overlapping reading passes.** After a full read and an
+   attempted multi-chunk yield, it emitted slices from character 60,000 to the
+   end of `normal_harnesses`. It then started again at zero and emitted the whole
+   packet in 20,000-character slices. The baseline used one 24,000-character
+   pagination pass over that packet and finished the first turn in 80.233 seconds.
+3. **Astral aged those pages out while the review was still in progress.** The
+   first archival was on model request 7, about 52 seconds after the first
+   request received headers. There was still only one user turn. The four-result
+   rule permits archival within a long turn even though two recent user turns
+   are normally retained. As further chunks arrived, earlier chunks became
+   previews. The proxy does not know whether the reviewer still needs them.
+4. **The reviewer returned to already-read evidence.** At 19:02:18 UTC, its
+   visible update already correctly said both normal harnesses had completed
+   tools without demonstrating archive retrieval. It then rechecked setup
+   details. Its first Astral recall was at 19:02:22, roughly 170 seconds after the
+   first upstream headers. After one invalid page-limit call, it recovered the
+   initial evidence response in four pages, then six earlier chunks covering
+   characters 0–120,000 of `normal_harnesses` in twelve pages. Those six origins
+   match the recorded tool outputs exactly. The initial response is matched by
+   a 24,023-character prefix and its truncation marker, rather than full equality.
+5. **Most uncached work preceded explicit recall.** The first 22 observed
+   terminal events consumed 946,400 input tokens, including 404,992 cached tokens:
+   541,408 uncached tokens, or 80.06% of the run's observed uncached total. At the
+   first archival, cached input fell from 47,872 to 16,384 tokens and stayed at
+   16,384 for the next several requests as further old results were replaced.
+   This is consistent with changing earlier request content disrupting cached
+   prefixes. It does not isolate all latency or cache effects: the runs had
+   different trajectories and cache differences even before archival began.
+
+This was repeated reading, not an observed endless chain of recalling recalled
+pages. One recall response was itself subsequently archived, but none of the
+16 successful recalls targeted that new artifact. The seven recovered objects
+all came from earlier evidence reads or slices. No final review answer was
+produced before the controller's deadline.
+
+The earlier emphasis on retrieval overhead alone was incomplete. The test prompt
+and truncation induced excessive reading; within-turn archival then removed
+older reading chunks and repeatedly changed the request prefix. The transcript
+supports that sequence, while the relative contribution of each factor would
+require a controlled follow-up.
+
+The narrow next experiment is to set `--keep-recent-tool-results 0`, retaining
+the default two recent user turns and the same task, to isolate within-turn
+archival. The existing
+`long_turns_archive_consumed_results_but_keep_the_entire_latest_parallel_batch`
+regression verifies that zero disables archival within the first long turn.
+A separate, more representative comparison should ask the evidence questions
+without requiring every padding byte to be read, and use bounded source pages
+whose forwarded contents are verified. Both arms must receive the same revised
+task. Neither follow-up has **run**; this audit does not establish its benefit.
+
 ### HTTP accounting correction
 
 The earlier missing rows were reproduced locally: an upstream SSE server emits
@@ -617,6 +682,7 @@ Private evidence and the exact controllers are retained outside the repository:
   evaluation.json, followup-validation.json, blocked-comparison.json
   controller-manifest.json, completed-controller-manifest.json
   comparison-derived.json
+  trace_review.py, transcript-trace.json
   review-pass-1/
     command-*.json, receipt-*.json, answer-*.txt, turn-*.jsonl
     proxy.stderr, health.json, state/ledger.jsonl, audit.json
@@ -640,6 +706,7 @@ includes timed-out arms instead of silently omitting runs without a final answer
 python3 /private/tmp/astral-benefit-20261001/evaluate.py
 python3 /private/tmp/astral-benefit-20261001/audit_review.py review-pass-1
 python3 /private/tmp/astral-benefit-20261001/audit_review.py review-tools-1
+python3 /private/tmp/astral-benefit-20261001/trace_review.py
 
 # Fresh review sessions; these send packet contents to the Codex service.
 python3 /private/tmp/astral-benefit-20261001/trial.py passthrough review-pass-2
