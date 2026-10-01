@@ -54,6 +54,21 @@ async fn mock(
         )
             .into_response();
     }
+    if let Some(hold) = headers.get("x-test-hold-open") {
+        let event = if hold == "terminal" {
+            json!({"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":10,"output_tokens":1}}})
+        } else {
+            json!({"type":"response.output_text.delta","delta":"still running"})
+        };
+        let stream = async_stream::stream! {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from(format!("data: {event}\n\n")));
+            std::future::pending::<()>().await;
+        };
+        return Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(Body::from_stream(stream))
+            .unwrap();
+    }
     if uri.path().ends_with("count_tokens") {
         return axum::Json(json!({"input_tokens":111})).into_response();
     }
@@ -238,6 +253,59 @@ fn token(text: &str) -> String {
         .next()
         .unwrap()
         .to_owned()
+}
+
+#[tokio::test]
+async fn http_accounting_survives_client_drop_before_eof_without_claiming_completion() {
+    for mode in [Mode::Tools, Mode::Passthrough] {
+        for terminal in [true, false] {
+            let f = Fixture::new(mode).await;
+            let body = serde_json::to_vec(&responses()).unwrap();
+            let response = f
+                .post("/v1/responses")
+                .header("content-type", "application/json")
+                .header(
+                    "x-test-hold-open",
+                    if terminal { "terminal" } else { "partial" },
+                )
+                .body(body.clone())
+                .send()
+                .await
+                .unwrap();
+            let mut stream = response.bytes_stream();
+            tokio::time::timeout(std::time::Duration::from_secs(3), stream.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            drop(stream);
+            let ledger = std::fs::read_to_string(f.root.path().join("state/ledger.jsonl")).unwrap();
+            let rows: Vec<Value> = ledger
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            let requests: Vec<_> = rows.iter().filter(|row| row["kind"] == "request").collect();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0]["bytes_in"], body.len());
+            assert_eq!(
+                requests[0]["bytes_out"],
+                f.records.lock().unwrap()[0].body.len()
+            );
+            assert_eq!(requests[0]["status"], 200);
+            let terminals: Vec<_> = rows
+                .iter()
+                .filter(|row| row["kind"] == "response_terminal")
+                .collect();
+            assert_eq!(terminals.len(), usize::from(terminal));
+            if terminal {
+                assert_eq!(terminals[0]["request_id"], requests[0]["request_id"]);
+                assert_eq!(terminals[0]["usage"]["input_tokens"], 10);
+            }
+            assert!(!rows.iter().any(|row| row["kind"] == "response"));
+            assert!(!ledger.contains("middle-needle"));
+            assert!(!ledger.contains("Bearer fixture"));
+        }
+    }
 }
 
 #[tokio::test]

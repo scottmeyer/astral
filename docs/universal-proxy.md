@@ -237,6 +237,18 @@ tokens are included when normalizing its input total; OpenAI input totals alread
 include cache reads. Missing usage stays unreported. These are request/response
 observations, not verified billing savings.
 
+For Responses HTTP forwarding, `request` ledger rows record body sizes once
+upstream response headers arrive. `response_terminal` rows record an observed
+SSE terminal event and its available usage before yielding that chunk downstream.
+Both carry a `request_id`, also included in the clean-EOF `response` row. This keeps
+measurements available when a client disconnects before EOF. A terminal event
+does not prove clean EOF or commit a rolling projection; those checks remain in
+the final response path. Sum request sizes from `request` rows and usage from
+`response_terminal` rows without adding the duplicated final-response values.
+Failed sends before response headers and missing terminal events require separate
+error/coverage accounting. These new rows do not cover WebSocket or Messages
+traffic.
+
 ## Verification
 
 `tests/tool_history.rs` checks three protocol shapes, exact text/JSON retrieval,

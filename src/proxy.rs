@@ -586,6 +586,7 @@ async fn forward(
 ) -> Response {
     let start = Instant::now();
     let bytes_out = outgoing.len();
+    let request_id = crate::hash(format!("{}:{start:?}", now_ms()).as_bytes());
     let lane = pending.as_ref().map(|p| p.0.clone());
     let response = match request(&app, &headers, suffix, outgoing, false)
         .send()
@@ -605,6 +606,14 @@ async fn forward(
         }
     };
     let status = response.status();
+    // Persist request sizes independently of downstream stream consumption.
+    app.store
+        .record(
+            &json!({"kind":"request","request_id":request_id,"provider":app.provider.name,
+        "transport":"http","ts_ms":now_ms(),"reason":reason,"status":status.as_u16(),
+        "outcome":"upstream_headers_received","bytes_in":bytes_in,"bytes_out":bytes_out}),
+        )
+        .await;
     let sse = match response.headers().get("content-type") {
         Some(v) => v.to_str().is_ok_and(|v| {
             v.split(';')
@@ -629,11 +638,20 @@ async fn forward(
         let mut response_bytes = 0usize;
         let mut first_byte_ms = None;
         let mut clean_eof = true;
+        let mut terminal_recorded = false;
         while let Some(chunk) = chunks.next().await {
             match chunk {
                 Ok(bytes) => {
                     if first_byte_ms.is_none() { first_byte_ms = Some(start.elapsed().as_millis()); }
                     response_bytes += bytes.len(); observer.feed(&bytes);
+                    if !terminal_recorded && observer.terminal.is_some() {
+                        // A terminal event is evidence, not clean EOF or a committed projection.
+                        app.store.record(&json!({"kind":"response_terminal","request_id":request_id,
+                            "provider":app.provider.name,"transport":"http","ts_ms":now_ms(),
+                            "status":status.as_u16(),"terminal":observer.terminal,"usage":observer.usage,
+                            "elapsed_ms":start.elapsed().as_millis()})).await;
+                        terminal_recorded = true;
+                    }
                     yield Ok::<Bytes, std::io::Error>(bytes);
                 }
                 Err(_) => {
@@ -670,7 +688,7 @@ async fn forward(
             }
         }
         if clean_eof {
-            app.store.record(&json!({"kind":"response", "ts_ms":now_ms(), "lane":lane, "reason":reason,
+            app.store.record(&json!({"kind":"response", "request_id":request_id, "ts_ms":now_ms(), "lane":lane, "reason":reason,
                 "outcome":if complete { "completed" } else { "not_completed" }, "status":status.as_u16(),
                 "epoch":pending.as_ref().map(|p| p.2.epoch), "committed":committed, "state_error":state_error,
                 "cut":pending.as_ref().map(|p| p.2.cut),

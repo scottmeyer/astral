@@ -6,6 +6,13 @@ and tool execution, but did not activate archival.** One compatibility defect
 was reproduced and fixed on the test branch: Responses `input_text` tool-output
 blocks were previously ignored.
 
+**Practical savings remain unproven.** A subsequent real Codex session reviewed
+the saved setup and transcripts and correctly answered all ten factual checks.
+It found that the original comparison's final prompt favored archive retrieval:
+passthrough was told to return `NO_ARCHIVE_HANDLE` rather than attempt recovery
+from its retained history. See [the follow-up review](#follow-up-review-of-the-test)
+for the corrected interpretation and a new, partially completed comparison.
+
 ## Baseline and changes
 
 - Repository: `scottmeyer/astral`.
@@ -290,17 +297,22 @@ measurement was run without overlapping restart traffic.
 The forwarded-byte observations cover different incomplete subsets and **must
 not be compared as totals**. In the tools arm, nine inspected requests produced
 only two completed response ledger rows, despite a successful harness session.
-Code inspection explains the coverage limit: HTTP response/usage accounting is
+Code inspection explains the coverage limit in that tested binary: HTTP response/usage accounting was
 emitted only after the streaming body reaches EOF; a client that ends consumption
 earlier can leave that row absent. No additional byte recorder was installed,
-so complete forwarded-byte totals remain unverified. WebSocket totals are also
+so complete forwarded-byte totals for those original runs remain unverified.
+The follow-up below adds accounting for new HTTP runs. WebSocket totals are also
 unavailable. Missing rows are not zero traffic or zero usage.
 
 The token numbers are the final `turn.completed.usage` counters emitted by each
 Codex session. They are not inferred from bytes. The tools trajectory includes
 search, recall, and its returned page, while passthrough reports no handle;
-model-generated intermediate calls also vary. This sample does **not** establish
-lower token use, latency, or billing.
+model-generated intermediate calls also vary. The final prompt explicitly
+requires an archive handle and tells either arm to return `NO_ARCHIVE_HANDLE`
+when none exists. Passthrough's response therefore does not demonstrate an
+inability to recover the marker from retained history. This qualifies the archive
+mechanism but is not a fair task-quality comparison. This sample does **not**
+establish lower token use, latency, or billing.
 
 Anthropic had complete response-ledger coverage for its two principal runs:
 
@@ -415,12 +427,185 @@ sessions. Keep measurement arms isolated in time. The final scripts also record
 failed/unexpected tool calls, count fixture/pulse calls, and distinguish
 `workload_pass` from `recall_pass` in their summaries.
 
+## Follow-up review of the test
+
+A real Codex session reviewed the saved synthetic test transcripts, controller,
+implementation, report, and selected ledger rows. It ran after qualification
+commit `7297754`, on the same test branch, with the HTTP accounting correction
+described below. Model and installed versions were unchanged.
+
+The reviewer confirmed:
+
+- Seven denied MCP calls in the initial exploratory run were concealed by
+  successful-sounding model acknowledgments. The later approved run completed
+  tools but still archived nothing before the `input_text` fix.
+- Ordinary Codex and Claude Code established routing and tool execution. They
+  did not establish context reduction.
+- Explicit full-history configurations established archival and exact retrieval.
+- The original final prompt was unsuitable for comparing practical usefulness.
+- Before that final turn, Codex tools mode used **103,343** input tokens versus
+  **125,149** for passthrough: **21,806 fewer (17.42%)**. Entire-session counters
+  were **175,963** versus **153,835**: **22,128 more (14.38%)**. These include cache
+  reads and are not billing measurements.
+
+### Review workload and partial comparison
+
+The new workload asks both configurations to review the same six evidence
+packets, over four user turns. Each can reread or search the original evidence;
+both have Astral MCP available. The final answer requires ten factual fields,
+up to five findings with evidence, and a recommendation. It does not require an
+archive handle or any particular retrieval method. Expected answers are kept in
+the controller, outside the prompts.
+
+| Packet key | UTF-8 bytes |
+| --- | ---: |
+| `failed_and_prefixed` | 48,681 |
+| `normal_harnesses` | 207,457 |
+| `tools_arm` | 45,617 |
+| `passthrough_arm` | 43,338 |
+| `implementation` | 45,774 |
+| `report_and_ledger` | 36,942 |
+
+Packets retain completed tool outputs, including repetitive synthetic fixture
+text. They are a test-review workload, not a representative coding benchmark.
+The reviewer independently reread and paginated some packets, so even a completed
+pair would compare agent trajectories, not identical sequences of tool calls.
+The intended initial reads are not truncated by the evidence MCP server; its
+configured output limit is 200,000 tokens, and the prompt requests code-mode
+output limits of 120,000 tokens.
+Inspection of the completed session's saved tool outputs found each full packet
+byte-for-byte; `packet-delivery.json` records matching hashes and occurrences.
+
+Each arm uses a fresh session and state directory, one standalone proxy on
+`127.0.0.1:18088`, and default archival thresholds. The process-local settings are:
+
+```toml
+model_provider = "trial"
+model_reasoning_effort = "low"
+features.enable_request_compression = false
+features.shell_tool = false
+
+[model_providers.trial]
+name = "Review trial"
+base_url = "http://127.0.0.1:18088/providers/codex/backend-api/codex"
+wire_api = "responses"
+requires_openai_auth = true
+supports_websockets = false
+
+[model_providers.trial.http_headers]
+x-astral-workspace-id = "<label>"
+x-astral-session-id = "<label>"
+x-astral-harness-id = "benefit-review"
+
+[mcp_servers.evidence]
+command = "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3"
+args = ["/private/tmp/astral-benefit-20261001/evidence_mcp.py", "/private/tmp/astral-benefit-20261001/packets.json"]
+default_tools_approval_mode = "approve"
+
+[mcp_servers.evidence.tools.read]
+output_token_limit = 200000
+
+[mcp_servers.astral]
+command = "/Users/scottmeyer/projects/astral/target/release/astral"
+args = ["mcp", "--proxy-url", "http://127.0.0.1:18088"]
+default_tools_approval_mode = "approve"
+```
+
+The controller runs `codex -C <workspace> exec [resume] --json
+--skip-git-repo-check --ignore-user-config -m gpt-6-astra`, passing the settings
+with `-c`. Existing ChatGPT login supplies authentication. Saved command argument
+arrays contain the exact prompts and settings for every turn.
+
+| New review metric | Passthrough | Tools |
+| --- | ---: | --- |
+| Completed turns / factual checks correct | 4 / 10 of 10 | NOT TESTED |
+| Upstream model requests / observed terminal events | 24 / 24 | NOT TESTED |
+| Forwarded request body bytes | 9,638,228 | Unavailable |
+| Archive replacements / saved bytes | 0 / 0 | Unavailable |
+| Agent Astral search / recall calls | 0 / 0 | NOT TESTED |
+| Input tokens including cache reads | 2,005,087 | Unavailable |
+| Cached input tokens | 1,867,008 | Unavailable |
+| Input tokens excluding cache reads | 138,079 | Unavailable |
+| Output tokens | 3,330 | Unavailable |
+| Sum of four turn wall times | 233.792 s | Unavailable |
+| Failed tools / non-200 model responses | 0 / 0 | NOT TESTED |
+
+The ledger's input/cache/output totals exactly match the final Codex cumulative
+counters. All 24 request IDs have one matching terminal event. Eight evidence
+MCP reads completed; no shell, file-editing, or web tools were used. The proxy's
+health counter also includes non-model requests and is not the model request
+denominator. This one completed baseline cannot establish a benefit comparison.
+
+The tools arm was rejected before launch by automatic approval review: it would
+send saved transcripts, source excerpts, and test evidence to the external Codex
+service, and the reviewer required explicit authorization for that transfer.
+The passthrough review had already completed through that same service. No
+tools-arm process started after the rejection. The paired comparison remains
+**NOT TESTED**, pending approval of that specific data transfer.
+
+### HTTP accounting correction
+
+The earlier missing rows were reproduced locally: an upstream SSE server emits
+one terminal event but holds the stream open; the client consumes it and drops
+the connection. Before the fix, the regression observed zero request rows where
+one was expected. The correction records request sizes after upstream headers,
+and terminal usage before yielding the terminal chunk. Both carry a request ID.
+Clean EOF is still required for completion and projection commit.
+
+The regression covers tools and passthrough modes, with either a terminal event
+or only a partial text delta. It checks exact forwarded sizes, linked terminal
+usage when present, absent completion rows, and absence of credentials or tool
+text in the ledger. Scope is Responses HTTP; it does not add WebSocket accounting.
+Do not sum these usage rows together with the duplicated final response rows.
+
+Validation after this correction passed: the complete locked Rust suite,
+**520 tests**; **18 Python tests**; `cargo fmt --all --check`; strict all-target
+Clippy; Rust 1.85 all-target checking; and `cargo build --release --locked --bins`.
+The failing-before and passing-after regression logs are retained locally.
+
+### Follow-up evidence and reproduction
+
+Private evidence and the exact controllers are retained outside the repository:
+
+```text
+/private/tmp/astral-benefit-20261001/
+  prepare.py, evidence_mcp.py, trial.py, evaluate.py
+  packets.json, packet-manifest.json, packet-delivery.json
+  evaluation.json, followup-validation.json, blocked-comparison.json
+  controller-manifest.json
+  review-pass-1/
+    command-*.json, receipt-*.json, answer-*.txt, turn-*.jsonl
+    proxy.stderr, health.json, state/ledger.jsonl
+  logs/
+    accounting-before.log, affected.log, clippy.log, build.log
+    full-test.log, python-test.log, msrv.log
+```
+
+`packet-manifest.json` records each immutable packet's SHA-256. Preserve those
+packets for comparison: rerunning `prepare.py` after editing this report changes
+the evidence. The saved `review-pass-1/command-*.json` arrays are authoritative
+for the completed run. Raw transcripts and packet contents are not committed.
+
+```sh
+# Local scoring only; no inference or credential access:
+python3 /private/tmp/astral-benefit-20261001/evaluate.py
+
+# Fresh review sessions; these send packet contents to the Codex service.
+# The tools arm below has not run and requires the pending transfer approval.
+python3 /private/tmp/astral-benefit-20261001/trial.py passthrough review-pass-2
+python3 /private/tmp/astral-benefit-20261001/trial.py tools review-tools-1
+```
+
+The controller starts/stops only its own standalone proxy and saves each exact
+CLI invocation. Each label must be new. The first review proxy has been stopped.
+
 ## Remaining limits
 
 - Ordinary Codex and Claude Code did not demonstrate context reduction; their
   provider-managed histories intentionally pass through.
-- Complete Codex forwarded-byte accounting is unavailable with the present
-  response-ledger coverage. Recorded subsets cannot establish a total reduction.
+- Complete Codex forwarded-byte accounting is unavailable for the original runs
+  and WebSocket traffic. The follow-up HTTP correction gives complete accounting
+  for the new passthrough review; its tools comparison has not run.
 - The successful full-history configurations are explicit diagnostics. This is
   a small synthetic recall qualification, not a general quality, latency, or
   billing benchmark.
